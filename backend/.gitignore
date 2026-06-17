@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# Pytest / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local databases
+*.sqlite3
+*.db
+
+# OS files
+.DS_Store
+Thumbs.db

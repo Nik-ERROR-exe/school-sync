@@ -1,0 +1,22 @@
+# Virtual Environment
+venv/
+env/
+.venv/
+
+# Environment Variables
+.env
+.env.local
+
+# Node/Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.eslintcache
+
+# macOS/Windows system files
+.DS_Store
+Thumbs.db
+
+# Random archives
+backend.zip
+*.zip
+*.tar.gz
