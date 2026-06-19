@@ -1,0 +1,77 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Sora:wght@300;400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #0F172A;
+  --color-primary-hover: #1E293B;
+  --color-primary-dark: #020617;
+  
+  --color-secondary: #1E3A8A;
+  --color-secondary-hover: #1E40AF;
+  --color-secondary-dark: #172554;
+
+  --color-accent: #3B82F6;
+  --color-accent-hover: #2563EB;
+  --color-accent-dark: #1D4ED8;
+
+  --color-background: #F8FAFC;
+
+  --font-heading: 'Sora', sans-serif;
+  --font-body: 'Manrope', sans-serif;
+
+  --shadow-premium: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 8px -1px rgba(15, 23, 42, 0.03);
+  --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+}
+
+@layer base {
+  body {
+    background-color: var(--color-background);
+    color: var(--color-primary);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    letter-spacing: -0.025em;
+    font-weight: 600;
+    color: var(--color-primary);
+  }
+}
+
+/* Premium micro-interactions & animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Custom Scrollbars for spreadsheet grid view */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Custom spreadsheet UI focus */
+.spreadsheet-cell-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-accent);
+  border-color: transparent;
+  background-color: white;
+}
