@@ -10,6 +10,10 @@ import Timetable from './pages/Timetable';
 import Substitute from './pages/Substitute';
 import Promotion from './pages/Promotion';
 import Settings from './pages/Settings';
+import Register from './pages/Register';
+import PendingTeachers from './pages/admin/PendingTeachers';
+import AllTeachers from './pages/admin/AllTeachers';
+import Profile from './pages/teacher/Profile';
 
 // Root Route
 const Root = () => {
@@ -19,9 +23,10 @@ const Root = () => {
 
   useEffect(() => {
     // Basic route protection
-    if (!isAuthenticated && location.pathname !== '/login') {
+    const publicPaths = ['/login', '/register'];
+    if (!isAuthenticated && !publicPaths.includes(location.pathname)) {
       navigate({ to: '/login' });
-    } else if (isAuthenticated && location.pathname === '/login') {
+    } else if (isAuthenticated && publicPaths.includes(location.pathname)) {
       navigate({ to: '/dashboard' });
     } else if (isAuthenticated && location.pathname === '/') {
       navigate({ to: '/dashboard' });
@@ -40,6 +45,13 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
   component: Login,
+});
+
+// Public register route
+const registerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/register',
+  component: Register,
 });
 
 // Dashboard Layout wrapper
@@ -115,10 +127,29 @@ const settingsRoute = createRoute({
   component: Settings,
 });
 
+const pendingTeachersRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/admin/teachers/pending',
+  component: PendingTeachers,
+});
+
+const allTeachersRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/admin/teachers',
+  component: AllTeachers,
+});
+
+const teacherProfileRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/teacher/profile',
+  component: Profile,
+});
+
 // Build route tree
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
+  registerRoute,
   dashboardLayoutRoute.addChildren([
     dashboardHomeRoute,
     resultsRoute,
@@ -126,6 +157,9 @@ const routeTree = rootRoute.addChildren([
     substituteRoute,
     promotionRoute,
     settingsRoute,
+    pendingTeachersRoute,
+    allTeachersRoute,
+    teacherProfileRoute,
   ]),
 ]);
 
