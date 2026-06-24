@@ -1,127 +1,87 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import api from '../api';
 
 export interface UserInfo {
   id: number;
-  teacherId: string;
+  teacher_id: string | null;
   name: string;
   email: string;
   role: 'ADMIN' | 'TEACHER';
-  status: 'ACTIVE' | 'INACTIVE';
+  status: 'ACTIVE' | 'INACTIVE' | 'PENDING';
 }
 
 interface AuthContextType {
   user: UserInfo | null;
-  token: string | null;
   isAuthenticated: boolean;
   login: (idOrEmail: string, password: string, rememberMe: boolean) => Promise<boolean>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  checkAuth: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserInfo | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const storedToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      setUser(JSON.parse(storedUser));
+  const checkAuth = async () => {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      setUser(null);
+      setLoading(false);
+      return;
     }
-    setLoading(false);
-  }, []);
-
-  const login = async (idOrEmail: string, password: string, rememberMe: boolean): Promise<boolean> => {
-    // Trim and normalize input
-    const loginId = idOrEmail.trim().toLowerCase();
-    
-    // Simple mock verification
-    let authenticatedUser: UserInfo | null = null;
-    
-    if (loginId === 'admin' || loginId === 'admin@amarkor.in' || loginId === 'admin01') {
-      if (password === 'admin123') {
-        authenticatedUser = {
-          id: 1,
-          teacherId: 'ADMIN01',
-          name: 'Principal Deshmukh',
-          email: 'admin@amarkor.in',
-          role: 'ADMIN',
-          status: 'ACTIVE'
-        };
-      }
-    } else if (
-      loginId === 'teacher' || 
-      loginId === 'teacher@amarkor.in' || 
-      loginId === 't101' || 
-      loginId === 'rahul' || 
-      loginId === 'rahul@amarkor.in'
-    ) {
-      if (password === 'teacher123' || password === 'rahul123') {
-        authenticatedUser = {
-          id: 2,
-          teacherId: 'T101',
-          name: 'Rahul Sir (Maths)',
-          email: 'rahul.desai@amarkor.in',
-          role: 'TEACHER',
-          status: 'ACTIVE'
-        };
-      }
-    } else if (loginId === 'priya' || loginId === 'priya@amarkor.in' || loginId === 't102') {
-      if (password === 'priya123') {
-        authenticatedUser = {
-          id: 3,
-          teacherId: 'T102',
-          name: 'Priya Madam (English)',
-          email: 'priya.sharma@amarkor.in',
-          role: 'TEACHER',
-          status: 'ACTIVE'
-        };
-      }
-    } else if (loginId === 'vikram' || loginId === 'vikram@amarkor.in' || loginId === 't103') {
-      if (password === 'vikram123') {
-        authenticatedUser = {
-          id: 4,
-          teacherId: 'T103',
-          name: 'Vikram Sir (Science)',
-          email: 'vikram.patil@amarkor.in',
-          role: 'TEACHER',
-          status: 'ACTIVE'
-        };
-      }
+    try {
+      const response = await api.get('/auth/me');
+      setUser(response.data);
+    } catch (error) {
+      // Token invalid or expired
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('user_data');
+      setUser(null);
+    } finally {
+      setLoading(false);
     }
-
-    if (authenticatedUser) {
-      const mockToken = `mock-jwt-token-for-${authenticatedUser.role}-${Date.now()}`;
-      setToken(mockToken);
-      setUser(authenticatedUser);
-
-      if (rememberMe) {
-        localStorage.setItem('token', mockToken);
-        localStorage.setItem('user', JSON.stringify(authenticatedUser));
-      } else {
-        sessionStorage.setItem('token', mockToken);
-        sessionStorage.setItem('user', JSON.stringify(authenticatedUser));
-      }
-      return true;
-    }
-    
-    return false;
   };
 
-  const logout = () => {
-    setToken(null);
-    setUser(null);
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    sessionStorage.removeItem('token');
-    sessionStorage.removeItem('user');
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  const login = async (idOrEmail: string, password: string, _rememberMe: boolean): Promise<boolean> => {
+    try {
+      const response = await api.post('/auth/login', { email: idOrEmail, password });
+      const data = response.data;
+
+      // Store JWT in localStorage
+      localStorage.setItem('access_token', data.access_token);
+
+      // Fetch full user profile (includes status etc.)
+      await checkAuth();
+      return true;
+    } catch (error: any) {
+      // Throw meaningful error message for the UI to show
+      if (error.response?.data?.detail) {
+        throw new Error(error.response.data.detail);
+      }
+      throw new Error('Login failed. Please try again.');
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await api.post('/auth/logout');
+    } catch (error) {
+      // Ignore errors on logout
+    } finally {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('user_data');
+      setUser(null);
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, isAuthenticated: !!token, login, logout }}>
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, login, logout, checkAuth }}>
       {!loading && children}
     </AuthContext.Provider>
   );
