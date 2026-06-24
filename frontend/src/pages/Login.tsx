@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from '@tanstack/react-router';
-import { GraduationCap, Lock, Mail, Languages, Check, ArrowRight } from 'lucide-react';
+import { GraduationCap, Lock, Mail, Languages, ArrowRight } from 'lucide-react';
 
 const Login: React.FC = () => {
   const { t, i18n } = useTranslation();
@@ -17,7 +17,7 @@ const Login: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!idOrEmail || !password) {
-      toast.error(t('login.error_empty'));
+      toast.error('Please enter your credentials.');
       return;
     }
 
@@ -25,13 +25,11 @@ const Login: React.FC = () => {
     try {
       const success = await login(idOrEmail, password, rememberMe);
       if (success) {
-        toast.success('Successfully logged in!');
+        toast.success('Welcome back!');
         navigate({ to: '/dashboard' });
-      } else {
-        toast.error(t('login.error_invalid'));
       }
-    } catch (err) {
-      toast.error('An error occurred during authentication');
+    } catch (err: any) {
+      toast.error(err.message || 'An error occurred during login.');
     } finally {
       setLoading(false);
     }
@@ -59,17 +57,16 @@ const Login: React.FC = () => {
           </p>
         </div>
 
-        {/* Credentials hints card */}
-        <div className="rounded-xl bg-slate-50 p-4 border border-slate-100 text-xs text-slate-500 space-y-1">
-          <span className="font-bold text-slate-700 block mb-1">Mock Credentials for Testing:</span>
-          <div className="flex justify-between">
-            <span>Admin: <strong className="text-slate-900 font-semibold">admin@amarkor.in</strong></span>
-            <span>Pass: <strong className="text-slate-900 font-semibold">admin123</strong></span>
-          </div>
-          <div className="flex justify-between">
-            <span>Teacher: <strong className="text-slate-900 font-semibold">teacher@amarkor.in</strong></span>
-            <span>Pass: <strong className="text-slate-900 font-semibold">teacher123</strong></span>
-          </div>
+        {/* Registration Link */}
+        <div className="text-center mt-2">
+          <span className="text-sm text-slate-600">New teacher? </span>
+          <button 
+            type="button" 
+            onClick={() => navigate({ to: '/register' })}
+            className="text-sm font-semibold text-accent hover:text-accent/80 transition-colors"
+          >
+            Register here
+          </button>
         </div>
 
         {/* Login Form */}
@@ -92,7 +89,7 @@ const Login: React.FC = () => {
                   value={idOrEmail}
                   onChange={(e) => setIdOrEmail(e.target.value)}
                   className="block w-full rounded-xl border border-slate-200 py-3 pl-10 pr-4 text-sm text-slate-900 placeholder-slate-400 focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none transition-all shadow-sm"
-                  placeholder="admin@amarkor.in or T101"
+                  placeholder="admin@amarkorvidyalaya.edu.in or T001"
                 />
               </div>
             </div>
