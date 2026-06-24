@@ -15,6 +15,6 @@ class SubstituteAssignment(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)  # 'pending', 'notified', 'accepted', 'declined'
 
     # Relationships
-    school_class: Mapped["SchoolClass"] = relationship()
-    original_teacher: Mapped["Teacher"] = relationship(foreign_keys=[original_teacher_id])
-    substitute_teacher: Mapped["Teacher"] = relationship(foreign_keys=[substitute_teacher_id])
+    # school_class: Mapped["SchoolClass"] = relationship()
+    # original_teacher: Mapped["Teacher"] = relationship(foreign_keys=[original_teacher_id])
+    # substitute_teacher: Mapped["Teacher"] = relationship(foreign_keys=[substitute_teacher_id])
