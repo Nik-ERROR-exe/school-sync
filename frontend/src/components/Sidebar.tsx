@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
+import api from '../api';
 import { 
   LayoutDashboard, 
   FileSpreadsheet, 
@@ -11,7 +12,10 @@ import {
   Settings, 
   LogOut,
   X,
-  GraduationCap
+  GraduationCap,
+  Users,
+  UserPlus,
+  UserCircle
 } from 'lucide-react';
 
 const Sidebar: React.FC = () => {
@@ -19,6 +23,7 @@ const Sidebar: React.FC = () => {
   const { user, logout } = useAuth();
   const routerState = useRouterState();
   const [isOpen, setIsOpen] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
     const handleToggle = () => setIsOpen(prev => !prev);
@@ -31,43 +36,87 @@ const Sidebar: React.FC = () => {
     setIsOpen(false);
   }, [routerState.location.pathname]);
 
+  // Fetch pending count for admin
+  useEffect(() => {
+    if (user?.role !== 'ADMIN') return;
+    const fetchPendingCount = async () => {
+      try {
+        const res = await api.get('/admin/teachers/pending');
+        setPendingCount(res.data.length);
+      } catch {
+        setPendingCount(0);
+      }
+    };
+    fetchPendingCount();
+    // Re-fetch every 60 seconds
+    const interval = setInterval(fetchPendingCount, 60000);
+    return () => clearInterval(interval);
+  }, [user?.role]);
+
   const navItems = [
     {
       to: '/dashboard',
       label: t('common.dashboard'),
       icon: LayoutDashboard,
-      roles: ['ADMIN', 'TEACHER']
+      roles: ['ADMIN', 'TEACHER'],
+      badge: null,
     },
     {
       to: '/results',
       label: t('common.results'),
       icon: FileSpreadsheet,
-      roles: ['ADMIN', 'TEACHER']
+      roles: ['ADMIN', 'TEACHER'],
+      badge: null,
     },
     {
       to: '/timetable',
       label: t('common.timetable'),
       icon: Clock,
-      roles: ['ADMIN', 'TEACHER']
+      roles: ['ADMIN', 'TEACHER'],
+      badge: null,
     },
     {
       to: '/substitute',
       label: t('common.substitute'),
       icon: UserCheck,
-      roles: ['ADMIN', 'TEACHER']
+      roles: ['ADMIN', 'TEACHER'],
+      badge: null,
     },
     {
       to: '/promotion',
       label: t('common.promotion'),
       icon: ArrowUpCircle,
-      roles: ['ADMIN'] // Admin only
+      roles: ['ADMIN'],
+      badge: null,
+    },
+    {
+      to: '/admin/teachers/pending',
+      label: 'Pending Approvals',
+      icon: UserPlus,
+      roles: ['ADMIN'],
+      badge: pendingCount > 0 ? pendingCount : null,
+    },
+    {
+      to: '/admin/teachers',
+      label: 'All Teachers',
+      icon: Users,
+      roles: ['ADMIN'],
+      badge: null,
+    },
+    {
+      to: '/teacher/profile',
+      label: 'My Profile',
+      icon: UserCircle,
+      roles: ['TEACHER', 'ADMIN'],
+      badge: null,
     },
     {
       to: '/settings',
       label: t('common.settings'),
       icon: Settings,
-      roles: ['ADMIN', 'TEACHER']
-    }
+      roles: ['ADMIN', 'TEACHER'],
+      badge: null,
+    },
   ];
 
   const activePath = routerState.location.pathname;
@@ -109,20 +158,27 @@ const Sidebar: React.FC = () => {
             .filter(item => user && item.roles.includes(user.role))
             .map(item => {
               const Icon = item.icon;
-              const isActive = activePath === item.to;
+              const isActive = activePath === item.to || activePath.startsWith(item.to + '/');
               return (
                 <Link
                   key={item.to}
                   to={item.to}
                   className={`
-                    flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200
+                    flex items-center justify-between gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200
                     ${isActive 
                       ? 'bg-accent text-white shadow-lg shadow-accent/20' 
                       : 'hover:bg-slate-900 hover:text-white text-slate-400'}
                   `}
                 >
-                  <Icon className={`h-4 w-4 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}`} />
-                  <span>{item.label}</span>
+                  <div className="flex items-center gap-3">
+                    <Icon className={`h-4 w-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                    <span>{item.label}</span>
+                  </div>
+                  {item.badge !== null && (
+                    <span className="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold">
+                      {item.badge}
+                    </span>
+                  )}
                 </Link>
               );
             })}
