@@ -31,22 +31,28 @@ const DashboardHome: React.FC = () => {
 
   useEffect(() => {
     const loadStats = async () => {
-      const students = await ResultsService.getStudents();
-      const classes = await ResultsService.getClasses();
-      const subs = await ResultsService.getSubmissions();
-      const timetable = await TimetableService.getTimetable();
-      const substitutes = await SubstituteService.getAssignments();
+      try {
+        const students = await ResultsService.getStudents();
+        const classes = await ResultsService.getClasses();
+        const subs = await ResultsService.getSubmissions();
+        const timetable = await TimetableService.getTimetable();
+        const substitutes = await SubstituteService.getAssignments();
 
-      const pending = subs.filter(s => s.status === 'pending').length;
-      const constraintCheck = TimetableService.checkConstraints(timetable);
-      
-      setStats({
-        studentsCount: students.filter(s => s.status === 'ACTIVE').length,
-        classesCount: classes.length,
-        pendingSubmissions: pending,
-        timetableSatisfied: constraintCheck.overallSatisfied,
-        substitutionsToday: substitutes.filter(s => s.date === new Date().toISOString().split('T')[0]).length
-      });
+        const pending = subs.filter(s => s.status === 'pending').length;
+        const constraintCheck = timetable.length > 0 
+          ? TimetableService.checkConstraints(timetable)
+          : { overallSatisfied: true };
+        
+        setStats({
+          studentsCount: students.filter(s => s.status === 'ACTIVE').length,
+          classesCount: classes.length,
+          pendingSubmissions: pending,
+          timetableSatisfied: constraintCheck.overallSatisfied,
+          substitutionsToday: substitutes.filter(s => s.date === new Date().toISOString().split('T')[0]).length
+        });
+      } catch (e) {
+        // If mock data fails, leave defaults as 0
+      }
     };
 
     loadStats();
