@@ -2,7 +2,7 @@ from pydantic import BaseModel, EmailStr, Field, model_validator
 from typing import Optional, List, Dict
 
 class TeacherBase(BaseModel):
-    teacher_id: str = Field(..., max_length=50)
+    teacher_id: Optional[str] = Field(None, max_length=50)
     name: str = Field(..., max_length=100)
     email: EmailStr
     role: str = Field(default="TEACHER")  # 'ADMIN', 'TEACHER'

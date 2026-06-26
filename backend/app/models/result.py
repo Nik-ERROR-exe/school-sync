@@ -21,8 +21,8 @@ class Result(Base):
     approved_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("teachers.id"), nullable=True)
 
     # Relationships
-    student: Mapped["Student"] = relationship(back_populates="results")
-    subject: Mapped["Subject"] = relationship(back_populates="results")
-    exam_type: Mapped["ExamType"] = relationship(back_populates="results")
-    submitted_by: Mapped["Teacher"] = relationship(foreign_keys=[submitted_by_id])
-    approved_by: Mapped[Optional["Teacher"]] = relationship(foreign_keys=[approved_by_id])
+    # student: Mapped["Student"] = relationship(back_populates="results")
+    # subject: Mapped["Subject"] = relationship(back_populates="results")
+    # exam_type: Mapped["ExamType"] = relationship(back_populates="results")
+    # submitted_by: Mapped["Teacher"] = relationship(foreign_keys=[submitted_by_id])
+    # approved_by: Mapped[Optional["Teacher"]] = relationship(foreign_keys=[approved_by_id])

@@ -15,5 +15,5 @@ class WeeklyRequirement(Base):
     )
 
     # Relationships
-    school_class: Mapped["SchoolClass"] = relationship()
-    subject: Mapped["Subject"] = relationship()
+    # school_class: Mapped["SchoolClass"] = relationship()
+    # subject: Mapped["Subject"] = relationship()
