@@ -1,10 +1,19 @@
 import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
 from typing import Optional
 
 class Settings(BaseSettings):
     # Database Settings
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/school_sync"
+
+    @field_validator("DATABASE_URL", mode="after")
+    @classmethod
+    def normalize_database_url(cls, v: str) -> str:
+        """Ensure the DATABASE_URL always uses the asyncpg driver for async SQLAlchemy."""
+        if v.startswith("postgresql://"):
+            v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v
 
     # JWT Authentication Settings
     JWT_SECRET: str = "change_me_to_a_secure_random_string_in_production_32_chars_or_more"

@@ -9,6 +9,7 @@ from alembic import context
 # Import our configuration and models metadata
 from app.config import settings
 from app.models import Base
+from app.database import engine as app_engine
 
 # this is the Alembic Config object
 config = context.config
@@ -21,7 +22,9 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 # Override the sqlalchemy.url from our application configuration
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# Strip ssl param since it's handled by connect_args in the engine
+_clean_url = settings.DATABASE_URL.replace("?ssl=require", "").replace("&ssl=require", "")
+config.set_main_option("sqlalchemy.url", _clean_url)
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
@@ -43,20 +46,11 @@ def do_run_migrations(connection):
         context.run_migrations()
 
 async def run_migrations_online() -> None:
-    """Run migrations in 'online' mode."""
-    configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = settings.DATABASE_URL
-
-    connectable = async_engine_from_config(
-        configuration,
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
-
-    async with connectable.connect() as connection:
+    """Run migrations in 'online' mode using the app's SSL-configured engine."""
+    async with app_engine.connect() as connection:
         await connection.run_sync(do_run_migrations)
 
-    await connectable.dispose()
+    await app_engine.dispose()
 
 if context.is_offline_mode():
     run_migrations_offline()
