@@ -10,10 +10,10 @@ class Subject(Base):
     subject_name: Mapped[str] = mapped_column(String(100), nullable=False)
     code: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
 
-    # Relationships
-    results: Mapped[List["Result"]] = relationship(back_populates="subject")
-    timetable_slots: Mapped[List["TimetableSlot"]] = relationship(back_populates="subject")
-    teachers: Mapped[List["Teacher"]] = relationship(
-        secondary="teacher_subjects",
-        back_populates="subjects_expertise"
-    )
+    # --- REMOVE ALL RELATIONSHIPS (comment out) ---
+    # results: Mapped[List["Result"]] = relationship(back_populates="subject")
+    # timetable_slots: Mapped[List["TimetableSlot"]] = relationship(back_populates="subject")
+    # teachers: Mapped[List["Teacher"]] = relationship(
+    #     secondary="teacher_subjects",
+    #     back_populates="subjects_expertise"
+    # )

@@ -1,49 +1,44 @@
-from fastapi import Request, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
 from app.database import get_db
-from app.core.exceptions import CredentialsException, PermissionDeniedException
-from app.core.security import decode_access_token
 from app.models.teacher import Teacher
+from app.core.security import decode_token
+from app.core.exceptions import CredentialsException, ForbiddenException
 
-async def get_current_user(request: Request, db: AsyncSession = Depends(get_db)) -> Teacher:
-    """
-    FastAPI dependency that extracts the JWT token from the HttpOnly 'access_token' cookie,
-    decodes it, and retrieves the corresponding active user from the database.
-    """
-    token = request.cookies.get("access_token")
-    if not token:
-        raise CredentialsException("Authentication cookie is missing or invalid.")
-        
-    payload = decode_access_token(token)
-    user_id_str = payload.get("sub")
-    if not user_id_str:
-        raise CredentialsException("Token payload does not contain subject ID.")
-        
-    try:
-        user_id = int(user_id_str)
-    except ValueError:
-        raise CredentialsException("Invalid subject ID format.")
-        
-    stmt = select(Teacher).where(Teacher.id == user_id, Teacher.status == "ACTIVE")
-    res = await db.execute(stmt)
-    user = res.scalar_one_or_none()
+security = HTTPBearer()
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> Teacher:
+    token = credentials.credentials
+    payload = decode_token(token)
+    if not payload:
+        raise CredentialsException("Invalid or expired token")
+    
+    user_id = payload.get("sub")
+    if not user_id:
+        raise CredentialsException("Invalid token payload")
+    
+    user = db.query(Teacher).filter(Teacher.id == int(user_id)).first()
     
     if not user:
-        raise CredentialsException("User session is invalid or user is inactive.")
-        
+        raise CredentialsException("User not found")
+    
+    if user.status == "INACTIVE":
+        raise ForbiddenException("Account is deactivated")
+    
     return user
 
-def require_role(required_role: str):
-    """
-    Enforces that the authenticated user possesses a specific role (e.g. 'ADMIN' or 'TEACHER').
-    """
-    def role_checker(current_user: Teacher = Depends(get_current_user)) -> Teacher:
-        if current_user.role != required_role:
-            raise PermissionDeniedException(f"Access denied. Require '{required_role}' privileges.")
-        return current_user
-    return role_checker
+def require_admin(current_user: Teacher = Depends(get_current_user)):
+    if current_user.role != "ADMIN":
+        raise ForbiddenException("Admin access required")
+    return current_user
 
-# Helper dependency shortcuts
-require_admin = require_role("ADMIN")
-require_teacher = require_role("TEACHER")
+def require_active_teacher(current_user: Teacher = Depends(get_current_user)):
+    if current_user.role != "TEACHER":
+        raise ForbiddenException("Teacher access required")
+    if current_user.status != "ACTIVE":
+        raise ForbiddenException("Account is not active")
+    return current_user

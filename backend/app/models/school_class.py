@@ -15,7 +15,7 @@ class SchoolClass(Base):
         UniqueConstraint("class_name", "division", name="uq_class_division"),
     )
 
-    # Relationships
-    class_teacher: Mapped[Optional["Teacher"]] = relationship(back_populates="classes_managed")
-    students: Mapped[List["Student"]] = relationship(back_populates="school_class", cascade="all, delete-orphan")
-    timetable_slots: Mapped[List["TimetableSlot"]] = relationship(back_populates="school_class", cascade="all, delete-orphan")
+    # --- REMOVE ALL RELATIONSHIPS (comment out) ---
+    # class_teacher: Mapped[Optional["Teacher"]] = relationship(back_populates="classes_managed")
+    # students: Mapped[List["Student"]] = relationship(back_populates="school_class", cascade="all, delete-orphan")
+    # timetable_slots: Mapped[List["TimetableSlot"]] = relationship(back_populates="school_class", cascade="all, delete-orphan")

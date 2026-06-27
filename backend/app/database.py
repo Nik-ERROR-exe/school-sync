@@ -1,6 +1,5 @@
-from typing import AsyncGenerator
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
 from app.config import settings
 import ssl as _ssl
 
@@ -17,37 +16,19 @@ if _use_ssl:
 # Strip ssl query param from URL since asyncpg handles it via connect_args
 _db_url = settings.DATABASE_URL.replace("?ssl=require", "").replace("&ssl=require", "")
 
-# Create async engine. Pool size and max overflow configured for production-grade scaling.
-engine = create_async_engine(
-    _db_url,
+# Use sync engine (not async)
+engine = create_engine(
+    settings.DATABASE_URL,
     pool_pre_ping=True,
     echo=False,
-    pool_size=20,
-    max_overflow=10,
-    connect_args=_connect_args,
 )
 
-# Async session factory
-AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
-    autocommit=False,
-    autoflush=False,
-    expire_on_commit=False,
-    class_=AsyncSession,
-)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
-# Declarative base class for SQLAlchemy 2.0
-class Base(DeclarativeBase):
-    pass
-
-# FastAPI DB dependency
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
