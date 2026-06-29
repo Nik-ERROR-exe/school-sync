@@ -19,29 +19,25 @@ const Students: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Partial<Student>>({});
   
-  // Fetch data
-  // Fetch data
-const fetchData = async () => {
-  setLoading(true);
-  try {
-    // Get students
-    const studentsData = await studentApi.getStudents(selectedClass || undefined, search || undefined);
-    setStudents(studentsData);
-    
-    // Get classes - use the admin endpoint directly
-    // Get classes - use admin endpoint
-try {
-  const response = await api.get('/admin/classes');
-  setClasses(response.data);
-} catch (error) {
-  setClasses([]);
-}
-  } catch (error) {
-    toast.error('Failed to load data');
-  } finally {
-    setLoading(false);
-  }
-};
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedClass) params.append('class_id', selectedClass.toString());
+      if (search) params.append('search', search);
+      
+      const studentsRes = await api.get(`/admin/students/?${params.toString()}`);
+      setStudents(studentsRes.data);
+      
+      const classesRes = await api.get('/admin/classes/');
+      setClasses(classesRes.data);
+    } catch (error) {
+      toast.error('Failed to load data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchData();
   }, [selectedClass, search]);
@@ -106,7 +102,6 @@ try {
         </button>
       </div>
       
-      {/* Filters */}
       <div className="flex flex-wrap gap-4">
         <div className="flex-1 min-w-[200px]">
           <div className="relative">
@@ -134,7 +129,6 @@ try {
         </select>
       </div>
       
-      {/* Table */}
       <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -173,7 +167,6 @@ try {
         </div>
       </div>
       
-      {/* Add/Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-md">
