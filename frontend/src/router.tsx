@@ -13,7 +13,10 @@ import Settings from './pages/Settings';
 import Register from './pages/Register';
 import PendingTeachers from './pages/admin/PendingTeachers';
 import AllTeachers from './pages/admin/AllTeachers';
+import Students from './pages/admin/Students';
+import ClassSubjectMapping from './pages/admin/ClassSubjectMapping';
 import Profile from './pages/teacher/Profile';
+import ResultsEntry from './pages/teacher/ResultsEntry'; // Teacher's result entry page
 
 // Root Route
 const Root = () => {
@@ -97,10 +100,18 @@ const dashboardHomeRoute = createRoute({
   component: DashboardHome,
 });
 
+// ADMIN: Results Review (uses the existing Results component - rename later if needed)
 const resultsRoute = createRoute({
   getParentRoute: () => dashboardLayoutRoute,
-  path: '/results',
-  component: Results,
+  path: '/admin/results',
+  component: Results, // This should be the Admin Results Review page
+});
+
+// TEACHER: Results Entry
+const resultsEntryRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/teacher/results-entry',
+  component: ResultsEntry, // Teacher's result entry page
 });
 
 const timetableRoute = createRoute({
@@ -145,6 +156,18 @@ const teacherProfileRoute = createRoute({
   component: Profile,
 });
 
+const studentsRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/admin/students',
+  component: Students,
+});
+
+const classSubjectMappingRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/admin/class-subject-mapping',
+  component: ClassSubjectMapping,
+});
+
 // Build route tree
 const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -152,7 +175,8 @@ const routeTree = rootRoute.addChildren([
   registerRoute,
   dashboardLayoutRoute.addChildren([
     dashboardHomeRoute,
-    resultsRoute,
+    resultsRoute,          // Admin: /admin/results
+    resultsEntryRoute,     // Teacher: /teacher/results-entry
     timetableRoute,
     substituteRoute,
     promotionRoute,
@@ -160,6 +184,8 @@ const routeTree = rootRoute.addChildren([
     pendingTeachersRoute,
     allTeachersRoute,
     teacherProfileRoute,
+    studentsRoute,           
+    classSubjectMappingRoute, 
   ]),
 ]);
 
