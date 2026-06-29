@@ -61,11 +61,20 @@ const Sidebar: React.FC = () => {
       roles: ['ADMIN', 'TEACHER'],
       badge: null,
     },
+    // TEACHER ONLY: Results Entry
     {
-      to: '/results',
-      label: t('common.results'),
+      to: '/teacher/results-entry',
+      label: ' Enter Results',
       icon: FileSpreadsheet,
-      roles: ['ADMIN', 'TEACHER'],
+      roles: ['TEACHER'],
+      badge: null,
+    },
+    // ADMIN ONLY: Results Review
+    {
+      to: '/admin/results',
+      label: ' Review Results',
+      icon: FileSpreadsheet,
+      roles: ['ADMIN'],
       badge: null,
     },
     {
@@ -89,23 +98,39 @@ const Sidebar: React.FC = () => {
       roles: ['ADMIN'],
       badge: null,
     },
+    // Admin Only: Student Management
+    {
+      to: '/admin/students',
+      label: ' Students',
+      icon: Users,
+      roles: ['ADMIN'],
+      badge: null,
+    },
+    // Admin Only: Class-Subject Mapping
+    {
+      to: '/admin/class-subject-mapping',
+      label: ' Class-Subject',
+      icon: Users,
+      roles: ['ADMIN'],
+      badge: null,
+    },
     {
       to: '/admin/teachers/pending',
-      label: 'Pending Approvals',
+      label: ' Pending Approvals',
       icon: UserPlus,
       roles: ['ADMIN'],
       badge: pendingCount > 0 ? pendingCount : null,
     },
     {
       to: '/admin/teachers',
-      label: 'All Teachers',
+      label: '👨 All Teachers',
       icon: Users,
       roles: ['ADMIN'],
       badge: null,
     },
     {
       to: '/teacher/profile',
-      label: 'My Profile',
+      label: ' My Profile',
       icon: UserCircle,
       roles: ['TEACHER', 'ADMIN'],
       badge: null,
