@@ -7,6 +7,7 @@ import {
   TimetableTeacher
 } from '../mockData';
 import { initialClasses } from '../../results/mockData';
+import api from '../../../api';
 
 const initializeTimetableDB = () => {
   if (!localStorage.getItem('timetable_slots')) {
@@ -49,7 +50,6 @@ export const TimetableService = {
       return updatedSlot;
     }
     
-    // If slot didn't exist by id, check if we need to insert by class/day/period
     const altIndex = slots.findIndex(
       s => s.class_id === updatedSlot.class_id && 
            s.day_of_week === updatedSlot.day_of_week && 
@@ -68,9 +68,7 @@ export const TimetableService = {
     return newSlot;
   },
 
-  // Generates a fresh, clean timetable without conflicts
   generateTimetable: async (): Promise<TimetableSlot[]> => {
-    // Generate clean base slots
     const slots: TimetableSlot[] = [];
     const days: ('Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday')[] = [
       'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
@@ -87,13 +85,10 @@ export const TimetableService = {
         const periodsCount = isSat ? 4 : 8;
 
         for (let period = 1; period <= periodsCount; period++) {
-          // Construct deterministically, avoiding PT conflicts and teacher overlaps
-          // Rotate classes so teacher-sharing subjects are offset
           const offset = schoolClass.id * 2;
           let mappingIndex = (period + offset) % classMappings.length;
           let mapping = classMappings[mappingIndex];
 
-          // PT Grounds limitation check (subject_id = 9)
           if (mapping.subject_id === 9) {
             const ptCount = slots.filter(s => s.day_of_week === day && s.period_number === period && s.subject_id === 9).length;
             if (ptCount >= 2) {
@@ -128,26 +123,19 @@ export const TimetableService = {
       overallSatisfied: true
     };
 
-    // Keep track of counts for reporting detail
     const ptOverloadSlots: string[] = [];
     const teacherOverlapDetails: string[] = [];
     const classOverlapDetails: string[] = [];
     const teacherDailyLimitDetails: string[] = [];
-
-    // Helper map to count PT lectures per slot
     const ptCounter: { [key: string]: number } = {};
-    // Helper map to identify teacher schedules
-    const teacherSlotRegistry: { [key: string]: number[] } = {}; // 'Day_Period_TeacherId' -> list of classIds
-    // Helper map for class schedules
-    const classSlotRegistry: { [key: string]: number[] } = {}; // 'Day_Period_ClassId' -> list of subjectIds
-    // Helper map for teacher daily lecture count
-    const teacherDailyCount: { [key: string]: number } = {}; // 'Day_TeacherId' -> count
+    const teacherSlotRegistry: { [key: string]: number[] } = {};
+    const classSlotRegistry: { [key: string]: number[] } = {};
+    const teacherDailyCount: { [key: string]: number } = {};
 
     slots.forEach(slot => {
       const { day_of_week, period_number, teacher_id, class_id, subject_id } = slot;
       const slotKey = `${day_of_week}_${period_number}`;
 
-      // 1. Saturday Half Day check
       if (day_of_week === 'Saturday' && period_number > 4) {
         status.saturdayHalfDay = {
           satisfied: false,
@@ -155,7 +143,6 @@ export const TimetableService = {
         };
       }
 
-      // 2. PT Ground Constraint: Subject id 9 is PT
       if (subject_id === 9) {
         ptCounter[slotKey] = (ptCounter[slotKey] || 0) + 1;
         if (ptCounter[slotKey] > 2 && !ptOverloadSlots.includes(slotKey)) {
@@ -163,27 +150,22 @@ export const TimetableService = {
         }
       }
 
-      // 3. Teacher overlap check
       const teacherKey = `${slotKey}_${teacher_id}`;
       if (!teacherSlotRegistry[teacherKey]) {
         teacherSlotRegistry[teacherKey] = [];
       }
       teacherSlotRegistry[teacherKey].push(class_id);
 
-      // 4. Class double booking check
       const classKey = `${slotKey}_${class_id}`;
       if (!classSlotRegistry[classKey]) {
         classSlotRegistry[classKey] = [];
       }
       classSlotRegistry[classKey].push(subject_id);
 
-      // 5. Teacher daily count
       const dailyKey = `${day_of_week}_${teacher_id}`;
       teacherDailyCount[dailyKey] = (teacherDailyCount[dailyKey] || 0) + 1;
     });
 
-    // Process collected values to build details reports
-    // PT constraint violation report
     if (ptOverloadSlots.length > 0) {
       status.ptConstraint = {
         satisfied: false,
@@ -191,19 +173,15 @@ export const TimetableService = {
       };
     }
 
-    // Teacher overlap report
     Object.entries(teacherSlotRegistry).forEach(([key, classes]) => {
       if (classes.length > 1) {
         const [day, period, teacherIdStr] = key.split('_');
         const teacher = timetableTeachers.find(t => t.id === parseInt(teacherIdStr, 10));
         const teacherName = teacher ? teacher.name : `Teacher #${teacherIdStr}`;
-        
-        // Map class ids to names
         const classNames = classes.map(cid => {
           const c = initialClasses.find(cl => cl.id === cid);
           return c ? `${c.class_name}${c.division}` : `Class #${cid}`;
         });
-
         teacherOverlapDetails.push(
           `${teacherName} is double-booked for ${classNames.join(' and ')} on ${day} Period ${period}`
         );
@@ -216,7 +194,6 @@ export const TimetableService = {
       };
     }
 
-    // Class overlap report
     Object.entries(classSlotRegistry).forEach(([key, subjects]) => {
       if (subjects.length > 1) {
         const [day, period, classIdStr] = key.split('_');
@@ -234,7 +211,6 @@ export const TimetableService = {
       };
     }
 
-    // Teacher daily limits report
     Object.entries(teacherDailyCount).forEach(([key, count]) => {
       const [day, teacherIdStr] = key.split('_');
       const teacherId = parseInt(teacherIdStr, 10);
@@ -260,5 +236,85 @@ export const TimetableService = {
       status.ptConstraint.satisfied;
 
     return status;
+  },
+
+  // ============================================================
+  // STUDENT MANAGEMENT SERVICES
+  // ============================================================
+
+  getClasses: async (): Promise<any[]> => {
+    try {
+      console.log('📡 Fetching classes from /admin/students/classes...');
+      const token = localStorage.getItem('access_token');
+      console.log('🔑 Token exists?', !!token);
+      
+      const response = await api.get('/admin/students/classes');
+      console.log('✅ Classes response status:', response.status);
+      console.log('📚 Classes data:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Error fetching classes:');
+      console.error('Status:', error.response?.status);
+      console.error('Data:', error.response?.data);
+      console.error('Message:', error.message);
+      return [];
+    }
+  },
+
+  getStudents: async (
+    page: number = 1,
+    perPage: number = 20,
+    search?: string,
+    classId?: number
+  ): Promise<{ students: any[]; total: number; page: number; per_page: number }> => {
+    try {
+      const params = new URLSearchParams();
+      params.append('page', page.toString());
+      params.append('per_page', perPage.toString());
+      if (search) params.append('search', search);
+      if (classId) params.append('class_id', classId.toString());
+
+      const response = await api.get(`/admin/students?${params.toString()}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching students:', error);
+      return { students: [], total: 0, page: 1, per_page: perPage };
+    }
+  },
+
+  getStudent: async (id: number): Promise<any> => {
+    const response = await api.get(`/admin/students/${id}`);
+    return response.data;
+  },
+
+  getStudentsByClass: async (classId: number): Promise<any[]> => {
+    const response = await api.get(`/admin/students/class/${classId}`);
+    return response.data;
+  },
+
+  addStudent: async (data: { roll_no: string; name: string; class_id: number }): Promise<any> => {
+    console.log('📤 Sending student data:', data);
+    const response = await api.post('/admin/students', data);
+    console.log('✅ Student created:', response.data);
+    return response.data;
+  },
+
+  bulkImport: async (students: { roll_no: string; name: string; class_id: number }[]): Promise<any[]> => {
+    const response = await api.post('/admin/students/bulk', students);
+    return response.data;
+  },
+
+  updateStudent: async (id: number, data: { roll_no?: string; name?: string; class_id?: number }): Promise<any> => {
+    const response = await api.put(`/admin/students/${id}`, data);
+    return response.data;
+  },
+
+  deleteStudent: async (id: number): Promise<void> => {
+    await api.delete(`/admin/students/${id}`);
+  },
+
+  getStudentStatistics: async (): Promise<{ total_students: number; class_distribution: { class: string; count: number }[] }> => {
+    const response = await api.get('/admin/students/statistics/total');
+    return response.data;
   }
 };

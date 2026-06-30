@@ -1,5 +1,5 @@
 from sqlalchemy import String, Integer
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import Optional
 from app.database import Base
 
@@ -18,3 +18,10 @@ class Teacher(Base):
     # --- DISABLE ALL RELATIONSHIPS ---
     # classes_managed: Mapped[List["SchoolClass"]] = relationship(...)
     # timetable_slots: Mapped[List["TimetableSlot"]] = relationship(...)
+    
+    # --- ADD RELATIONSHIP FOR TEACHER-CLASS-SUBJECT MAPPING ---
+    teacher_class_subjects: Mapped[list["TeacherClassSubject"]] = relationship(
+        "TeacherClassSubject",
+        back_populates="teacher",
+        cascade="all, delete-orphan"
+    )

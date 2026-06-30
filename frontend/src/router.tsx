@@ -8,6 +8,7 @@ import DashboardHome from './pages/DashboardHome';
 import Results from './pages/Results';
 import Timetable from './pages/Timetable';
 import Substitute from './pages/Substitute';
+import Students from './pages/admin/Students';
 import Promotion from './pages/Promotion';
 import Settings from './pages/Settings';
 import Register from './pages/Register';
@@ -115,6 +116,12 @@ const substituteRoute = createRoute({
   component: Substitute,
 });
 
+const studentsRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/admin/students',
+  component: Students,
+});
+
 const promotionRoute = createRoute({
   getParentRoute: () => dashboardLayoutRoute,
   path: '/promotion',
@@ -155,6 +162,7 @@ const routeTree = rootRoute.addChildren([
     resultsRoute,
     timetableRoute,
     substituteRoute,
+    studentsRoute,     // ← ADDED
     promotionRoute,
     settingsRoute,
     pendingTeachersRoute,

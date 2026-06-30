@@ -29,3 +29,42 @@ export interface ConstraintStatus {
   ptConstraint: { satisfied: boolean; details?: string };      // PT ground overload (max 2 classes with PT)
   overallSatisfied: boolean;
 }
+
+// ============================================================
+// NEW: STUDENT RELATED TYPES
+// ============================================================
+
+export interface Student {
+  id: number;
+  roll_no: string;
+  name: string;
+  class_id: number;
+  class_name?: string;
+  division?: string;
+  created_at?: string;
+}
+
+export interface StudentCreate {
+  roll_no: string;
+  name: string;
+  class_id: number;
+}
+
+export interface StudentUpdate {
+  roll_no?: string;
+  name?: string;
+  class_id?: number;
+}
+
+export interface StudentListResponse {
+  students: Student[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export interface Class {
+  id: number;
+  class_name: string;
+  division: string;
+}

@@ -117,6 +117,13 @@ const Sidebar: React.FC = () => {
       roles: ['ADMIN', 'TEACHER'],
       badge: null,
     },
+    {
+  to: '/admin/students',
+  label: 'Student Registry',
+  icon: Users,
+  roles: ['ADMIN'],
+  badge: null,
+},
   ];
 
   const activePath = routerState.location.pathname;
