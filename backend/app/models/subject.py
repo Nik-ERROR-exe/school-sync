@@ -17,3 +17,10 @@ class Subject(Base):
     #     secondary="teacher_subjects",
     #     back_populates="subjects_expertise"
     # )
+    
+    # --- ADD RELATIONSHIP FOR TEACHER-CLASS-SUBJECT MAPPING ---
+    teacher_class_subjects: Mapped[List["TeacherClassSubject"]] = relationship(
+        "TeacherClassSubject",
+        back_populates="subject",
+        cascade="all, delete-orphan"
+    )

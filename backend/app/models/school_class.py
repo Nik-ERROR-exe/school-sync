@@ -19,3 +19,10 @@ class SchoolClass(Base):
     # class_teacher: Mapped[Optional["Teacher"]] = relationship(back_populates="classes_managed")
     # students: Mapped[List["Student"]] = relationship(back_populates="school_class", cascade="all, delete-orphan")
     # timetable_slots: Mapped[List["TimetableSlot"]] = relationship(back_populates="school_class", cascade="all, delete-orphan")
+    
+    # --- ADD RELATIONSHIP FOR TEACHER-CLASS-SUBJECT MAPPING ---
+    teacher_class_subjects: Mapped[List["TeacherClassSubject"]] = relationship(
+        "TeacherClassSubject",
+        back_populates="school_class",
+        cascade="all, delete-orphan"
+    )

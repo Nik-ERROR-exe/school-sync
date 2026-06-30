@@ -17,6 +17,7 @@ from app.api.teacher_results import router as teacher_results_router
 from app.api.teacher_timetable import router as teacher_timetable_router
 from app.api.notifications import router as notifications_router
 from app.api.admin_weekly_requirements import router as weekly_req_router
+from app.api.admin_students import router as admin_students_router
 
 app = FastAPI(
     title="SchoolSync Management System API",
@@ -32,7 +33,7 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "http://localhost:8000",  # Add this
+        "http://localhost:8000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -52,6 +53,7 @@ app.include_router(teacher_results_router, prefix=API_PREFIX)
 app.include_router(teacher_timetable_router, prefix=API_PREFIX)
 app.include_router(notifications_router, prefix=API_PREFIX)
 app.include_router(weekly_req_router, prefix=API_PREFIX)
+app.include_router(admin_students_router, prefix=API_PREFIX)
 
 @app.on_event("startup")
 def seed_initial_admin():
