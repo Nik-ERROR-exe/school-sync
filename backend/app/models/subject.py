@@ -1,6 +1,6 @@
 from sqlalchemy import String, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from typing import List
+from typing import List, Optional
 from app.database import Base
 
 class Subject(Base):
@@ -10,17 +10,9 @@ class Subject(Base):
     subject_name: Mapped[str] = mapped_column(String(100), nullable=False)
     code: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
 
-    # --- REMOVE ALL RELATIONSHIPS (comment out) ---
-    # results: Mapped[List["Result"]] = relationship(back_populates="subject")
-    # timetable_slots: Mapped[List["TimetableSlot"]] = relationship(back_populates="subject")
-    # teachers: Mapped[List["Teacher"]] = relationship(
-    #     secondary="teacher_subjects",
-    #     back_populates="subjects_expertise"
-    # )
+    # --- ONLY ADD THIS RELATIONSHIP (needed for result_service.py) ---
+    # results: Mapped[List["Result"]] = relationship("Result", back_populates="subject")
     
-    # --- ADD RELATIONSHIP FOR TEACHER-CLASS-SUBJECT MAPPING ---
-    teacher_class_subjects: Mapped[List["TeacherClassSubject"]] = relationship(
-        "TeacherClassSubject",
-        back_populates="subject",
-        cascade="all, delete-orphan"
-    )
+    # Keep others commented out to avoid circular imports
+    # timetable_slots: Mapped[List["TimetableSlot"]] = relationship(back_populates="subject")
+    # teachers: Mapped[List["Teacher"]] = relationship(secondary="teacher_subjects", back_populates="subjects_expertise")
