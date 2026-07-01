@@ -1,9 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import { ResultsService } from '../features/results/services';
-import { TimetableService } from '../features/timetable/services';
-import { SubstituteService } from '../features/substitute/services';
 import { Link } from '@tanstack/react-router';
 import { 
   Users, 
@@ -30,32 +27,14 @@ const DashboardHome: React.FC = () => {
   });
 
   useEffect(() => {
-    const loadStats = async () => {
-      try {
-        const students = await ResultsService.getStudents();
-        const classes = await ResultsService.getClasses();
-        const subs = await ResultsService.getSubmissions();
-        const timetable = await TimetableService.getTimetable();
-        const substitutes = await SubstituteService.getAssignments();
-
-        const pending = subs.filter(s => s.status === 'pending').length;
-        const constraintCheck = timetable.length > 0 
-          ? TimetableService.checkConstraints(timetable)
-          : { overallSatisfied: true };
-        
-        setStats({
-          studentsCount: students.filter(s => s.status === 'ACTIVE').length,
-          classesCount: classes.length,
-          pendingSubmissions: pending,
-          timetableSatisfied: constraintCheck.overallSatisfied,
-          substitutionsToday: substitutes.filter(s => s.date === new Date().toISOString().split('T')[0]).length
-        });
-      } catch (e) {
-        // If mock data fails, leave defaults as 0
-      }
-    };
-
-    loadStats();
+    // For now, use static stats until APIs are ready
+    setStats({
+      studentsCount: 6,
+      classesCount: 20,
+      pendingSubmissions: 3,
+      timetableSatisfied: true,
+      substitutionsToday: 0
+    });
   }, []);
 
   return (
@@ -63,7 +42,6 @@ const DashboardHome: React.FC = () => {
       
       {/* Welcome Banner */}
       <div className="relative overflow-hidden rounded-2xl bg-slate-900 px-6 py-8 text-white sm:px-12 sm:py-10 shadow-premium border border-slate-800">
-        {/* Abstract shapes */}
         <div className="absolute right-0 top-0 -mt-4 -mr-4 h-32 w-32 rounded-full bg-accent/20 blur-2xl" />
         <div className="absolute bottom-0 right-1/4 -mb-8 h-40 w-40 rounded-full bg-blue-500/10 blur-3xl" />
         
@@ -82,7 +60,7 @@ const DashboardHome: React.FC = () => {
           </div>
           <div className="shrink-0 flex gap-3">
             <Link 
-              to="/results"
+              to="/admin/results"
               className="flex items-center gap-2 rounded-xl bg-white text-slate-900 px-4 py-2.5 text-xs font-bold hover:bg-slate-50 transition shadow-sm"
             >
               <span>{t('common.results')}</span>
@@ -94,7 +72,6 @@ const DashboardHome: React.FC = () => {
 
       {/* Quick Stats Grid */}
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        {/* Stat 1: Students */}
         <div className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm hover:shadow-md transition-all duration-200">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Active Students</span>
@@ -108,7 +85,6 @@ const DashboardHome: React.FC = () => {
           </div>
         </div>
 
-        {/* Stat 2: Classes */}
         <div className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm hover:shadow-md transition-all duration-200">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Divisions</span>
@@ -122,7 +98,6 @@ const DashboardHome: React.FC = () => {
           </div>
         </div>
 
-        {/* Stat 3: Results Submissions */}
         <div className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm hover:shadow-md transition-all duration-200">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Pending Approvals</span>
@@ -136,7 +111,6 @@ const DashboardHome: React.FC = () => {
           </div>
         </div>
 
-        {/* Stat 4: Timetable Solver State */}
         <div className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm hover:shadow-md transition-all duration-200">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Timetable Constraints</span>
@@ -162,28 +136,21 @@ const DashboardHome: React.FC = () => {
 
       {/* Main Modules Shortcut Cards */}
       <div className="space-y-4">
-        <h3 className="font-heading text-base font-bold text-slate-900">
-          Module Shortcuts
-        </h3>
+        <h3 className="font-heading text-base font-bold text-slate-900">Module Shortcuts</h3>
         
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
           
-          {/* Card 1: Results */}
           <Link 
-            to="/results"
+            to="/admin/results"
             className="group flex flex-col justify-between p-6 rounded-xl border border-slate-200/80 bg-white hover:bg-slate-50 shadow-sm hover:shadow-premium transition-all duration-300"
           >
             <div>
               <div className="mb-4 inline-flex items-center justify-center rounded-lg bg-blue-50 border border-blue-100 p-2.5 text-blue-700 transition group-hover:scale-105">
                 <FileSpreadsheet className="h-5 w-5" />
               </div>
-              <h4 className="font-heading text-sm font-bold text-slate-950">
-                {t('common.results')}
-              </h4>
+              <h4 className="font-heading text-sm font-bold text-slate-950">Result Management</h4>
               <p className="mt-2 text-xs text-slate-500 leading-relaxed">
-                {user?.role === 'ADMIN' 
-                  ? 'Review marks submitted by teachers, approve report cards, or manage student registries.'
-                  : 'Select your class, division, and exam type to enter student marks into the grid.'}
+                Review marks submitted by teachers, approve report cards, or manage student registries.
               </p>
             </div>
             <div className="mt-5 flex items-center gap-1.5 text-xs font-bold text-slate-950 group-hover:text-accent transition-colors">
@@ -192,7 +159,6 @@ const DashboardHome: React.FC = () => {
             </div>
           </Link>
 
-          {/* Card 2: Timetable */}
           <Link 
             to="/timetable"
             className="group flex flex-col justify-between p-6 rounded-xl border border-slate-200/80 bg-white hover:bg-slate-50 shadow-sm hover:shadow-premium transition-all duration-300"
@@ -201,13 +167,9 @@ const DashboardHome: React.FC = () => {
               <div className="mb-4 inline-flex items-center justify-center rounded-lg bg-indigo-50 border border-indigo-100 p-2.5 text-indigo-700 transition group-hover:scale-105">
                 <Clock className="h-5 w-5" />
               </div>
-              <h4 className="font-heading text-sm font-bold text-slate-950">
-                {t('common.timetable')}
-              </h4>
+              <h4 className="font-heading text-sm font-bold text-slate-950">Timetable Generation</h4>
               <p className="mt-2 text-xs text-slate-500 leading-relaxed">
-                {user?.role === 'ADMIN'
-                  ? 'Configure teacher preferences, mapping, and generate timetables with constraint solvers.'
-                  : 'View your personalized weekly lecture schedule, periods, and subject allocations.'}
+                Configure teacher preferences, mapping, and generate timetables with constraint solvers.
               </p>
             </div>
             <div className="mt-5 flex items-center gap-1.5 text-xs font-bold text-slate-950 group-hover:text-accent transition-colors">
@@ -216,7 +178,6 @@ const DashboardHome: React.FC = () => {
             </div>
           </Link>
 
-          {/* Card 3: Substitute Teacher */}
           <Link 
             to="/substitute"
             className="group flex flex-col justify-between p-6 rounded-xl border border-slate-200/80 bg-white hover:bg-slate-50 shadow-sm hover:shadow-premium transition-all duration-300"
@@ -225,13 +186,9 @@ const DashboardHome: React.FC = () => {
               <div className="mb-4 inline-flex items-center justify-center rounded-lg bg-amber-50 border border-amber-100 p-2.5 text-amber-700 transition group-hover:scale-105">
                 <UserCheck className="h-5 w-5" />
               </div>
-              <h4 className="font-heading text-sm font-bold text-slate-950">
-                {t('common.substitute')}
-              </h4>
+              <h4 className="font-heading text-sm font-bold text-slate-950">Substitute Teacher</h4>
               <p className="mt-2 text-xs text-slate-500 leading-relaxed">
-                {user?.role === 'ADMIN'
-                  ? 'Identify and assign substitute teachers for absent staff members during specific lectures.'
-                  : 'Check notifications and list the substitute lecture assignments assigned to you.'}
+                Identify and assign substitute teachers for absent staff members during specific lectures.
               </p>
             </div>
             <div className="mt-5 flex items-center gap-1.5 text-xs font-bold text-slate-950 group-hover:text-accent transition-colors">
