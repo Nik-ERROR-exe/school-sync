@@ -18,9 +18,6 @@ from app.api.teacher_timetable import router as teacher_timetable_router
 from app.api.notifications import router as notifications_router
 from app.api.admin_weekly_requirements import router as weekly_req_router
 from app.api.admin_students import router as admin_students_router
-
-# Import new API routers
-from app.api.admin_students import router as admin_students_router
 from app.api.admin_class_subjects import router as admin_class_subjects_router
 from app.api.teacher_students import router as teacher_students_router
 from app.api.teacher_classes import router as teacher_classes_router
@@ -29,27 +26,22 @@ from app.api.teacher_exam_types import router as teacher_exam_types_router
 from app.api.teacher_subjects import router as teacher_subjects_router
 from app.api.admin_subjects import router as admin_subjects_router
 
-
-
 app = FastAPI(
     title="SchoolSync Management System API",
     description="Backend services for Amarkor Vidyalaya School ERP",
     version="1.0.0"
 )
 
-# CORS configurations
+# ============================================================
+# CORS - FIXED
+# ============================================================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:8000",
-    ],
+    allow_origins=["*"],  # Allow all origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Register API routers
@@ -65,9 +57,6 @@ app.include_router(teacher_results_router, prefix=API_PREFIX)
 app.include_router(teacher_timetable_router, prefix=API_PREFIX)
 app.include_router(notifications_router, prefix=API_PREFIX)
 app.include_router(weekly_req_router, prefix=API_PREFIX)
-app.include_router(admin_students_router, prefix=API_PREFIX)
-
-# Register new API routers
 app.include_router(admin_students_router, prefix=API_PREFIX)
 app.include_router(admin_class_subjects_router, prefix=API_PREFIX)
 app.include_router(teacher_students_router, prefix=API_PREFIX)
