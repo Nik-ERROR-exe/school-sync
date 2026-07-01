@@ -34,6 +34,11 @@ export interface ResultResponse {
   approved_by_id: number | null;
 }
 
+export interface ResultUpdate {
+  marks_obtained: number;
+  total_marks: number;
+}
+
 export const resultApi = {
   // Get exam types
   getExamTypes: async (): Promise<ExamType[]> => {
@@ -59,6 +64,22 @@ export const resultApi = {
     if (class_id) params.append('class_id', class_id.toString());
     if (exam_type_id) params.append('exam_type_id', exam_type_id.toString());
     const response = await api.get(`/admin/results?${params.toString()}`);
+    return response.data;
+  },
+  
+  // Get results by class and exam (teacher - for loading existing marks)
+  getResultsByClassAndExam: async (classId: number, examTypeId: number): Promise<{ [key: number]: number }> => {
+    try {
+      const response = await api.get(`/teacher/results/class/${classId}/exam/${examTypeId}`);
+      return response.data;
+    } catch {
+      return {};
+    }
+  },
+  
+  // Update result (admin auto-save)
+  updateResult: async (id: number, data: ResultUpdate): Promise<{ message: string }> => {
+    const response = await api.put(`/admin/results/${id}`, data);
     return response.data;
   },
   
