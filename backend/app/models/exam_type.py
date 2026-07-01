@@ -9,4 +9,4 @@ class ExamType(Base):
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     weightage: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
 
-    # --- REMOVE ALL RELATIONSHIPS ---
+    # --- NO RELATIONSHIPS --- 
