@@ -32,9 +32,16 @@ def create_student(
     current_admin: Teacher = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
-    existing = db.query(Student).filter(Student.roll_no == data.roll_no).first()
+    # Check if roll_no already exists in the SAME class
+    existing = db.query(Student).filter(
+        Student.roll_no == data.roll_no,
+        Student.class_id == data.class_id
+    ).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Roll number already exists")
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Roll number {data.roll_no} already exists in this class"
+        )
     
     new_student = Student(
         roll_no=data.roll_no,
@@ -58,18 +65,37 @@ def update_student(
         raise HTTPException(status_code=404, detail="Student not found")
     
     if data.roll_no:
+        # Check if roll_no already exists in the SAME class (excluding current student)
         existing = db.query(Student).filter(
             Student.roll_no == data.roll_no,
+            Student.class_id == student.class_id,
             Student.id != id
         ).first()
         if existing:
-            raise HTTPException(status_code=400, detail="Roll number already in use")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Roll number {data.roll_no} already exists in this class"
+            )
         student.roll_no = data.roll_no
     
     if data.name:
         student.name = data.name
     
     if data.class_id:
+        # If class is changing, check if roll_no exists in the new class
+        new_class_id = data.class_id
+        roll_no_to_check = data.roll_no if data.roll_no else student.roll_no
+        
+        existing = db.query(Student).filter(
+            Student.roll_no == roll_no_to_check,
+            Student.class_id == new_class_id,
+            Student.id != id
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Roll number {roll_no_to_check} already exists in the new class"
+            )
         student.class_id = data.class_id
     
     db.commit()
