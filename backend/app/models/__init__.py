@@ -9,6 +9,7 @@ from app.models.notification import Notification
 from app.models.substitute_assignment import SubstituteAssignment
 from app.models.weekly_requirement import WeeklyRequirement
 from app.models.teacher_subjects import teacher_subjects
+from app.models.teacher_class_subject import TeacherClassSubject
 
 __all__ = [
     "Teacher",
@@ -23,4 +24,5 @@ __all__ = [
     "SubstituteAssignment",
     "WeeklyRequirement",
     "teacher_subjects",
+    "TeacherClassSubject",
 ]

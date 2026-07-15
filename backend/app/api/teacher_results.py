@@ -1,16 +1,15 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
 from app.api.deps import get_current_user
+from app.models.teacher import Teacher
+from app.models.student import Student
+from app.models.result import Result
 from app.schemas.result import ResultBatchCreate, ResultResponse
 from app.services.result_service import create_result_batch
-from app.models.teacher import Teacher
 
-router = APIRouter(
-    prefix="/teacher/results",
-    tags=["Teacher - Results Entry"]
-)
+router = APIRouter(prefix="/teacher/results", tags=["Teacher - Results"])
 
 @router.post("/", response_model=List[ResultResponse], status_code=status.HTTP_201_CREATED)
 def submit_student_results(

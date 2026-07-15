@@ -32,7 +32,6 @@ def list_classes(db: Session = Depends(get_db)):
     )
     result = db.execute(stmt)
     return list(result.scalars().unique().all())
-
 @router.post("/", response_model=SchoolClassResponse, status_code=status.HTTP_201_CREATED)
 def create_class(data: SchoolClassCreate, db: Session = Depends(get_db)):
     """
@@ -104,31 +103,6 @@ def update_class_subjects(
     db.commit()
     db.refresh(school_class)
     return school_class
-
-# Keep backward-compatible POST endpoint (delegates to PUT logic)
-@router.post("/{class_id}/subjects", response_model=List[SubjectResponse])
-def assign_class_subjects(class_id: int, subject_ids: List[int], db: Session = Depends(get_db)):
-    """
-    Legacy endpoint: assign a list of subjects to a specific class.
-    Prefer PUT /{class_id}/subjects with { subject_ids: [...] } body.
-    """
-    school_class = db.get(SchoolClass, class_id)
-    if not school_class:
-        raise ResourceNotFoundException("Class", str(class_id))
-
-    if subject_ids:
-        stmt = select(Subject).where(Subject.id.in_(subject_ids))
-        subjects = list(db.execute(stmt).scalars().all())
-        if len(subjects) != len(subject_ids):
-            raise ResourceNotFoundException("Subject", "One or more subject IDs")
-        school_class.subjects = subjects
-    else:
-        school_class.subjects = []
-
-    db.commit()
-    db.refresh(school_class)
-    return school_class.subjects
-
 @router.delete("/{class_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_class(class_id: int, db: Session = Depends(get_db)):
     """
