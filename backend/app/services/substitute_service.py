@@ -2,8 +2,7 @@ from datetime import date as pydate
 from typing import List, Optional, Tuple, Any
 from sqlalchemy import func
 from sqlalchemy.future import select
-from sqlalchemy.orm import joinedload
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload, Session
 from app.models.teacher import Teacher
 from app.models.timetable import TimetableSlot
 from app.models.substitute_assignment import SubstituteAssignment
@@ -11,8 +10,8 @@ from app.models.school_class import SchoolClass
 from app.schemas.substitute import AvailableTeacherResponse
 from app.core.exceptions import ValidationException, ResourceNotFoundException
 
-async def find_available_substitutes(
-    db: AsyncSession,
+def find_available_substitutes(
+    db: Session,
     absent_date: pydate,
     period_number: int,
     absent_teacher_id: int
@@ -32,7 +31,7 @@ async def find_available_substitutes(
         TimetableSlot.period_number == period_number
     )
     
-    slot_res = await db.execute(slot_stmt)
+    slot_res = db.execute(slot_stmt)
     slot_to_sub = slot_res.scalar_one_or_none()
     
     if not slot_to_sub:
@@ -43,7 +42,7 @@ async def find_available_substitutes(
         Teacher.id != absent_teacher_id,
         Teacher.status == "ACTIVE"
     )
-    teachers_res = await db.execute(teachers_stmt)
+    teachers_res = db.execute(teachers_stmt)
     candidates = teachers_res.scalars().all()
     
     available_teachers = []
@@ -55,7 +54,7 @@ async def find_available_substitutes(
             TimetableSlot.day_of_week == day_name,
             TimetableSlot.period_number == period_number
         )
-        master_slot = (await db.execute(master_slot_stmt)).scalar_one_or_none()
+        master_slot = db.execute(master_slot_stmt).scalar_one_or_none()
         
         # Check if they are already subbing in another class at this exact time
         sub_slot_stmt = select(SubstituteAssignment).where(
@@ -63,7 +62,7 @@ async def find_available_substitutes(
             SubstituteAssignment.date == absent_date,
             SubstituteAssignment.period_number == period_number
         )
-        is_subbing = (await db.execute(sub_slot_stmt)).scalar_one_or_none() is not None
+        is_subbing = db.execute(sub_slot_stmt).scalar_one_or_none() is not None
         
         # If they have a timetable class OR are subbing, they are busy
         if master_slot or is_subbing:
@@ -77,21 +76,21 @@ async def find_available_substitutes(
             TimetableSlot.teacher_id == candidate.id,
             TimetableSlot.day_of_week == day_name
         )
-        master_count = (await db.execute(master_count_stmt)).scalar() or 0
+        master_count = db.execute(master_count_stmt).scalar() or 0
         
         # b. Absences on this date
         absences_count_stmt = select(func.count(SubstituteAssignment.id)).where(
             SubstituteAssignment.original_teacher_id == candidate.id,
             SubstituteAssignment.date == absent_date
         )
-        absences_count = (await db.execute(absences_count_stmt)).scalar() or 0
+        absences_count = db.execute(absences_count_stmt).scalar() or 0
         
         # c. Substitutions on this date
         subs_count_stmt = select(func.count(SubstituteAssignment.id)).where(
             SubstituteAssignment.substitute_teacher_id == candidate.id,
             SubstituteAssignment.date == absent_date
         )
-        subs_count = (await db.execute(subs_count_stmt)).scalar() or 0
+        subs_count = db.execute(subs_count_stmt).scalar() or 0
         
         actual_lectures = master_count - absences_count + subs_count
         
@@ -109,8 +108,8 @@ async def find_available_substitutes(
             
     return slot_to_sub, available_teachers
 
-async def assign_substitute(
-    db: AsyncSession,
+def assign_substitute(
+    db: Session,
     date: pydate,
     period_number: int,
     class_id: int,
@@ -128,7 +127,7 @@ async def assign_substitute(
         SubstituteAssignment.period_number == period_number,
         SubstituteAssignment.substitute_teacher_id == substitute_teacher_id
     )
-    existing_sub = (await db.execute(existing_sub_stmt)).scalar_one_or_none()
+    existing_sub = db.execute(existing_sub_stmt).scalar_one_or_none()
     if existing_sub:
         raise ValidationException("The selected substitute teacher is already subbing at this period.")
 
@@ -142,7 +141,7 @@ async def assign_substitute(
         status="notified"
     )
     db.add(assignment)
-    await db.commit()
+    db.commit()
     
     # Reload with details for notifications and response
     stmt = select(SubstituteAssignment).options(
@@ -151,7 +150,7 @@ async def assign_substitute(
         joinedload(SubstituteAssignment.substitute_teacher)
     ).where(SubstituteAssignment.id == assignment.id)
     
-    assignment_loaded = (await db.execute(stmt)).scalar()
+    assignment_loaded = db.execute(stmt).scalar()
     if not assignment_loaded:
         raise ResourceNotFoundException("SubstituteAssignment", str(assignment.id))
 
@@ -163,7 +162,7 @@ async def assign_substitute(
     )
     
     from app.services.notification_service import create_notification
-    await create_notification(
+    create_notification(
         db=db,
         user_id=substitute_teacher_id,
         message=message,

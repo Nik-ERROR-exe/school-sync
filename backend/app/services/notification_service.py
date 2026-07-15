@@ -1,6 +1,7 @@
 import logging
+import asyncio
 from typing import Optional, Any
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from app.models.notification import Notification
 from app.models.teacher import Teacher
 from app.core.email import send_email_async
@@ -8,8 +9,8 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-async def create_notification(
-    db: AsyncSession,
+def create_notification(
+    db: Session,
     user_id: int,
     message: str,
     notification_type: str,
@@ -27,11 +28,11 @@ async def create_notification(
         is_read=False
     )
     db.add(db_notification)
-    await db.commit()
-    await db.refresh(db_notification)
+    db.commit()
+    db.refresh(db_notification)
     
     # 2. Trigger Email notification
-    user = await db.get(Teacher, user_id)
+    user = db.get(Teacher, user_id)
     if user and user.email:
         subject = f"SchoolSync Notification: {notification_type.replace('_', ' ').capitalize()}"
         body = f"""
@@ -46,7 +47,7 @@ async def create_notification(
         </html>
         """
         
-        # If Celery is enabled, queue it, else fallback to standard BackgroundTasks or direct async execution
+        # If Celery is enabled, queue it, else fallback to standard BackgroundTasks or direct execution
         if settings.USE_CELERY:
             try:
                 from app.tasks.email_tasks import send_email_task
@@ -57,13 +58,13 @@ async def create_notification(
                 if background_tasks:
                     background_tasks.add_task(send_email_async, user.email, subject, body)
                 else:
-                    await send_email_async(user.email, subject, body)
+                    asyncio.run(send_email_async(user.email, subject, body))
         else:
             if background_tasks:
                 background_tasks.add_task(send_email_async, user.email, subject, body)
                 logger.info(f"Queued email to {user.email} using FastAPI BackgroundTasks")
             else:
-                await send_email_async(user.email, subject, body)
+                asyncio.run(send_email_async(user.email, subject, body))
                 logger.info(f"Sent email to {user.email} synchronously")
                 
     return db_notification

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
 from app.api.deps import get_current_user
@@ -13,15 +13,15 @@ router = APIRouter(
 )
 
 @router.post("/", response_model=List[ResultResponse], status_code=status.HTTP_201_CREATED)
-async def submit_student_results(
+def submit_student_results(
     req: ResultBatchCreate,
     current_user: Teacher = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     Submits or updates a batch of student exam marks. Results are initialized with 'submitted' status.
     """
-    results = await create_result_batch(db, req.results, current_user.id)
+    results = create_result_batch(db, req.results, current_user.id)
     
     # Map raw models to response list
     response_data = []

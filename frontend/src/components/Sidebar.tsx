@@ -104,6 +104,13 @@ const Sidebar: React.FC = () => {
       badge: null,
     },
     {
+      to: '/admin/class-management',
+      label: 'Class Management',
+      icon: GraduationCap,
+      roles: ['ADMIN'],
+      badge: null,
+    },
+    {
       to: '/teacher/profile',
       label: 'My Profile',
       icon: UserCircle,

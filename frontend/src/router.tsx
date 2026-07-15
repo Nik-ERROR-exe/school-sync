@@ -13,6 +13,7 @@ import Settings from './pages/Settings';
 import Register from './pages/Register';
 import PendingTeachers from './pages/admin/PendingTeachers';
 import AllTeachers from './pages/admin/AllTeachers';
+import ClassManagement from './pages/admin/ClassManagement';
 import Profile from './pages/teacher/Profile';
 
 // Root Route
@@ -139,6 +140,12 @@ const allTeachersRoute = createRoute({
   component: AllTeachers,
 });
 
+const classManagementRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/admin/class-management',
+  component: ClassManagement,
+});
+
 const teacherProfileRoute = createRoute({
   getParentRoute: () => dashboardLayoutRoute,
   path: '/teacher/profile',
@@ -159,6 +166,7 @@ const routeTree = rootRoute.addChildren([
     settingsRoute,
     pendingTeachersRoute,
     allTeachersRoute,
+    classManagementRoute,
     teacherProfileRoute,
   ]),
 ]);

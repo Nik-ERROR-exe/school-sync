@@ -5,14 +5,17 @@ from typing import Optional
 
 class Settings(BaseSettings):
     # Database Settings
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/school_sync"
+    DATABASE_URL: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/school_sync"
 
     @field_validator("DATABASE_URL", mode="after")
     @classmethod
     def normalize_database_url(cls, v: str) -> str:
-        """Ensure the DATABASE_URL always uses the asyncpg driver for async SQLAlchemy."""
-        if v.startswith("postgresql://"):
-            v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        """Ensure the DATABASE_URL uses the psycopg2 sync driver for SQLAlchemy."""
+        # Replace async drivers with sync psycopg2
+        if "+asyncpg" in v:
+            v = v.replace("+asyncpg", "+psycopg2")
+        elif v.startswith("postgresql://"):
+            v = v.replace("postgresql://", "postgresql+psycopg2://", 1)
         return v
 
     # JWT Authentication Settings

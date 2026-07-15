@@ -1,5 +1,5 @@
 from app.schemas.auth import LoginRequest, TokenResponse, CurrentUserResponse, MessageResponse
-from app.schemas.teacher import TeacherCreate, TeacherUpdate, TeacherResponse
+from app.schemas.teacher import TeacherCreate, TeacherUpdate, TeacherResponse, SubjectResponse, TeacherSubjectsUpdate
 from app.schemas.result import ResultCreate, ResultBatchCreate, ResultUpdate, ResultResponse, ResultApproval
 from app.schemas.timetable import TimetableGenerateRequest, TimetableSlotResponse, TimetableResponse, TimetableSaveRequest
 from app.schemas.substitute import SubstituteAssignRequest, AvailableTeacherResponse, SubstituteAssignmentResponse
@@ -13,6 +13,8 @@ __all__ = [
     "TeacherCreate",
     "TeacherUpdate",
     "TeacherResponse",
+    "SubjectResponse",
+    "TeacherSubjectsUpdate",
     "ResultCreate",
     "ResultBatchCreate",
     "ResultUpdate",

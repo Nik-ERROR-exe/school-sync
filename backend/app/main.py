@@ -17,6 +17,8 @@ from app.api.teacher_results import router as teacher_results_router
 from app.api.teacher_timetable import router as teacher_timetable_router
 from app.api.notifications import router as notifications_router
 from app.api.admin_weekly_requirements import router as weekly_req_router
+from app.api.admin_subjects import router as subjects_router
+from app.api.admin_classes import router as classes_router
 
 app = FastAPI(
     title="SchoolSync Management System API",
@@ -52,6 +54,8 @@ app.include_router(teacher_results_router, prefix=API_PREFIX)
 app.include_router(teacher_timetable_router, prefix=API_PREFIX)
 app.include_router(notifications_router, prefix=API_PREFIX)
 app.include_router(weekly_req_router, prefix=API_PREFIX)
+app.include_router(subjects_router, prefix=API_PREFIX)
+app.include_router(classes_router, prefix=API_PREFIX)
 
 @app.on_event("startup")
 def seed_initial_admin():
@@ -72,12 +76,12 @@ def seed_initial_admin():
             )
             db.add(admin_teacher)
             db.commit()
-            print(f"✅ Admin created: {settings.INITIAL_ADMIN_EMAIL}")
+            print(f"[OK] Admin created: {settings.INITIAL_ADMIN_EMAIL}")
         else:
-            print("✅ Admin already exists")
+            print("[OK] Admin already exists")
     except Exception as e:
         db.rollback()
-        print(f"❌ Seed error: {str(e)}")
+        print(f"[ERROR] Seed error: {str(e)}")
     finally:
         db.close()
 

@@ -1,7 +1,14 @@
-from sqlalchemy import String, Integer, ForeignKey, UniqueConstraint
+from sqlalchemy import String, Integer, ForeignKey, UniqueConstraint, Table, Column
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import List, Optional
 from app.database import Base
+
+class_subjects = Table(
+    "class_subjects",
+    Base.metadata,
+    Column("class_id", Integer, ForeignKey("classes.id", ondelete="CASCADE"), primary_key=True),
+    Column("subject_id", Integer, ForeignKey("subjects.id", ondelete="CASCADE"), primary_key=True),
+)
 
 class SchoolClass(Base):
     __tablename__ = "classes"
@@ -13,6 +20,12 @@ class SchoolClass(Base):
 
     __table_args__ = (
         UniqueConstraint("class_name", "division", name="uq_class_division"),
+    )
+
+    subjects: Mapped[List["Subject"]] = relationship(
+        "Subject",
+        secondary="class_subjects",
+        lazy="select"
     )
 
     # --- REMOVE ALL RELATIONSHIPS (comment out) ---

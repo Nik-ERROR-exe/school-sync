@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.future import select
-from sqlalchemy.orm import joinedload
 from datetime import date as pydate
 from typing import List, Optional
 from app.database import get_db
@@ -18,9 +17,9 @@ router = APIRouter(
 )
 
 @router.get("/master", response_model=List[TimetableSlotResponse])
-async def get_master_timetable(
+def get_master_timetable(
     current_user: Teacher = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     Returns the master recurring schedule slots assigned to the logged-in teacher.
@@ -28,14 +27,14 @@ async def get_master_timetable(
     stmt = select(TimetableSlot).where(
         TimetableSlot.teacher_id == current_user.id
     )
-    res = await db.execute(stmt)
+    res = db.execute(stmt)
     return list(res.scalars().all())
 
 @router.get("/substitutions", response_model=List[SubstituteAssignmentResponse])
-async def get_substitute_assignments(
+def get_substitute_assignments(
     date: Optional[pydate] = Query(None, description="Optional date filter"),
     current_user: Teacher = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     Retrieves all substitution covering assignments assigned to the logged-in teacher.
@@ -51,7 +50,7 @@ async def get_substitute_assignments(
     if date:
         stmt = stmt.where(SubstituteAssignment.date == date)
         
-    res = await db.execute(stmt)
+    res = db.execute(stmt)
     assignments = res.scalars().all()
     
     response_data = []

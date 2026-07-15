@@ -1,28 +1,29 @@
 import React, { useState } from 'react';
+import { WizardProvider, useWizard, WizardState } from '../../WizardContext';
 import Step1SchoolSettings from './Step1SchoolSettings';
 import Step2Teachers from './Step2Teachers';
+import Step3WeeklyRequirements from './Step3WeeklyRequirements';
 import Step3ClassesSubjects from './Step3ClassesSubjects';
 import Step4TeacherAssignment from './Step4TeacherAssignment';
-import Step5Constraints from './Step5Constraints';
-import Step6Generate from './Step6Generate';
+import { ApiSlot } from '../../types';
 
 interface WizardLayoutProps {
-  onGenerateComplete: () => void;
+  onGenerateComplete: (schedule: ApiSlot[], settings: WizardState) => void;
 }
 
 const steps = [
   { id: 1, title: 'School Settings' },
-  { id: 2, title: 'Teachers' },
-  { id: 3, title: 'Classes & Subjects' },
-  { id: 4, title: 'Teacher Assignment' },
-  { id: 5, title: 'Constraints' },
-  { id: 6, title: 'Generate' },
+  { id: 2, title: 'Select Teachers & Classes' },
+  { id: 3, title: 'Weekly Requirements' },
+  { id: 4, title: 'Review & Confirm' },
+  { id: 5, title: 'Generate' },
 ];
 
-export const WizardLayout: React.FC<WizardLayoutProps> = ({ onGenerateComplete }) => {
+const WizardStepsContent: React.FC<WizardLayoutProps> = ({ onGenerateComplete }) => {
+  const { state } = useWizard();
   const [currentStep, setCurrentStep] = useState(1);
 
-  const nextStep = () => setCurrentStep(prev => Math.min(prev + 1, 6));
+  const nextStep = () => setCurrentStep(prev => Math.min(prev + 1, steps.length));
   const prevStep = () => setCurrentStep(prev => Math.max(prev - 1, 1));
 
   return (
@@ -45,7 +46,7 @@ export const WizardLayout: React.FC<WizardLayoutProps> = ({ onGenerateComplete }
                       ? 'bg-blue-100 text-blue-700'
                       : 'bg-slate-100 text-slate-400'
                 }`}>
-                  {step.id}
+                  {currentStep > step.id ? '✓' : step.id}
                 </div>
                 <span className={`ml-3 text-xs font-semibold ${
                   currentStep === step.id ? 'text-slate-900' : 'text-slate-400'
@@ -68,12 +69,24 @@ export const WizardLayout: React.FC<WizardLayoutProps> = ({ onGenerateComplete }
         <div className="max-w-5xl mx-auto min-h-[500px]">
           {currentStep === 1 && <Step1SchoolSettings onNext={nextStep} />}
           {currentStep === 2 && <Step2Teachers onNext={nextStep} onPrev={prevStep} />}
-          {currentStep === 3 && <Step3ClassesSubjects onNext={nextStep} onPrev={prevStep} />}
-          {currentStep === 4 && <Step4TeacherAssignment onNext={nextStep} onPrev={prevStep} />}
-          {currentStep === 5 && <Step5Constraints onNext={nextStep} onPrev={prevStep} />}
-          {currentStep === 6 && <Step6Generate onPrev={prevStep} onGenerateComplete={onGenerateComplete} />}
+          {currentStep === 3 && <Step3WeeklyRequirements onNext={nextStep} onPrev={prevStep} />}
+          {currentStep === 4 && <Step3ClassesSubjects onNext={nextStep} onPrev={prevStep} />}
+          {currentStep === 5 && (
+            <Step4TeacherAssignment 
+              onPrev={prevStep} 
+              onGenerateComplete={(schedule, wizardState) => onGenerateComplete(schedule, wizardState)} 
+            />
+          )}
         </div>
       </div>
     </div>
+  );
+};
+
+export const WizardLayout: React.FC<WizardLayoutProps> = ({ onGenerateComplete }) => {
+  return (
+    <WizardProvider>
+      <WizardStepsContent onGenerateComplete={onGenerateComplete} />
+    </WizardProvider>
   );
 };

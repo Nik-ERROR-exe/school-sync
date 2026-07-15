@@ -29,3 +29,39 @@ export interface ConstraintStatus {
   ptConstraint: { satisfied: boolean; details?: string };      // PT ground overload (max 2 classes with PT)
   overallSatisfied: boolean;
 }
+
+export interface ApiSlot {
+  id?: number;
+  class_id: number;
+  day_of_week: string;
+  period_number: number;
+  subject_id: number;
+  teacher_id: number;
+}
+
+export interface ApiClass {
+  id: number;
+  class_name: string;
+  division: string;
+  subjects?: ApiSubject[];
+}
+
+export interface ApiSubject {
+  id: number;
+  subject_name: string;
+  code: string;
+}
+
+export interface ApiTeacher {
+  id: number;
+  name: string;
+  teacher_id: string;
+}
+
+export interface ConstraintStatusItem {
+  id: string;
+  name: string;
+  satisfied: boolean;
+  count: number;
+}
+

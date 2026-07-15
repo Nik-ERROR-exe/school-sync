@@ -21,3 +21,10 @@ def decode_token(token: str):
         return payload
     except:
         return None
+
+def decode_access_token(token: str):
+    from app.core.exceptions import CredentialsException
+    try:
+        return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+    except Exception:
+        raise CredentialsException("Could not validate credentials")

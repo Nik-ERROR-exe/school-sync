@@ -10,9 +10,9 @@ class TimetableSlot(Base):
     class_id: Mapped[int] = mapped_column(Integer, ForeignKey("classes.id"))
     subject_id: Mapped[int] = mapped_column(Integer, ForeignKey("subjects.id"))
     teacher_id: Mapped[int] = mapped_column(Integer, ForeignKey("teachers.id"))
-    day: Mapped[str] = mapped_column(String(20))
-    period: Mapped[int] = mapped_column(Integer)
+    day_of_week: Mapped[str] = mapped_column(String(20))
+    period_number: Mapped[int] = mapped_column(Integer)
 
-    # --- DISABLE ALL RELATIONSHIPS (comment out) ---
-    # teacher: Mapped["Teacher"] = relationship()
-    # school_class: Mapped["SchoolClass"] = relationship()
+    school_class: Mapped["SchoolClass"] = relationship()
+    teacher: Mapped["Teacher"] = relationship()
+    subject: Mapped["Subject"] = relationship()

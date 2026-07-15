@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import delete
+from sqlalchemy import delete, text, inspect
 from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.api.deps import require_admin
 from app.schemas.timetable import TimetableGenerateRequest, TimetableResponse, TimetableSaveRequest
@@ -11,6 +10,7 @@ from app.services.timetable import (
     SolverTeacher,
     SolverClass,
     SolverRequirement,
+    SolverSlot,
     TimetableSolver,
     validate_timetable_slots
 )
@@ -27,9 +27,9 @@ router = APIRouter(
 )
 
 @router.post("/generate", response_model=TimetableResponse)
-async def generate_timetable(
+def generate_timetable(
     req: TimetableGenerateRequest,
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     Triggers the constraint satisfaction problem solver to generate a valid, complete school timetable.
@@ -53,11 +53,11 @@ async def generate_timetable(
         ]
     else:
         # Load from DB with eager-loaded subject expertise
-        stmt = select(Teacher).options(
-            selectinload(Teacher.subjects_expertise)
-        ).where(Teacher.status == "ACTIVE")
-        result = await db.execute(stmt)
-        db_teachers = list(result.scalars().all())
+        db_teachers = db.execute(
+            select(Teacher)
+            .options(joinedload(Teacher.subjects_expertise))
+            .where(Teacher.status == "ACTIVE")
+        ).scalars().unique().all()
 
         if not db_teachers:
             raise ValidationException("No active teachers found in the database. Create teachers first.")
@@ -68,8 +68,9 @@ async def generate_timetable(
                 name=t.name,
                 subject_expertise=[s.id for s in t.subjects_expertise],
                 max_lectures_per_day=t.max_lectures_per_day,
-                availability=t.availability
-            ) for t in db_teachers
+                availability=None   # availability column doesn't exist on Teacher model yet
+            )
+            for t in db_teachers
         ]
 
     # --- Resolve Classes ---
@@ -80,7 +81,7 @@ async def generate_timetable(
         ]
     else:
         stmt = select(SchoolClass)
-        result = await db.execute(stmt)
+        result = db.execute(stmt)
         db_classes = list(result.scalars().all())
 
         if not db_classes:
@@ -91,24 +92,76 @@ async def generate_timetable(
             for c in db_classes
         ]
 
+    # Get the list of class IDs we are generating for (used for filtering requirements)
+    generating_class_ids = [c.id for c in solver_classes]
+
     # --- Resolve Weekly Requirements ---
-    if req.weekly_requirements is not None:
+    # If the request provides requirements and the list is non‑empty, use them as minimums.
+    # Otherwise, try to load from the WeeklyRequirement table.
+    if req.weekly_requirements is not None and len(req.weekly_requirements) > 0:
         solver_reqs = [
             SolverRequirement(class_id=r.class_id, subject_id=r.subject_id, periods_per_week=r.periods_per_week)
             for r in req.weekly_requirements
         ]
     else:
-        stmt = select(WeeklyRequirement)
-        result = await db.execute(stmt)
-        db_reqs = list(result.scalars().all())
+        # First, try to fetch from the WeeklyRequirement table (existing)
+        stmt = select(WeeklyRequirement).where(WeeklyRequirement.class_id.in_(generating_class_ids))
+        result = db.execute(stmt)
+        db_reqs = result.scalars().all()
 
-        if not db_reqs:
-            raise ValidationException("No weekly requirements found in the database. Create requirements first.")
+        if db_reqs:
+            solver_reqs = [
+                SolverRequirement(class_id=r.class_id, subject_id=r.subject_id, periods_per_week=r.periods_per_week)
+                for r in db_reqs
+            ]
+        else:
+            # No requirements in WeeklyRequirement – fall back to class_subjects table (plural)
+            inspector = inspect(db.get_bind())
+            if inspector.has_table("class_subjects"):
+                sql = text("""
+                    SELECT class_id, subject_id
+                    FROM class_subjects
+                    WHERE class_id IN :class_ids
+                """)
+                result = db.execute(sql, {"class_ids": tuple(generating_class_ids)})
+                class_subjects = result.fetchall()
 
-        solver_reqs = [
-            SolverRequirement(class_id=r.class_id, subject_id=r.subject_id, periods_per_week=r.periods_per_week)
-            for r in db_reqs
-        ]
+                if class_subjects:
+                    solver_reqs = [
+                        SolverRequirement(
+                            class_id=row[0],
+                            subject_id=row[1],
+                            periods_per_week=1   # minimum – will be auto‑adjusted by the solver
+                        )
+                        for row in class_subjects
+                    ]
+                else:
+                    raise ValidationException(
+                        "No subjects assigned to any of the selected classes in class_subjects. "
+                        "Please assign subjects to classes or set weekly requirements."
+                    )
+            else:
+                raise ValidationException(
+                    "No weekly requirements found for the selected classes, "
+                    "and the class_subjects table does not exist. "
+                    "Please set weekly requirements or create the class_subjects table."
+                )
+
+    # Load existing slots for other classes (to preserve manually edited slots)
+    existing_slots_db = db.execute(
+        select(TimetableSlot).where(TimetableSlot.class_id.notin_(generating_class_ids))
+    ).scalars().all()
+
+    solver_existing_slots = [
+        SolverSlot(
+            class_id=s.class_id,
+            day_of_week=s.day_of_week,
+            period_number=s.period_number,
+            subject_id=s.subject_id,
+            teacher_id=s.teacher_id
+        )
+        for s in existing_slots_db
+    ]
 
     solver_input = SolverInput(
         teachers=solver_teachers,
@@ -117,7 +170,8 @@ async def generate_timetable(
         school_days=req.school_days,
         periods_per_day=req.periods_per_day,
         lunch_period=req.lunch_period,
-        pt_subject_id=req.pt_subject_id
+        pt_subject_id=req.pt_subject_id,
+        existing_slots=solver_existing_slots
     )
 
     solver = TimetableSolver(solver_input)
@@ -130,10 +184,10 @@ async def generate_timetable(
     }
 
 @router.put("/", response_model=TimetableResponse)
-async def save_timetable(
+def save_timetable(
     req: TimetableSaveRequest,
     pt_subject_id: int = Query(..., description="ID representing Physical Training (PT)"),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     Validates a manually adjusted timetable and commits it to the database,
@@ -143,7 +197,7 @@ async def save_timetable(
     (e.g. unique constraint violation), the old timetable is preserved via rollback.
     """
     # 1. Fetch all teachers for daily limit checks
-    teachers_res = await db.execute(select(Teacher))
+    teachers_res = db.execute(select(Teacher))
     teachers_list = list(teachers_res.scalars().all())
 
     # 2. Run application-level validations BEFORE touching the database
@@ -165,12 +219,12 @@ async def save_timetable(
     # 4. Atomic replace: delete old → insert new → flush to catch DB constraint errors
     #    If anything fails, the entire transaction rolls back and old data is preserved.
     try:
-        await db.execute(delete(TimetableSlot))
+        db.execute(delete(TimetableSlot))
         db.add_all(new_slots)
-        await db.flush()  # Forces DB to check unique constraints NOW, before commit
-        await db.commit()
+        db.flush()  # Forces DB to check unique constraints NOW, before commit
+        db.commit()
     except Exception as e:
-        await db.rollback()
+        db.rollback()
         raise ValidationException(
             f"Failed to save timetable due to a database constraint violation: {str(e)}"
         )
@@ -180,3 +234,18 @@ async def save_timetable(
         "success": True,
         "message": "Timetable saved successfully."
     }
+
+@router.get("/", response_model=TimetableResponse)
+def get_saved_timetable(db: Session = Depends(get_db)):
+    slots = db.execute(select(TimetableSlot)).scalars().all()
+    schedule = [
+        {
+            "class_id": s.class_id,
+            "day_of_week": s.day_of_week,
+            "period_number": s.period_number,
+            "subject_id": s.subject_id,
+            "teacher_id": s.teacher_id,
+        }
+        for s in slots
+    ]
+    return {"schedule": schedule, "success": True, "message": "Timetable loaded."}

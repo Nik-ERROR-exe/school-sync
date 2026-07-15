@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.database import get_db
 from app.api.deps import require_admin
@@ -14,14 +14,14 @@ router = APIRouter(
 )
 
 @router.get("/", response_model=List[ResultResponse])
-async def list_results(
+def list_results(
     status: Optional[str] = Query(None, description="Filter results by status ('pending', 'submitted', 'approved')"),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     Retrieves all student results. Can filter results by status.
     """
-    results = await get_results_by_status(db, status)
+    results = get_results_by_status(db, status)
     
     # Flatten database models to match the response schema
     response_data = []
@@ -51,16 +51,16 @@ async def list_results(
     return response_data
 
 @router.put("/{id}/approve", response_model=ResultResponse)
-async def approve_student_result(
+def approve_student_result(
     id: int,
     approval: ResultApproval,
     current_admin: Teacher = Depends(require_admin),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     Approves or rejects a submitted student result record.
     """
-    r = await approve_result(db, id, current_admin.id, approval.approved)
+    r = approve_result(db, id, current_admin.id, approval.approved)
     
     return ResultResponse(
         id=r.id,

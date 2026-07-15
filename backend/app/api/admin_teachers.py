@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, status, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List
 from app.database import get_db
 from app.api.deps import require_admin
-from app.schemas.teacher import TeacherCreate, TeacherUpdate, TeacherResponse
+from app.schemas.teacher import TeacherCreate, TeacherUpdate, TeacherResponse, SubjectResponse, TeacherSubjectsUpdate
 from app.models.teacher import Teacher
+from app.models.subject import Subject
+from app.models.teacher_subjects import teacher_subjects
 from app.core.security import get_password_hash
 from app.core.exceptions import ResourceNotFoundException, ConflictException
 
@@ -100,12 +102,22 @@ def deactivate_teacher(id: int, db: Session = Depends(get_db)):
 
 @router.get("/", response_model=List[TeacherResponse])
 def list_teachers(db: Session = Depends(get_db)):
-    teachers = db.query(Teacher).order_by(Teacher.name).all()
+    teachers = (
+        db.query(Teacher)
+        .options(joinedload(Teacher.subjects_expertise))
+        .order_by(Teacher.name)
+        .all()
+    )
     return teachers
 
 @router.get("/{id}", response_model=TeacherResponse)
 def get_teacher(id: int, db: Session = Depends(get_db)):
-    teacher = db.query(Teacher).filter(Teacher.id == id).first()
+    teacher = (
+        db.query(Teacher)
+        .options(joinedload(Teacher.subjects_expertise))
+        .filter(Teacher.id == id)
+        .first()
+    )
     if not teacher:
         raise ResourceNotFoundException("Teacher", str(id))
     return teacher
@@ -144,3 +156,63 @@ def delete_teacher(id: int, db: Session = Depends(get_db)):
     db.delete(teacher)
     db.commit()
     return None
+
+
+@router.get("/{teacher_id}/subjects", response_model=List[SubjectResponse])
+def get_teacher_subjects(teacher_id: int, db: Session = Depends(get_db)):
+    db_teacher = (
+        db.query(Teacher)
+        .options(joinedload(Teacher.subjects_expertise))
+        .filter(Teacher.id == teacher_id)
+        .first()
+    )
+    if not db_teacher:
+        raise ResourceNotFoundException("Teacher", str(teacher_id))
+    return [
+        {"id": s.id, "subject_name": s.subject_name, "code": s.code}
+        for s in db_teacher.subjects_expertise
+    ]
+
+
+@router.post("/{teacher_id}/subjects", response_model=TeacherResponse)
+def update_teacher_subjects(
+    teacher_id: int,
+    body: TeacherSubjectsUpdate,
+    db: Session = Depends(get_db),
+):
+    db_teacher = db.query(Teacher).filter(Teacher.id == teacher_id).first()
+    if not db_teacher:
+        raise ResourceNotFoundException("Teacher", str(teacher_id))
+
+    # Validate all subject_ids exist
+    if body.subject_ids:
+        subjects = db.query(Subject).filter(Subject.id.in_(body.subject_ids)).all()
+        if len(subjects) != len(body.subject_ids):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="One or more subject IDs not found",
+            )
+
+    # Replace: delete existing, insert new
+    db.execute(
+        teacher_subjects.delete().where(
+            teacher_subjects.c.teacher_id == teacher_id
+        )
+    )
+    for subject_id in body.subject_ids:
+        db.execute(
+            teacher_subjects.insert().values(
+                teacher_id=teacher_id, subject_id=subject_id
+            )
+        )
+    db.commit()
+
+    # Return updated teacher with subjects eagerly loaded
+    db.refresh(db_teacher)
+    updated = (
+        db.query(Teacher)
+        .options(joinedload(Teacher.subjects_expertise))
+        .filter(Teacher.id == teacher_id)
+        .first()
+    )
+    return updated

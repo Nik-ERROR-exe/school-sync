@@ -20,6 +20,15 @@ class SolverRequirement:
     class_id: int
     subject_id: int
     periods_per_week: int
+    original_periods_per_week: Optional[int] = None  # Admin's original value before auto-adjustment
+
+@dataclass
+class SolverSlot:
+    class_id: int
+    day_of_week: str
+    period_number: int
+    subject_id: int
+    teacher_id: int
 
 @dataclass
 class SolverInput:
@@ -30,3 +39,4 @@ class SolverInput:
     periods_per_day: int
     lunch_period: Optional[int]
     pt_subject_id: int
+    existing_slots: List[SolverSlot] = field(default_factory=list)

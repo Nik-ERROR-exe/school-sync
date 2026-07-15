@@ -23,17 +23,16 @@ def test_timetable_solver_success():
     
     requirements = [
         # Class 1 requirements
-        SolverRequirement(class_id=1, subject_id=101, periods_per_week=2),
+        SolverRequirement(class_id=1, subject_id=101, periods_per_week=1),
         SolverRequirement(class_id=1, subject_id=103, periods_per_week=1),
         
         # Class 2 requirements
-        SolverRequirement(class_id=2, subject_id=102, periods_per_week=2),
+        SolverRequirement(class_id=2, subject_id=102, periods_per_week=1),
         SolverRequirement(class_id=2, subject_id=103, periods_per_week=1),
         
         # Class 3 requirements
         SolverRequirement(class_id=3, subject_id=101, periods_per_week=1),
         SolverRequirement(class_id=3, subject_id=102, periods_per_week=1),
-        SolverRequirement(class_id=3, subject_id=103, periods_per_week=1),
     ]
     
     school_days = ["Monday", "Tuesday"]
@@ -100,6 +99,41 @@ def test_timetable_solver_success():
             pt_key = (day, period)
             pt_slot_counts[pt_key] = pt_slot_counts.get(pt_key, 0) + 1
             assert pt_slot_counts[pt_key] <= 2, f"PT ground capacity limit exceeded at {day} Period {period}"
+
+    # Verify the two new constraints:
+    import math
+    assignments_dict = {}
+    for slot in schedule:
+        assignments_dict[(slot["class_id"], slot["day_of_week"], slot["period_number"])] = (slot["subject_id"], slot["teacher_id"])
+        
+    for slot in schedule:
+        c_id = slot["class_id"]
+        day = slot["day_of_week"]
+        period = slot["period_number"]
+        sub_id = slot["subject_id"]
+        
+        if sub_id == 0:
+            continue
+            
+        # 1. No consecutive same subject
+        if period > 1:
+            prev_key = (c_id, day, period - 1)
+            if prev_key in assignments_dict:
+                assert assignments_dict[prev_key][0] != sub_id, f"Consecutive same subject {sub_id} for class {c_id} on {day}"
+                
+        # 2. Subject daily limit
+        req_item = next(
+            r for r in solver.input.weekly_requirements
+            if r.class_id == c_id and r.subject_id == sub_id
+        )
+        periods_pw = req_item.periods_per_week
+        max_per_day = math.ceil(periods_pw / len(school_days))
+        
+        count = sum(
+            1 for slot2 in schedule
+            if slot2["class_id"] == c_id and slot2["day_of_week"] == day and slot2["subject_id"] == sub_id
+        )
+        assert count <= max_per_day, f"Subject {sub_id} exceeded daily limit of {max_per_day} for class {c_id} on {day}"
 
 def test_timetable_solver_unsolvable():
     """

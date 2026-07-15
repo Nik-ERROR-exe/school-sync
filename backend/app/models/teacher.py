@@ -1,7 +1,8 @@
 from sqlalchemy import String, Integer
-from sqlalchemy.orm import Mapped, mapped_column
-from typing import Optional
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from typing import Optional, List
 from app.database import Base
+from app.models.teacher_subjects import teacher_subjects
 
 class Teacher(Base):
     __tablename__ = "teachers"
@@ -14,6 +15,12 @@ class Teacher(Base):
     role: Mapped[str] = mapped_column(String(20), default="TEACHER", nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="PENDING", nullable=False)
     max_lectures_per_day: Mapped[int] = mapped_column(Integer, default=4, nullable=False)
+
+    subjects_expertise: Mapped[List["Subject"]] = relationship(
+        "Subject",
+        secondary="teacher_subjects",
+        lazy="select"
+    )
 
     # --- DISABLE ALL RELATIONSHIPS ---
     # classes_managed: Mapped[List["SchoolClass"]] = relationship(...)

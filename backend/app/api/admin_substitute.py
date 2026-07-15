@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query, BackgroundTasks
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from datetime import date as pydate
 from app.database import get_db
 from app.api.deps import require_admin
@@ -14,17 +14,17 @@ router = APIRouter(
 )
 
 @router.get("/available")
-async def get_available_substitutes(
+def get_available_substitutes(
     date: pydate = Query(..., description="Date of the scheduled class absence"),
     period_number: int = Query(..., ge=1, description="Period slot number"),
     absent_teacher_id: int = Query(..., description="Database ID of the absent teacher"),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     Checks the master schedule to determine which class is affected by the teacher's absence,
     and returns a list of available substitute teachers.
     """
-    slot, available_teachers = await find_available_substitutes(
+    slot, available_teachers = find_available_substitutes(
         db, date, period_number, absent_teacher_id
     )
     
@@ -41,16 +41,16 @@ async def get_available_substitutes(
     }
 
 @router.post("/", response_model=SubstituteAssignmentResponse)
-async def create_substitute_assignment(
+def create_substitute_assignment(
     req: SubstituteAssignRequest,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     Assigns a substitute teacher for a specific date and period, leaving the original timetable intact
     and sending an alert notification to the substitute.
     """
-    assignment = await assign_substitute(
+    assignment = assign_substitute(
         db=db,
         date=req.date,
         period_number=req.period_number,
