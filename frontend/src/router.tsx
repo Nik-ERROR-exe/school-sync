@@ -8,7 +8,7 @@ import DashboardHome from './pages/DashboardHome';
 import Results from './pages/Results';
 import Timetable from './pages/Timetable';
 import Substitute from './pages/Substitute';
-import Promotion from './pages/Promotion';
+import Promotion from './pages/admin/Promotion';
 import Settings from './pages/Settings';
 import Register from './pages/Register';
 import PendingTeachers from './pages/admin/PendingTeachers';
