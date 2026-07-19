@@ -1,19 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
 import api from '../../api';
-import { subjectApi, Subject } from '../../api/subject';
-import { Plus, Trash2, X, Save } from 'lucide-react';
+import { Plus, Trash2, Save } from 'lucide-react';
+
+interface Subject {
+  id: number;
+  subject_name: string;
+  code: string;
+}
 
 interface Class {
   id: number;
   class_name: string;
   division: string;
+  subjects?: Subject[];
 }
 
 const ClassSubjectMapping: React.FC = () => {
   const [classes, setClasses] = useState<Class[]>([]);
   const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
-  const [classSubjects, setClassSubjects] = useState<Subject[]>([]);
   const [selectedClass, setSelectedClass] = useState<number | ''>('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [newSubjectId, setNewSubjectId] = useState<number | ''>('');
@@ -40,8 +45,8 @@ const ClassSubjectMapping: React.FC = () => {
   useEffect(() => {
     const fetchSubjects = async () => {
       try {
-        const data = await subjectApi.getSubjects();
-        setAllSubjects(data);
+        const response = await api.get('/admin/subjects/');
+        setAllSubjects(response.data);
       } catch {
         toast.error('Failed to load subjects');
       }
@@ -49,23 +54,11 @@ const ClassSubjectMapping: React.FC = () => {
     fetchSubjects();
   }, []);
 
-  // Load subjects for selected class
-  useEffect(() => {
-    if (!selectedClass) {
-      setClassSubjects([]);
-      return;
-    }
-
-    const fetchClassSubjects = async () => {
-      try {
-        const data = await subjectApi.getSubjectsByClass(Number(selectedClass));
-        setClassSubjects(data);
-      } catch {
-        toast.error('Failed to load class subjects');
-      }
-    };
-    fetchClassSubjects();
-  }, [selectedClass]);
+  const currentClass = classes.find((c) => c.id === selectedClass);
+  const classSubjects = currentClass?.subjects || [];
+  const availableSubjects = allSubjects.filter(
+    (s) => !classSubjects.some((cs) => cs.id === s.id)
+  );
 
   const handleAddSubject = async () => {
     if (!selectedClass || !newSubjectId) {
@@ -75,13 +68,23 @@ const ClassSubjectMapping: React.FC = () => {
 
     setLoading(true);
     try {
-      await subjectApi.addSubjectToClass(Number(selectedClass), Number(newSubjectId));
+      const currentIds = classSubjects.map((s) => s.id);
+      if (currentIds.includes(Number(newSubjectId))) {
+        toast.error('Subject already added');
+        return;
+      }
+
+      const response = await api.put(`/admin/classes/${selectedClass}/subjects`, {
+        subject_ids: [...currentIds, Number(newSubjectId)]
+      });
+
+      // Update classes in local state
+      setClasses((prev) =>
+        prev.map((c) => (c.id === selectedClass ? response.data : c))
+      );
       toast.success('Subject added to class!');
       setShowAddForm(false);
       setNewSubjectId('');
-
-      const data = await subjectApi.getSubjectsByClass(Number(selectedClass));
-      setClassSubjects(data);
     } catch (error: any) {
       toast.error(error.response?.data?.detail || 'Failed to add subject');
     } finally {
@@ -109,19 +112,23 @@ const ClassSubjectMapping: React.FC = () => {
 
       const createdSubject = createResponse.data;
 
-      await subjectApi.addSubjectToClass(Number(selectedClass), createdSubject.id);
+      // Add to allSubjects list so it's available globally
+      setAllSubjects((prev) => [...prev, createdSubject]);
+
+      const currentIds = classSubjects.map((s) => s.id);
+      const putResponse = await api.put(`/admin/classes/${selectedClass}/subjects`, {
+        subject_ids: [...currentIds, createdSubject.id]
+      });
+
+      // Update classes in local state
+      setClasses((prev) =>
+        prev.map((c) => (c.id === selectedClass ? putResponse.data : c))
+      );
 
       toast.success(`Subject "${newSubjectName}" created and added to class!`);
-      
       setNewSubjectName('');
       setNewSubjectCode('');
       setShowCreateSubject(false);
-
-      const allData = await subjectApi.getSubjects();
-      setAllSubjects(allData);
-
-      const classData = await subjectApi.getSubjectsByClass(Number(selectedClass));
-      setClassSubjects(classData);
     } catch (error: any) {
       toast.error(error.response?.data?.detail || 'Failed to create subject');
     } finally {
@@ -130,16 +137,25 @@ const ClassSubjectMapping: React.FC = () => {
   };
 
   const handleRemoveSubject = async (subjectId: number) => {
+    if (!selectedClass) return;
     if (!window.confirm('Remove this subject from the class?')) return;
 
+    setLoading(true);
     try {
-      await subjectApi.removeSubjectFromClass(Number(selectedClass), subjectId);
-      toast.success('Subject removed from class!');
+      const remainingIds = classSubjects.map((s) => s.id).filter((id) => id !== subjectId);
+      const response = await api.put(`/admin/classes/${selectedClass}/subjects`, {
+        subject_ids: remainingIds
+      });
 
-      const data = await subjectApi.getSubjectsByClass(Number(selectedClass));
-      setClassSubjects(data);
-    } catch (error) {
-      toast.error('Failed to remove subject');
+      // Update classes in local state
+      setClasses((prev) =>
+        prev.map((c) => (c.id === selectedClass ? response.data : c))
+      );
+      toast.success('Subject removed from class!');
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'Failed to remove subject');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -201,7 +217,7 @@ const ClassSubjectMapping: React.FC = () => {
                   className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select Subject</option>
-                  {allSubjects.map((s) => (
+                  {availableSubjects.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.subject_name} ({s.code})
                     </option>
@@ -266,8 +282,8 @@ const ClassSubjectMapping: React.FC = () => {
           <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b bg-gray-50 flex justify-between items-center">
               <h3 className="font-semibold">
-                Subjects for Standard {classes.find((c) => c.id === selectedClass)?.class_name} -{' '}
-                {classes.find((c) => c.id === selectedClass)?.division}
+                Subjects for Standard {currentClass?.class_name} -{' '}
+                {currentClass?.division}
               </h3>
               <span className="text-sm text-gray-500">{classSubjects.length} subjects</span>
             </div>

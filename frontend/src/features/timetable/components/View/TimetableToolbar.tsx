@@ -1,17 +1,19 @@
 import React from 'react';
-import { Download, Share2, FileText, LayoutGrid, Save, RefreshCw, Loader2 } from 'lucide-react';
+import { Download, Share2, FileText, LayoutGrid, Save, RefreshCw, Loader2, ArrowLeft } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 interface TimetableToolbarProps {
   onSave: () => void;
   onRegenerate: () => void;
   isSaving: boolean;
+  onBack?: () => void;
 }
 
 export default function TimetableToolbar({ 
   onSave, 
   onRegenerate, 
-  isSaving 
+  isSaving,
+  onBack,
 }: TimetableToolbarProps) {
   const handleDownload = (type: string) => {
     toast.success(`Downloading ${type}...`);
@@ -24,6 +26,15 @@ export default function TimetableToolbar({
   return (
     <div className="flex items-center justify-between mb-6">
       <div className="flex items-center gap-3">
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition-all"
+          >
+            <ArrowLeft size={14} />
+            <span>Back to Options</span>
+          </button>
+        )}
         <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Master Timetable</h1>
         
         {/* Save & Regenerate Actions */}

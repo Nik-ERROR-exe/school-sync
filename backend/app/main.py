@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import time
 from app.config import settings
 from app.database import SessionLocal
 from app.models.teacher import Teacher
@@ -23,12 +24,11 @@ from app.api.admin_classes import router as classes_router
 # Import new API routers
 from app.api.admin_students import router as admin_students_router
 from app.api.admin_class_subjects import router as admin_class_subjects_router
-from app.api.teacher_students import router as teacher_students_router
 from app.api.teacher_classes import router as teacher_classes_router
-from app.api.admin_classes import router as admin_classes_router
+from app.api.teacher_students import router as teacher_students_router
 from app.api.teacher_exam_types import router as teacher_exam_types_router
-from app.api.teacher_subjects import router as teacher_subjects_router
-from app.api.admin_subjects import router as admin_subjects_router
+from app.api.public_timetable import router as public_timetable_router
+from app.api.teacher_subject_list import router as teacher_subject_list_router
 
 
 
@@ -72,40 +72,46 @@ app.include_router(classes_router, prefix=API_PREFIX)
 # Register new API routers
 app.include_router(admin_students_router, prefix=API_PREFIX)
 app.include_router(admin_class_subjects_router, prefix=API_PREFIX)
-app.include_router(teacher_students_router, prefix=API_PREFIX)
 app.include_router(teacher_classes_router, prefix=API_PREFIX)
-app.include_router(admin_classes_router, prefix=API_PREFIX)
+app.include_router(teacher_students_router, prefix=API_PREFIX)
 app.include_router(teacher_exam_types_router, prefix=API_PREFIX)
-app.include_router(teacher_subjects_router, prefix=API_PREFIX)
-app.include_router(admin_subjects_router, prefix=API_PREFIX)
+app.include_router(public_timetable_router, prefix=API_PREFIX)
+app.include_router(teacher_subject_list_router, prefix=API_PREFIX)
 
 @app.on_event("startup")
 def seed_initial_admin():
-    """Seed admin account on startup."""
-    db = SessionLocal()
-    try:
-        admin = db.query(Teacher).filter(Teacher.role == "ADMIN").first()
-        if not admin:
-            hashed_pwd = get_password_hash(settings.INITIAL_ADMIN_PASSWORD)
-            admin_teacher = Teacher(
-                teacher_id=settings.INITIAL_ADMIN_TEACHER_ID,
-                name=settings.INITIAL_ADMIN_NAME,
-                email=settings.INITIAL_ADMIN_EMAIL,
-                password_hash=hashed_pwd,
-                role="ADMIN",
-                status="ACTIVE",
-                max_lectures_per_day=0
-            )
-            db.add(admin_teacher)
-            db.commit()
-            print(f"[OK] Admin created: {settings.INITIAL_ADMIN_EMAIL}")
-        else:
-            print("[OK] Admin already exists")
-    except Exception as e:
-        db.rollback()
-        print(f"[ERROR] Seed error: {str(e)}")
-    finally:
-        db.close()
+    """Seed admin account on startup with retries."""
+    max_retries = 3
+    for attempt in range(max_retries):
+        db = SessionLocal()
+        try:
+            admin = db.query(Teacher).filter(Teacher.role == "ADMIN").first()
+            if not admin:
+                hashed_pwd = get_password_hash(settings.INITIAL_ADMIN_PASSWORD)
+                admin_teacher = Teacher(
+                    teacher_id=settings.INITIAL_ADMIN_TEACHER_ID,
+                    name=settings.INITIAL_ADMIN_NAME,
+                    email=settings.INITIAL_ADMIN_EMAIL,
+                    password_hash=hashed_pwd,
+                    role="ADMIN",
+                    status="ACTIVE",
+                    max_lectures_per_day=0
+                )
+                db.add(admin_teacher)
+                db.commit()
+                print(f"[OK] Admin created: {settings.INITIAL_ADMIN_EMAIL}")
+            else:
+                print("[OK] Admin already exists")
+            break
+        except Exception as e:
+            db.rollback()
+            if attempt < max_retries - 1:
+                print(f"[WARN] DB not ready yet (attempt {attempt + 1}/{max_retries}), retrying in 3s...")
+                time.sleep(3)
+            else:
+                print(f"[ERROR] Seed error after {max_retries} attempts: {e}")
+        finally:
+            db.close()
 
 @app.get("/")
 async def root_status():

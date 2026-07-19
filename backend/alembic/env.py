@@ -23,6 +23,7 @@ from app.models import (  # noqa: F401
     Notification,
     SubstituteAssignment,
     WeeklyRequirement,
+    TimetableSettings,
 )
 
 # this is the Alembic Config object
