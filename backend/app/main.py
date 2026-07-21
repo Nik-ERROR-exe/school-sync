@@ -7,24 +7,24 @@ from app.core.security import get_password_hash
 
 # Import all API routers
 from app.api.auth import router as auth_router
-from app.api.admin_teachers import router as teachers_router
-from app.api.admin_exam_types import router as exam_types_router
-from app.api.admin_timetable import router as timetable_router
+from app.api.admin_teachers import router as admin_teachers_router
+from app.api.admin_exam_types import router as admin_exam_types_router
+from app.api.admin_timetable import router as admin_timetable_router
 from app.api.admin_results import router as admin_results_router
-from app.api.admin_reports import router as reports_router
-from app.api.admin_substitute import router as sub_router
+from app.api.admin_reports import router as admin_reports_router
+from app.api.admin_substitute import router as admin_substitute_router
 from app.api.teacher_results import router as teacher_results_router
 from app.api.teacher_timetable import router as teacher_timetable_router
 from app.api.notifications import router as notifications_router
-from app.api.admin_weekly_requirements import router as weekly_req_router
+from app.api.admin_weekly_requirements import router as admin_weekly_requirements_router
+from app.api.admin_subjects import router as admin_subjects_router
+from app.api.admin_classes import router as admin_classes_router
 from app.api.admin_students import router as admin_students_router
 from app.api.admin_class_subjects import router as admin_class_subjects_router
 from app.api.teacher_students import router as teacher_students_router
 from app.api.teacher_classes import router as teacher_classes_router
-from app.api.admin_classes import router as admin_classes_router
 from app.api.teacher_exam_types import router as teacher_exam_types_router
 from app.api.teacher_subjects import router as teacher_subjects_router
-from app.api.admin_subjects import router as admin_subjects_router
 from app.api.admin_promotion import router as admin_promotion_router
 
 app = FastAPI(
@@ -34,11 +34,11 @@ app = FastAPI(
 )
 
 # ============================================================
-# CORS - FIXED
+# CORS
 # ============================================================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -48,24 +48,24 @@ app.add_middleware(
 # Register API routers
 API_PREFIX = "/api/v1"
 app.include_router(auth_router, prefix=API_PREFIX)
-app.include_router(teachers_router, prefix=API_PREFIX)
-app.include_router(exam_types_router, prefix=API_PREFIX)
-app.include_router(timetable_router, prefix=API_PREFIX)
+app.include_router(admin_teachers_router, prefix=API_PREFIX)
+app.include_router(admin_exam_types_router, prefix=API_PREFIX)
+app.include_router(admin_timetable_router, prefix=API_PREFIX)
 app.include_router(admin_results_router, prefix=API_PREFIX)
-app.include_router(reports_router, prefix=API_PREFIX)
-app.include_router(sub_router, prefix=API_PREFIX)
+app.include_router(admin_reports_router, prefix=API_PREFIX)
+app.include_router(admin_substitute_router, prefix=API_PREFIX)
 app.include_router(teacher_results_router, prefix=API_PREFIX)
 app.include_router(teacher_timetable_router, prefix=API_PREFIX)
 app.include_router(notifications_router, prefix=API_PREFIX)
-app.include_router(weekly_req_router, prefix=API_PREFIX)
+app.include_router(admin_weekly_requirements_router, prefix=API_PREFIX)
+app.include_router(admin_subjects_router, prefix=API_PREFIX)
+app.include_router(admin_classes_router, prefix=API_PREFIX)
 app.include_router(admin_students_router, prefix=API_PREFIX)
 app.include_router(admin_class_subjects_router, prefix=API_PREFIX)
 app.include_router(teacher_students_router, prefix=API_PREFIX)
 app.include_router(teacher_classes_router, prefix=API_PREFIX)
-app.include_router(admin_classes_router, prefix=API_PREFIX)
 app.include_router(teacher_exam_types_router, prefix=API_PREFIX)
 app.include_router(teacher_subjects_router, prefix=API_PREFIX)
-app.include_router(admin_subjects_router, prefix=API_PREFIX)
 app.include_router(admin_promotion_router, prefix=API_PREFIX)
 
 @app.on_event("startup")
@@ -87,12 +87,12 @@ def seed_initial_admin():
             )
             db.add(admin_teacher)
             db.commit()
-            print(f"✅ Admin created: {settings.INITIAL_ADMIN_EMAIL}")
+            print(f"[OK] Admin created: {settings.INITIAL_ADMIN_EMAIL}")
         else:
-            print("✅ Admin already exists")
+            print("[OK] Admin already exists")
     except Exception as e:
         db.rollback()
-        print(f"❌ Seed error: {str(e)}")
+        print(f"[ERROR] Seed error: {str(e)}")
     finally:
         db.close()
 

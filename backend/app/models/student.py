@@ -1,6 +1,6 @@
 from sqlalchemy import String, Integer, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from typing import List, Optional
+from typing import Optional
 from app.database import Base
 
 class Student(Base):
@@ -11,8 +11,9 @@ class Student(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     class_id: Mapped[int] = mapped_column(ForeignKey("classes.id"), nullable=False)
 
-    # --- ONLY KEEP THIS RELATIONSHIP ---
-    school_class: Mapped["SchoolClass"] = relationship("SchoolClass", back_populates="students")
-    
-    # --- REMOVE THE 'results' RELATIONSHIP TO AVOID CIRCULAR IMPORT ---
-    # results: Mapped[List["Result"]] = relationship("Result", back_populates="student", cascade="all, delete-orphan")
+    # ADD THIS RELATIONSHIP
+    school_class: Mapped["SchoolClass"] = relationship(
+        "SchoolClass",
+        back_populates="students",
+        lazy="select"
+    )

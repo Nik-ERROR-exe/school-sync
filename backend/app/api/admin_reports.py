@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from app.database import get_db
 from app.api.deps import require_admin
 from app.services.result_service import get_results_by_status
@@ -14,16 +14,16 @@ router = APIRouter(
 )
 
 @router.get("/results")
-async def export_results(
+def export_results(
     format: str = Query(..., description="Export format: 'pdf' or 'excel'"),
     school_name: str = Query("SchoolSync Academy", description="School name header to show on reports"),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     Downloads a compiled report of all approved student results in PDF or Excel format.
     """
     # Fetch only approved results for reporting
-    results = await get_results_by_status(db, "approved")
+    results = get_results_by_status(db, "approved")
     
     fmt = format.lower()
     if fmt == "pdf":

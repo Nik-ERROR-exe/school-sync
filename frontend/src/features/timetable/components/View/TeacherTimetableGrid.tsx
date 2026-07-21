@@ -1,38 +1,56 @@
 import React from 'react';
-import { mockSubjects, mockClasses } from '../../mock';
-import { TimetableData } from '../../types';
+import { ApiSlot, ApiClass, ApiSubject, ApiTeacher } from '../../types';
 
 interface TeacherTimetableGridProps {
-  data: TimetableData;
-  teacherId: string;
+  schedule: ApiSlot[];
+  classes: ApiClass[];
+  subjects: ApiSubject[];
+  teachers: ApiTeacher[];
+  schoolDays: string[];
+  periodsPerDay: number;
+  saturdayPeriods: number;
+  teacherId: number;
 }
 
-const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
+export default function TeacherTimetableGrid({
+  schedule,
+  classes,
+  subjects,
+  teachers,
+  schoolDays,
+  periodsPerDay,
+  saturdayPeriods,
+  teacherId,
+}: TeacherTimetableGridProps) {
+  const getSubject = (id: number) => subjects.find(s => s.id === id);
+  const getClassInfo = (id: number) => classes.find(c => c.id === id);
 
-export default function TeacherTimetableGrid({ data, teacherId }: TeacherTimetableGridProps) {
-  const getSubject = (id: string) => mockSubjects.find(s => s.id === id);
-  const getClassInfo = (id: string) => mockClasses.find(c => c.id === id);
-
-  const getSlot = (day: string, period: number) => {
-    return data.slots.find(s => s.teacherId === teacherId && s.day === day && s.period === period);
+  const getSlot = (day: string, periodNum: number) => {
+    return schedule.find(
+      s => s.teacher_id === teacherId && s.day_of_week === day && s.period_number === periodNum
+    );
   };
 
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+  const currentTeacher = teachers.find(t => t.id === teacherId);
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col flex-1 h-full overflow-hidden">
-      <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-        <h2 className="text-lg font-bold text-slate-900">My Timetable</h2>
-        <div className="text-xs font-semibold text-slate-500 bg-white px-3 py-1 rounded-full border border-slate-200 shadow-sm">
-          Generated: {new Date(data.generatedAt).toLocaleDateString()}
+      <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">
+            Timetable for {currentTeacher ? currentTeacher.name : 'Teacher'}
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">Personal weekly teaching schedule.</p>
         </div>
       </div>
 
       <div className="flex-1 overflow-auto custom-scrollbar p-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {days.map(day => {
+          {schoolDays.map(day => {
             const isToday = day === today;
-            const pCount = day === 'Saturday' ? 4 : 8;
+            const isSat = day === 'Saturday';
+            const pCount = isSat ? saturdayPeriods : periodsPerDay;
 
             return (
               <div 
@@ -53,21 +71,24 @@ export default function TeacherTimetableGrid({ data, teacherId }: TeacherTimetab
                   {Array.from({ length: pCount }).map((_, i) => {
                     const period = i + 1;
                     const slot = getSlot(day, period);
-                    const subject = slot ? getSubject(slot.subjectId) : null;
-                    const classInfo = slot ? getClassInfo(slot.classId) : null;
+                    const subject = slot ? getSubject(slot.subject_id) : null;
+                    const classInfo = slot ? getClassInfo(slot.class_id) : null;
 
                     return (
                       <div key={period} className="flex items-center px-4 py-3 bg-white hover:bg-slate-50 transition-colors">
                         <div className="w-12 text-xs font-extrabold text-slate-400">P{period}</div>
                         <div className="flex-1 pl-4 border-l border-slate-100">
-                          {slot ? (
+                          {slot && slot.subject_id !== 0 ? (
                             <div>
-                              <div className="text-sm font-bold text-slate-900">{subject?.name}</div>
-                              <div className="text-xs font-semibold text-blue-600 mt-0.5">Class {classInfo?.name}</div>
-                              {slot.roomId && <div className="text-[10px] text-slate-500 mt-0.5">Room: {slot.roomId}</div>}
+                              <div className="text-sm font-bold text-slate-900">
+                                {subject ? subject.subject_name : `Subject #${slot.subject_id}`}
+                              </div>
+                              <div className="text-xs font-semibold text-blue-600 mt-0.5">
+                                Class {classInfo ? `${classInfo.class_name}-${classInfo.division}` : `ID: ${slot.class_id}`}
+                              </div>
                             </div>
                           ) : (
-                            <div className="text-sm font-medium text-slate-300 italic">Free Period</div>
+                            <div className="text-sm font-medium text-slate-350 italic">Free Period / Off</div>
                           )}
                         </div>
                       </div>

@@ -1,45 +1,82 @@
-import React from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { DayOfWeek } from '../../types';
+import { useWizard } from '../../WizardContext';
+import api from '../../../../api';
+import { ApiClass } from '../../types';
 
-const days: DayOfWeek[] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
 const schema = z.object({
-  academicYear: z.string().min(1, 'Academic Year is required'),
   workingDays: z.array(z.string()).min(1, 'Select at least one working day'),
   schoolStartTime: z.string(),
   schoolEndTime: z.string(),
-  periodsPerDay: z.number().min(1),
-  periodDuration: z.number().min(1),
-  breakDuration: z.number().min(0),
+  periodsPerDay: z.number().min(1, 'At least 1 period required'),
+  periodDuration: z.number().min(1, 'Duration must be at least 1 minute'),
   saturdayHalfDay: z.boolean(),
   saturdayPeriodCount: z.number().optional(),
+  lunchPeriod: z.number().nullable(),
+  selectedClassId: z.number().nullable(),
 });
 
 type FormData = z.infer<typeof schema>;
 
 export default function Step1SchoolSettings({ onNext }: { onNext: () => void }) {
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<FormData>({
+  const { state, updateState } = useWizard();
+  const [classes, setClasses] = useState<ApiClass[]>([]);
+
+  useEffect(() => {
+    const fetchClasses = async () => {
+      try {
+        const res = await api.get('/admin/classes/');
+        setClasses(res.data);
+      } catch (err) {
+        console.error('Failed to fetch classes', err);
+      }
+    };
+    fetchClasses();
+  }, []);
+
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      academicYear: '2024-2025',
-      workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
-      schoolStartTime: '08:00',
-      schoolEndTime: '14:30',
-      periodsPerDay: 8,
-      periodDuration: 40,
-      breakDuration: 30,
-      saturdayHalfDay: true,
-      saturdayPeriodCount: 4,
+      workingDays: state.schoolDays,
+      schoolStartTime: state.startTime,
+      schoolEndTime: state.endTime,
+      periodsPerDay: state.periodsPerDay,
+      periodDuration: state.periodDuration,
+      saturdayHalfDay: state.schoolDays.includes('Saturday'),
+      saturdayPeriodCount: state.saturdayPeriods,
+      lunchPeriod: state.lunchPeriod,
+      selectedClassId: state.selectedClassId,
     }
   });
 
   const watchSatHalfDay = watch('saturdayHalfDay');
+  const watchPeriodsPerDay = watch('periodsPerDay');
+
+  // Build lunch period options dynamically based on periodsPerDay
+  const lunchOptions = useMemo(() => {
+    const count = watchPeriodsPerDay || 0;
+    const opts: { value: number | null; label: string }[] = [{ value: null, label: 'None' }];
+    for (let i = 1; i <= count; i++) {
+      opts.push({ value: i, label: `Period ${i}` });
+    }
+    return opts;
+  }, [watchPeriodsPerDay]);
 
   const onSubmit = (data: FormData) => {
-    console.log(data);
+    updateState({
+      schoolDays: data.workingDays,
+      periodsPerDay: data.periodsPerDay,
+      saturdayPeriods: data.saturdayHalfDay ? (data.saturdayPeriodCount ?? 4) : data.periodsPerDay,
+      startTime: data.schoolStartTime,
+      endTime: data.schoolEndTime,
+      periodDuration: data.periodDuration,
+      lunchPeriod: data.lunchPeriod,
+      selectedClassId: data.selectedClassId,
+    });
     onNext();
   };
 
@@ -51,31 +88,44 @@ export default function Step1SchoolSettings({ onNext }: { onNext: () => void }) 
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="p-8 space-y-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Academic Year</label>
-            <input 
-              {...register('academicYear')} 
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow outline-none"
-              placeholder="e.g. 2024-2025"
-            />
-            {errors.academicYear && <p className="text-xs text-red-500 mt-1">{errors.academicYear.message}</p>}
-          </div>
-          
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Working Days</label>
-            <div className="flex flex-wrap gap-2">
-              {days.map(day => (
-                <label key={day} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 cursor-pointer hover:bg-slate-100 transition-colors">
-                  <input type="checkbox" value={day} {...register('workingDays')} className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500" />
-                  <span className="text-sm font-medium text-slate-700">{day.substring(0, 3)}</span>
-                </label>
-              ))}
-            </div>
-            {errors.workingDays && <p className="text-xs text-red-500 mt-1">{errors.workingDays.message}</p>}
-          </div>
+        {/* Target Class Selection */}
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">Target Class for Timetable</label>
+          <select
+            value={watch('selectedClassId') ?? ''}
+            onChange={(e) => {
+              const val = e.target.value === '' ? null : Number(e.target.value);
+              setValue('selectedClassId', val);
+            }}
+            className="w-full md:w-64 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          >
+            <option value="">All Classes (Master Timetable)</option>
+            {classes.map(cls => (
+              <option key={cls.id} value={cls.id}>
+                Class {cls.class_name} - Division {cls.division}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-slate-400">
+            Generate the timetable for all classes or select a specific class to generate for.
+          </p>
         </div>
 
+        {/* Working Days */}
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Working Days</label>
+          <div className="flex flex-wrap gap-2">
+            {days.map(day => (
+              <label key={day} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 cursor-pointer hover:bg-slate-100 transition-colors">
+                <input type="checkbox" value={day} {...register('workingDays')} className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500" />
+                <span className="text-sm font-medium text-slate-700">{day.substring(0, 3)}</span>
+              </label>
+            ))}
+          </div>
+          {errors.workingDays && <p className="text-xs text-red-500 mt-1">{errors.workingDays.message}</p>}
+        </div>
+
+        {/* Time & Period Settings */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div className="space-y-2">
             <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Start Time</label>
@@ -95,6 +145,25 @@ export default function Step1SchoolSettings({ onNext }: { onNext: () => void }) 
           </div>
         </div>
 
+        {/* Lunch Period Selector */}
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Lunch Period</label>
+          <select
+            value={watch('lunchPeriod') ?? ''}
+            onChange={(e) => {
+              const val = e.target.value === '' ? null : Number(e.target.value);
+              setValue('lunchPeriod', val);
+            }}
+            className="w-full md:w-64 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          >
+            {lunchOptions.map(opt => (
+              <option key={opt.label} value={opt.value ?? ''}>{opt.label}</option>
+            ))}
+          </select>
+          <p className="text-xs text-slate-400">Select which period is the lunch break. This period will be marked as free for all classes.</p>
+        </div>
+
+        {/* Saturday Half Day */}
         <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-5 space-y-4">
           <label className="flex items-center gap-3 cursor-pointer">
             <input type="checkbox" {...register('saturdayHalfDay')} className="w-5 h-5 text-blue-600 rounded border-blue-300 focus:ring-blue-500" />

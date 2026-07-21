@@ -5,12 +5,11 @@ import {
   Languages, 
   User, 
   ShieldAlert, 
-  HelpCircle,
   Check
 } from 'lucide-react';
 
 const Settings: React.FC = () => {
-  const { t, i18n } = useTranslation();
+  const { i18n } = useTranslation();
   const { user } = useAuth();
 
   const changeLanguage = (lng: string) => {
@@ -101,7 +100,7 @@ const Settings: React.FC = () => {
             </div>
             <div className="grid gap-2 sm:grid-cols-3 border-b border-slate-100 pb-3">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Staff ID</span>
-              <span className="text-xs font-mono font-bold text-slate-900 sm:col-span-2">{user.teacherId}</span>
+              <span className="text-xs font-mono font-bold text-slate-900 sm:col-span-2">{user.teacher_id}</span>
             </div>
             <div className="grid gap-2 sm:grid-cols-3 border-b border-slate-100 pb-3">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">System Role</span>

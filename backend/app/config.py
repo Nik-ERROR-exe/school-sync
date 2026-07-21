@@ -1,10 +1,22 @@
 import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
 from typing import Optional
 
 class Settings(BaseSettings):
     # Database Settings
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/school_sync"
+    DATABASE_URL: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/school_sync"
+
+    @field_validator("DATABASE_URL", mode="after")
+    @classmethod
+    def normalize_database_url(cls, v: str) -> str:
+        """Ensure the DATABASE_URL uses the psycopg2 sync driver for SQLAlchemy."""
+        # Replace async drivers with sync psycopg2
+        if "+asyncpg" in v:
+            v = v.replace("+asyncpg", "+psycopg2")
+        elif v.startswith("postgresql://"):
+            v = v.replace("postgresql://", "postgresql+psycopg2://", 1)
+        return v
 
     # JWT Authentication Settings
     JWT_SECRET: str = "change_me_to_a_secure_random_string_in_production_32_chars_or_more"

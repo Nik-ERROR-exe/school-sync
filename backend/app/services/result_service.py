@@ -1,6 +1,5 @@
-from sqlalchemy.orm import Session
-from typing import List, Optional
-from datetime import datetime
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.future import select
 from app.models.result import Result
 from app.models.student import Student
 from app.models.school_class import SchoolClass
@@ -8,6 +7,8 @@ from app.models.subject import Subject
 from app.models.exam_type import ExamType
 from app.schemas.result import ResultCreate
 from app.core.exceptions import ResourceNotFoundException, ValidationException
+from typing import List, Optional
+from datetime import datetime
 
 def calculate_grade_and_percentage(marks_obtained: float, total_marks: float) -> tuple[float, str]:
     """Helper function to calculate percentage and assign grades based on marks."""
@@ -43,17 +44,19 @@ def create_result_batch(
 ) -> List[Result]:
     """Create or update a batch of student results and set status to 'submitted'."""
     results = []
+    final_results = []
+    
     for data in results_data:
         # Validate that student, subject and exam type exist
-        student = db.query(Student).filter(Student.id == data.student_id).first()
+        student = db.get(Student, data.student_id)
         if not student:
             raise ResourceNotFoundException("Student", str(data.student_id))
             
-        subject = db.query(Subject).filter(Subject.id == data.subject_id).first()
+        subject = db.get(Subject, data.subject_id)
         if not subject:
             raise ResourceNotFoundException("Subject", str(data.subject_id))
             
-        exam_type = db.query(ExamType).filter(ExamType.id == data.exam_type_id).first()
+        exam_type = db.get(ExamType, data.exam_type_id)
         if not exam_type:
             raise ResourceNotFoundException("ExamType", str(data.exam_type_id))
 
@@ -95,55 +98,86 @@ def create_result_batch(
     
     # Refresh all results
     for r in results:
-        db.refresh(r)
+        stmt = select(Result).options(
+            joinedload(Result.student).joinedload(Student.school_class),
+            joinedload(Result.subject),
+            joinedload(Result.exam_type)
+        ).where(Result.id == r.id)
+        res = db.execute(stmt).scalar()
+        final_results.append(res)
         
-    return results
+    return final_results
 
 def get_results_by_status(db: Session, status: Optional[str] = None) -> List[Result]:
-    """Retrieve all results filtered by status."""
-    query = db.query(Result)
+    """Retrieve all results filtered by status, including nested relationships."""
+    stmt = select(Result).options(
+        joinedload(Result.student).joinedload(Student.school_class),
+        joinedload(Result.subject),
+        joinedload(Result.exam_type)
+    )
     if status:
-        query = query.filter(Result.status == status)
-    return query.all()
+        stmt = stmt.where(Result.status == status)
+        
+    result = db.execute(stmt)
+    return list(result.scalars().all())
 
 def approve_result(db: Session, result_id: int, admin_id: int, approved: bool) -> Result:
     """Approve or reject a submitted result."""
-    result = db.query(Result).filter(Result.id == result_id).first()
-    if not result:
+    stmt = select(Result).options(
+        joinedload(Result.student).joinedload(Student.school_class),
+        joinedload(Result.subject),
+        joinedload(Result.exam_type)
+    ).where(Result.id == result_id)
+    
+    db_result = db.execute(stmt).scalar_one_or_none()
+    if not db_result:
         raise ResourceNotFoundException("Result", str(result_id))
         
     if approved:
-        result.status = "approved"
+        db_result.status = "approved"
     else:
-        result.status = "rejected"
+        db_result.status = "rejected"
         
-    result.approved_by_id = admin_id
-    result.approved_at = datetime.utcnow()
+    db_result.approved_by_id = admin_id
+    db_result.approved_at = datetime.utcnow()
     db.commit()
-    db.refresh(result)
-    return result
+    db.refresh(db_result)
+    return db_result
 
-def update_result(db: Session, result_id: int, marks_obtained: float, total_marks: float) -> Result:
-    """Update a result (for admin auto-save)."""
-    result = db.query(Result).filter(Result.id == result_id).first()
-    if not result:
+def update_result(db: Session, result_id: int, data: dict) -> Result:
+    """Update an existing result (admin override)."""
+    stmt = select(Result).options(
+        joinedload(Result.student).joinedload(Student.school_class),
+        joinedload(Result.subject),
+        joinedload(Result.exam_type)
+    ).where(Result.id == result_id)
+    
+    db_result = db.execute(stmt).scalar_one_or_none()
+    if not db_result:
         raise ResourceNotFoundException("Result", str(result_id))
     
-    result.marks_obtained = marks_obtained
-    result.total_marks = total_marks
+    # Update fields
+    if 'marks_obtained' in data:
+        db_result.marks_obtained = data['marks_obtained']
+        percentage, grade = calculate_grade_and_percentage(
+            db_result.marks_obtained, 
+            db_result.total_marks
+        )
+        db_result.percentage = percentage
+        db_result.grade = grade
     
-    # Recalculate percentage and grade
-    if result.total_marks > 0:
-        result.percentage = (result.marks_obtained / result.total_marks) * 100
-        p = result.percentage
-        if p >= 90: result.grade = "A+"
-        elif p >= 80: result.grade = "A"
-        elif p >= 70: result.grade = "B"
-        elif p >= 60: result.grade = "C"
-        elif p >= 50: result.grade = "D"
-        elif p >= 40: result.grade = "E"
-        else: result.grade = "F"
+    if 'total_marks' in data:
+        db_result.total_marks = data['total_marks']
+        percentage, grade = calculate_grade_and_percentage(
+            db_result.marks_obtained, 
+            db_result.total_marks
+        )
+        db_result.percentage = percentage
+        db_result.grade = grade
+    
+    if 'status' in data:
+        db_result.status = data['status']
     
     db.commit()
-    db.refresh(result)
-    return result
+    db.refresh(db_result)
+    return db_result

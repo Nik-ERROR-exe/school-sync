@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy.future import select
 from typing import List
 from app.database import get_db
@@ -15,10 +15,10 @@ router = APIRouter(
 )
 
 @router.get("/", response_model=List[NotificationResponse])
-async def list_notifications(
+def list_notifications(
     unread_only: bool = Query(False, description="If True, only fetches unread alerts"),
     current_user: Teacher = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     Retrieves in-app notifications for the logged-in user.
@@ -28,15 +28,15 @@ async def list_notifications(
         stmt = stmt.where(Notification.is_read == False)
         
     stmt = stmt.order_by(Notification.created_at.desc())
-    res = await db.execute(stmt)
+    res = db.execute(stmt)
     return list(res.scalars().all())
 
 @router.put("/{id}", response_model=NotificationResponse)
-async def update_notification_status(
+def update_notification_status(
     id: int,
     data: NotificationUpdate,
     current_user: Teacher = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     Updates the is_read state of a notification.
@@ -45,13 +45,13 @@ async def update_notification_status(
         Notification.id == id,
         Notification.user_id == current_user.id
     )
-    res = await db.execute(stmt)
+    res = db.execute(stmt)
     notification = res.scalar_one_or_none()
     
     if not notification:
         raise ResourceNotFoundException("Notification", str(id))
         
     notification.is_read = data.is_read
-    await db.commit()
-    await db.refresh(notification)
+    db.commit()
+    db.refresh(notification)
     return notification

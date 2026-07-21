@@ -24,24 +24,51 @@ class TeacherUpdate(BaseModel):
     availability: Optional[Dict[str, List[int]]] = None
     subject_expertise: Optional[List[int]] = None
 
+class SubjectBasic(BaseModel):
+    id: int
+    subject_name: str
+    code: str
+
+    class Config:
+        from_attributes = True
+
+
 class TeacherResponse(TeacherBase):
     id: int
     subject_expertise: List[int] = []
+    subjects: List[SubjectBasic] = []
 
     @model_validator(mode="before")
     @classmethod
     def extract_subject_expertise(cls, data: any) -> any:
         # Check if we are converting from an ORM model
         if hasattr(data, "subjects_expertise"):
-            subjects = getattr(data, "subjects_expertise", [])
+            subjects_orm = getattr(data, "subjects_expertise", [])
             data_dict = {}
             for field_name in cls.model_fields:
                 if hasattr(data, field_name):
                     data_dict[field_name] = getattr(data, field_name)
             data_dict["id"] = data.id
-            data_dict["subject_expertise"] = [sub.id for sub in subjects] if subjects else []
+            data_dict["subject_expertise"] = [sub.id for sub in subjects_orm] if subjects_orm else []
+            data_dict["subjects"] = [
+                {"id": sub.id, "subject_name": sub.subject_name, "code": sub.code}
+                for sub in subjects_orm
+            ] if subjects_orm else []
             return data_dict
         return data
 
     class Config:
         from_attributes = True
+
+
+class SubjectResponse(BaseModel):
+    id: int
+    subject_name: str
+    code: str
+
+    class Config:
+        from_attributes = True
+
+
+class TeacherSubjectsUpdate(BaseModel):
+    subject_ids: List[int]

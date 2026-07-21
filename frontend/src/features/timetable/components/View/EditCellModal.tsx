@@ -1,22 +1,41 @@
 import React, { useState } from 'react';
-import { TimetableSlot } from '../../types';
-import { mockSubjects, mockTeachers } from '../../mock';
+import { ApiSlot, ApiSubject, ApiTeacher } from '../../types';
 import { X, Trash2, Save } from 'lucide-react';
 
 interface EditCellModalProps {
-  slot: TimetableSlot;
+  slot: ApiSlot;
+  subjects: ApiSubject[];
+  teachers: ApiTeacher[];
   onClose: () => void;
-  onSave: (slot: TimetableSlot) => void;
+  onSave: (slot: ApiSlot) => void;
   onDelete: () => void;
 }
 
-export default function EditCellModal({ slot, onClose, onSave, onDelete }: EditCellModalProps) {
-  const [subjectId, setSubjectId] = useState(slot.subjectId);
-  const [teacherId, setTeacherId] = useState(slot.teacherId);
-  const [roomId, setRoomId] = useState(slot.roomId || '');
+export default function EditCellModal({ 
+  slot, 
+  subjects, 
+  teachers, 
+  onClose, 
+  onSave, 
+  onDelete 
+}: EditCellModalProps) {
+  const [subjectId, setSubjectId] = useState(slot.subject_id);
+  const [teacherId, setTeacherId] = useState(slot.teacher_id);
 
   const handleSave = () => {
-    onSave({ ...slot, subjectId, teacherId, roomId });
+    onSave({ 
+      ...slot, 
+      subject_id: Number(subjectId), 
+      teacher_id: Number(teacherId) 
+    });
+  };
+
+  const handleSubjectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = Number(e.target.value);
+    setSubjectId(val);
+    if (val === 0) {
+      setTeacherId(0);
+    }
   };
 
   return (
@@ -26,7 +45,7 @@ export default function EditCellModal({ slot, onClose, onSave, onDelete }: EditC
           <div>
             <h3 className="font-bold text-slate-900">Edit Timetable Cell</h3>
             <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 mt-0.5">
-              {slot.day} • Period {slot.period}
+              {slot.day_of_week} • Period {slot.period_number}
             </p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded-md hover:bg-slate-200/50">
@@ -35,36 +54,35 @@ export default function EditCellModal({ slot, onClose, onSave, onDelete }: EditC
         </div>
 
         <div className="p-5 space-y-4">
+          {/* Subject Field */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Subject</label>
             <select 
               value={subjectId} 
-              onChange={e => setSubjectId(e.target.value)}
+              onChange={handleSubjectChange}
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             >
-              {mockSubjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              <option value="0">Free Period</option>
+              {subjects.map(s => (
+                <option key={s.id} value={s.id}>{s.subject_name} ({s.code})</option>
+              ))}
             </select>
           </div>
 
+          {/* Teacher Field */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Teacher</label>
             <select 
               value={teacherId} 
-              onChange={e => setTeacherId(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              onChange={e => setTeacherId(Number(e.target.value))}
+              disabled={subjectId === 0}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:opacity-50"
             >
-              {mockTeachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              <option value="0">None / Free</option>
+              {teachers.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
             </select>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Room (Optional)</label>
-            <input 
-              value={roomId} 
-              onChange={e => setRoomId(e.target.value)}
-              placeholder="e.g. Lab 1"
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            />
           </div>
         </div>
 

@@ -1,134 +1,260 @@
-import React, { useState } from 'react';
-import { mockClasses, mockSubjects, mockTeachers } from '../../mock';
-import { TimetableData, TimetableSlot } from '../../types';
+import React, { useState, useEffect } from 'react';
+import { ApiSlot, ApiClass, ApiSubject, ApiTeacher } from '../../types';
 import EditCellModal from './EditCellModal';
 
 interface TimetableGridProps {
-  data: TimetableData;
-  onUpdateSlot: (slot: TimetableSlot) => void;
+  schedule: ApiSlot[];
+  classes: ApiClass[];
+  subjects: ApiSubject[];
+  teachers: ApiTeacher[];
+  schoolDays: string[];
+  periodsPerDay: number;
+  saturdayPeriods: number;
+  startTime: string;
+  periodDuration: number;
+  lunchPeriod: number | null;
+  onSave: (updatedSchedule: ApiSlot[]) => void;
 }
 
-const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
+const getPeriodTimeStr = (periodNum: number, startTime: string, duration: number) => {
+  const [startHour, startMin] = startTime.split(':').map(Number);
+  const totalStartMinutes = startHour * 60 + startMin + (periodNum - 1) * duration;
+  const totalEndMinutes = totalStartMinutes + duration;
 
-export default function TimetableGrid({ data, onUpdateSlot }: TimetableGridProps) {
-  const [editingSlot, setEditingSlot] = useState<TimetableSlot | null>(null);
-
-  const getSubject = (id: string) => mockSubjects.find(s => s.id === id);
-  const getTeacher = (id: string) => mockTeachers.find(t => t.id === id);
-
-  const getSlot = (classId: string, day: string, period: number) => {
-    return data.slots.find(s => s.classId === classId && s.day === day && s.period === period);
+  const formatTime = (totalMinutes: number) => {
+    const hr = Math.floor(totalMinutes / 60) % 24;
+    const min = totalMinutes % 60;
+    return `${String(hr).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
   };
 
-  const handleCellClick = (classId: string, day: typeof days[number], period: number) => {
-    const slot = getSlot(classId, day, period);
+  return `${formatTime(totalStartMinutes)} – ${formatTime(totalEndMinutes)}`;
+};
+
+export default function TimetableGrid({
+  schedule,
+  classes,
+  subjects,
+  teachers,
+  schoolDays,
+  periodsPerDay,
+  saturdayPeriods,
+  startTime,
+  periodDuration,
+  lunchPeriod,
+  onSave,
+}: TimetableGridProps) {
+  const [selectedClassId, setSelectedClassId] = useState<number | null>(
+    classes.length > 0 ? classes[0].id : null
+  );
+  const [editingSlot, setEditingSlot] = useState<ApiSlot | null>(null);
+
+  // Set default class if not set yet
+  useEffect(() => {
+    if (classes.length > 0 && selectedClassId === null) {
+      setSelectedClassId(classes[0].id);
+    }
+  }, [classes, selectedClassId]);
+
+  const handleCellClick = (day: string, periodNum: number) => {
+    if (!selectedClassId) return;
+
+    // Check if it's Saturday and beyond Saturday period limit
+    if (day === 'Saturday' && periodNum > saturdayPeriods) {
+      return;
+    }
+
+    const slot = schedule.find(
+      s => s.class_id === selectedClassId && s.day_of_week === day && s.period_number === periodNum
+    );
+
     if (slot) {
       setEditingSlot(slot);
     } else {
+      // Pass a new empty slot template
       setEditingSlot({
-        id: `new_${classId}_${day}_${period}`,
-        classId,
-        day,
-        period,
-        subjectId: mockSubjects[0].id,
-        teacherId: mockTeachers[0].id,
+        class_id: selectedClassId,
+        day_of_week: day,
+        period_number: periodNum,
+        subject_id: 0,
+        teacher_id: 0,
       });
     }
   };
 
-  const handleSaveEdit = (updatedSlot: TimetableSlot) => {
-    onUpdateSlot(updatedSlot);
+  const handleSaveCell = (updatedSlot: ApiSlot) => {
+    let newSlots = [...schedule];
+    const idx = newSlots.findIndex(
+      s =>
+        s.class_id === updatedSlot.class_id &&
+        s.day_of_week === updatedSlot.day_of_week &&
+        s.period_number === updatedSlot.period_number
+    );
+
+    if (idx !== -1) {
+      newSlots[idx] = updatedSlot;
+    } else {
+      newSlots.push(updatedSlot);
+    }
+
     setEditingSlot(null);
+    onSave(newSlots);
+  };
+
+  const handleDeleteCell = () => {
+    if (!editingSlot) return;
+    const newSlots = schedule.filter(
+      s =>
+        !(
+          s.class_id === editingSlot.class_id &&
+          s.day_of_week === editingSlot.day_of_week &&
+          s.period_number === editingSlot.period_number
+        )
+    );
+    setEditingSlot(null);
+    onSave(newSlots);
   };
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col flex-1 h-full overflow-hidden">
-      <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-        <h2 className="text-lg font-bold text-slate-900">Master Timetable</h2>
-        <div className="text-xs font-semibold text-slate-500 bg-white px-3 py-1 rounded-full border border-slate-200 shadow-sm">
-          Generated: {new Date(data.generatedAt).toLocaleDateString()}
+      {/* Top Header: Class Selector */}
+      <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">Master Timetable View</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Select a class to view and adjust its schedule.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Class:</label>
+          <select
+            value={selectedClassId ?? ''}
+            onChange={e => setSelectedClassId(Number(e.target.value))}
+            className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+          >
+            {classes.map(c => (
+              <option key={c.id} value={c.id}>
+                Class {c.class_name} - {c.division}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto custom-scrollbar">
-        <table className="w-full text-left border-collapse min-w-max">
-          <thead className="sticky top-0 bg-slate-100 z-10 shadow-sm">
-            <tr>
-              <th className="px-4 py-3 border-r border-slate-200 border-b w-24 sticky left-0 bg-slate-100 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">Class</span>
-              </th>
-              {days.map(day => {
-                const pCount = day === 'Saturday' ? 4 : 8;
-                return (
-                  <th key={day} colSpan={pCount} className="px-4 py-2 border-r border-slate-200 border-b text-center">
-                    <span className="text-xs font-bold text-slate-900 uppercase tracking-widest">{day}</span>
+      {/* Grid Table */}
+      <div className="flex-1 overflow-auto p-6">
+        {selectedClassId ? (
+          <table className="w-full border-collapse border border-slate-200 text-left text-sm">
+            <thead className="bg-slate-50 sticky top-0 z-10">
+              <tr>
+                <th className="px-4 py-3 border border-slate-200 text-xs font-bold text-slate-700 uppercase tracking-wider w-40">
+                  Period / Time
+                </th>
+                {schoolDays.map(day => (
+                  <th
+                    key={day}
+                    className="px-4 py-3 border border-slate-200 text-xs font-bold text-slate-700 uppercase tracking-wider text-center"
+                  >
+                    {day}
                   </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: periodsPerDay }).map((_, idx) => {
+                const periodNum = idx + 1;
+                const isLunch = periodNum === lunchPeriod;
+                const timeStr = getPeriodTimeStr(periodNum, startTime, periodDuration);
+
+                if (isLunch) {
+                  return (
+                    <tr key={`lunch-${periodNum}`} className="bg-amber-50/50">
+                      <td className="px-4 py-3 border border-slate-200 text-xs font-bold text-amber-800">
+                        {timeStr}
+                      </td>
+                      <td
+                        colSpan={schoolDays.length}
+                        className="px-4 py-3 border border-slate-200 text-center font-bold text-amber-800 tracking-widest text-xs uppercase"
+                      >
+                        Lunch Break
+                      </td>
+                    </tr>
+                  );
+                }
+
+                return (
+                  <tr key={`period-${periodNum}`} className="hover:bg-slate-50/50 transition-colors">
+                    {/* Time cell */}
+                    <td className="px-4 py-4 border border-slate-200 font-medium text-slate-700 bg-slate-50/30">
+                      <div className="font-bold text-slate-900 text-xs">Period {periodNum}</div>
+                      <div className="text-[10px] text-slate-400 font-mono mt-0.5">{timeStr}</div>
+                    </td>
+
+                    {/* Day cells */}
+                    {schoolDays.map(day => {
+                      const isSaturdayOut = day === 'Saturday' && periodNum > saturdayPeriods;
+
+                      if (isSaturdayOut) {
+                        return (
+                          <td
+                            key={`${day}-${periodNum}`}
+                            className="px-4 py-4 border border-slate-200 bg-slate-100/50 text-center"
+                          >
+                            <span className="text-xs text-slate-355 italic">N/A</span>
+                          </td>
+                        );
+                      }
+
+                      // Find matching slot in database schedule
+                      const slot = schedule.find(
+                        s =>
+                          s.class_id === selectedClassId &&
+                          s.day_of_week === day &&
+                          s.period_number === periodNum
+                      );
+
+                      const subject = slot ? subjects.find(s => s.id === slot.subject_id) : null;
+                      const teacher = slot ? teachers.find(t => t.id === slot.teacher_id) : null;
+                      const isFree = !slot || slot.subject_id === 0;
+
+                      return (
+                        <td
+                          key={`${day}-${periodNum}`}
+                          onClick={() => handleCellClick(day, periodNum)}
+                          className="px-4 py-4 border border-slate-200 text-center cursor-pointer hover:bg-blue-50/30 hover:border-blue-300 transition-colors group relative"
+                        >
+                          {isFree ? (
+                            <span className="text-xs text-slate-400 italic font-medium">Free Period</span>
+                          ) : (
+                            <div className="space-y-0.5">
+                              <div className="font-bold text-slate-800 group-hover:text-blue-700 transition-colors text-xs sm:text-sm">
+                                {subject ? subject.subject_name : `Sub #${slot.subject_id}`}
+                              </div>
+                              <div className="text-[10px] sm:text-xs text-slate-500 font-medium">
+                                {teacher ? teacher.name : `Teacher #${slot.teacher_id}`}
+                              </div>
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
                 );
               })}
-            </tr>
-            <tr>
-              <th className="border-r border-slate-200 border-b sticky left-0 bg-slate-50 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"></th>
-              {days.map(day => {
-                const pCount = day === 'Saturday' ? 4 : 8;
-                return Array.from({ length: pCount }).map((_, i) => (
-                  <th key={`${day}_${i}`} className="px-2 py-1 border-r border-slate-200 border-b text-center bg-slate-50 w-24 min-w-[6rem]">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase">P{i + 1}</span>
-                  </th>
-                ));
-              })}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 bg-white relative">
-            {mockClasses.map(cls => (
-              <tr key={cls.id} className="group hover:bg-slate-50/50 transition-colors">
-                <td className="px-4 py-3 border-r border-slate-100 font-extrabold text-slate-900 bg-white sticky left-0 z-10 group-hover:bg-slate-50/50 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] transition-colors">
-                  {cls.name}
-                </td>
-                {days.map(day => {
-                  const pCount = day === 'Saturday' ? 4 : 8;
-                  return Array.from({ length: pCount }).map((_, i) => {
-                    const period = i + 1;
-                    const slot = getSlot(cls.id, day, period);
-                    const subject = slot ? getSubject(slot.subjectId) : null;
-                    const teacher = slot ? getTeacher(slot.teacherId) : null;
-
-                    return (
-                      <td 
-                        key={`${cls.id}_${day}_${period}`} 
-                        className="p-1 border-r border-slate-100 cursor-pointer group/cell relative"
-                        onClick={() => handleCellClick(cls.id, day, period)}
-                      >
-                        <div className={`w-full h-16 rounded-md border flex flex-col justify-center items-center p-1 transition-all ${
-                          subject ? `${subject.color} border-transparent group-hover/cell:shadow-md group-hover/cell:-translate-y-0.5` : 'bg-slate-50/50 border-slate-100 border-dashed hover:bg-slate-100 hover:border-slate-300'
-                        }`}>
-                          {subject ? (
-                            <>
-                              <span className="text-[11px] font-bold leading-tight truncate w-full text-center">{subject.name}</span>
-                              <span className="text-[9px] font-medium opacity-80 truncate w-full text-center">{teacher?.name.split(' ')[0]}</span>
-                            </>
-                          ) : (
-                            <span className="text-[10px] text-slate-300 font-medium">+ Add</span>
-                          )}
-                        </div>
-                      </td>
-                    );
-                  });
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        ) : (
+          <div className="text-center py-16 text-slate-500 font-medium">
+            No classes available. Add classes in the admin panel first.
+          </div>
+        )}
       </div>
 
       {editingSlot && (
-        <EditCellModal 
-          slot={editingSlot} 
-          onClose={() => setEditingSlot(null)} 
-          onSave={handleSaveEdit}
-          onDelete={() => {
-            // handle delete logic here (e.g. passing null to parent or special event)
-            setEditingSlot(null);
-          }}
+        <EditCellModal
+          slot={editingSlot}
+          subjects={subjects}
+          teachers={teachers}
+          onClose={() => setEditingSlot(null)}
+          onSave={handleSaveCell}
+          onDelete={handleDeleteCell}
         />
       )}
     </div>

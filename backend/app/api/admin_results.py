@@ -1,5 +1,4 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
@@ -37,22 +36,13 @@ def calculate_grade(percentage: float) -> str:
 
 @router.get("/", response_model=List[ResultResponse])
 def list_results(
-    class_id: Optional[int] = Query(None, description="Filter by class ID"),
-    exam_type_id: Optional[int] = Query(None, description="Filter by exam type ID"),
-    status: Optional[str] = Query(None, description="Filter by status"),
+    status: Optional[str] = Query(None, description="Filter results by status ('pending', 'submitted', 'approved')"),
     db: Session = Depends(get_db)
 ):
-    """Retrieves all student results. Can filter by class, exam type, and status."""
-    query = db.query(Result)
-    
-    if class_id:
-        query = query.filter(Result.class_id == class_id)
-    if exam_type_id:
-        query = query.filter(Result.exam_type_id == exam_type_id)
-    if status:
-        query = query.filter(Result.status == status)
-    
-    results = query.all()
+    """
+    Retrieves all student results. Can filter results by status.
+    """
+    results = get_results_by_status(db, status)
     
     response_data = []
     for r in results:
@@ -165,36 +155,10 @@ def approve_student_result(
     current_admin: Teacher = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
-    """Approves or rejects a submitted student result record."""
-    result = db.query(Result).filter(Result.id == id).first()
-    if not result:
-        raise HTTPException(status_code=404, detail="Result not found")
-    
-    if approval.approved:
-        result.status = "approved"
-    else:
-        result.status = "rejected"
-    
-    result.approved_by_id = current_admin.id
-    result.approved_at = datetime.utcnow()
-    
-    db.commit()
-    db.refresh(result)
-    
-    # Get related data using direct queries
-    student = db.query(Student).filter(Student.id == result.student_id).first()
-    subject = db.query(Subject).filter(Subject.id == result.subject_id).first()
-    exam_type = db.query(ExamType).filter(ExamType.id == result.exam_type_id).first()
-    
-    student_name = student.name if student else None
-    student_roll_no = student.roll_no if student else None
-    student_class = None
-    student_division = None
-    if student:
-        school_class = db.query(SchoolClass).filter(SchoolClass.id == student.class_id).first()
-        if school_class:
-            student_class = school_class.class_name
-            student_division = school_class.division
+    """
+    Approves or rejects a submitted student result record.
+    """
+    r = approve_result(db, id, current_admin.id, approval.approved)
     
     return ResultResponse(
         id=result.id,

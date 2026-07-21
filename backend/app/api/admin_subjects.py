@@ -1,103 +1,81 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from sqlalchemy.future import select
+from typing import List
 from app.database import get_db
 from app.api.deps import require_admin
 from app.models.teacher import Teacher
 from app.models.subject import Subject
-from app.models.teacher_class_subject import TeacherClassSubject
-from app.schemas.subject import SubjectCreate, SubjectUpdate, SubjectResponse
+from app.models.school_class import class_subjects
+from app.models.weekly_requirement import WeeklyRequirement
+from app.schemas.subject import SubjectResponse, SubjectCreate
+from app.core.exceptions import ResourceNotFoundException, ConflictException, ValidationException
 
-router = APIRouter(prefix="/admin/subjects", tags=["Admin - Subjects"])
+router = APIRouter(
+    prefix="/admin/subjects",
+    tags=["Admin - Subject Management"],
+    dependencies=[Depends(require_admin)]
+)
 
-# Get all subjects (for admin)
 @router.get("/", response_model=List[SubjectResponse])
-def get_all_subjects(
-    current_admin: Teacher = Depends(require_admin),
-    db: Session = Depends(get_db)
-):
-    subjects = db.query(Subject).order_by(Subject.subject_name).all()
-    return subjects
+def list_subjects(db: Session = Depends(get_db)):
+    """
+    Returns all subjects from the database.
+    Used by the timetable wizard to select the PT subject.
+    """
+    stmt = select(Subject).order_by(Subject.id)
+    result = db.execute(stmt)
+    return list(result.scalars().all())
 
-# Get subjects for a specific class
-@router.get("/class/{class_id}", response_model=List[SubjectResponse])
-def get_subjects_by_class(
-    class_id: int,
-    current_admin: Teacher = Depends(require_admin),
-    db: Session = Depends(get_db)
-):
-    subjects = db.query(Subject).join(
-        TeacherClassSubject, TeacherClassSubject.subject_id == Subject.id
-    ).filter(
-        TeacherClassSubject.class_id == class_id
-    ).order_by(Subject.subject_name).all()
-    return subjects
-
-# Add subject to class
-@router.post("/class/{class_id}")
-def add_subject_to_class(
-    class_id: int,
-    subject_id: int,
-    current_admin: Teacher = Depends(require_admin),
-    db: Session = Depends(get_db)
-):
-    # Check if already exists
-    existing = db.query(TeacherClassSubject).filter(
-        TeacherClassSubject.class_id == class_id,
-        TeacherClassSubject.subject_id == subject_id
-    ).first()
-    
-    if existing:
-        raise HTTPException(status_code=400, detail="Subject already assigned")
-    
-    new_mapping = TeacherClassSubject(
-        class_id=class_id,
-        subject_id=subject_id,
-        teacher_id=None
-    )
-    db.add(new_mapping)
-    db.commit()
-    
-    return {"message": "Subject added to class successfully"}
-
-# Create a new subject
-@router.post("/", response_model=SubjectResponse)
+@router.post("/", response_model=SubjectResponse, status_code=status.HTTP_201_CREATED)
 def create_subject(
     data: SubjectCreate,
     current_admin: Teacher = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
-    """Create a new subject"""
-    existing = db.query(Subject).filter(Subject.code == data.code).first()
+    """
+    Creates a new subject. Check for duplicate code (409 if exists).
+    """
+    existing = db.execute(
+        select(Subject).where(Subject.code == data.code)
+    ).scalar_one_or_none()
     if existing:
-        raise HTTPException(status_code=400, detail="Subject code already exists")
-    
-    new_subject = Subject(
+        raise ConflictException(f"Subject with code '{data.code}' already exists.")
+        
+    db_subj = Subject(
         subject_name=data.subject_name,
         code=data.code
     )
-    db.add(new_subject)
+    db.add(db_subj)
     db.commit()
-    db.refresh(new_subject)
-    return new_subject
+    db.refresh(db_subj)
+    return db_subj
 
-# Remove subject from a class
-@router.delete("/class/{class_id}/subject/{subject_id}")
-def remove_subject_from_class(
-    class_id: int,
-    subject_id: int,
-    current_admin: Teacher = Depends(require_admin),
-    db: Session = Depends(get_db)
-):
-    mapping = db.query(TeacherClassSubject).filter(
-        TeacherClassSubject.class_id == class_id,
-        TeacherClassSubject.subject_id == subject_id
-    ).first()
-    
-    if not mapping:
-        raise HTTPException(status_code=404, detail="Subject not found in this class")
-    
-    db.delete(mapping)
+@router.delete("/{subject_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_subject(subject_id: int, db: Session = Depends(get_db)):
+    """
+    Deletes a subject.
+    Check: if any class_subjects or weekly_requirements reference this subject,
+    return 400 "Cannot delete subject assigned to classes or weekly requirements."
+    """
+    db_subj = db.get(Subject, subject_id)
+    if not db_subj:
+        raise ResourceNotFoundException("Subject", str(subject_id))
+        
+    # Check if assigned to any class in class_subjects
+    has_class_subject = db.execute(
+        select(class_subjects.c.subject_id).where(class_subjects.c.subject_id == subject_id).limit(1)
+    ).scalar_one_or_none()
+    if has_class_subject:
+        raise ValidationException("Cannot delete subject assigned to classes or weekly requirements.")
+        
+    # Check if referenced in weekly_requirements
+    has_weekly_req = db.execute(
+        select(WeeklyRequirement.id).where(WeeklyRequirement.subject_id == subject_id).limit(1)
+    ).scalar_one_or_none()
+    if has_weekly_req:
+        raise ValidationException("Cannot delete subject assigned to classes or weekly requirements.")
+        
+    db.delete(db_subj)
     db.commit()
-    
-    return {"message": "Subject removed from class successfully"}
+    return None

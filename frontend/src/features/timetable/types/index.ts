@@ -30,41 +30,38 @@ export interface ConstraintStatus {
   overallSatisfied: boolean;
 }
 
-// ============================================================
-// NEW: STUDENT RELATED TYPES
-// ============================================================
-
-export interface Student {
-  id: number;
-  roll_no: string;
-  name: string;
+export interface ApiSlot {
+  id?: number;
   class_id: number;
-  class_name?: string;
-  division?: string;
-  created_at?: string;
+  day_of_week: string;
+  period_number: number;
+  subject_id: number;
+  teacher_id: number;
 }
 
-export interface StudentCreate {
-  roll_no: string;
-  name: string;
-  class_id: number;
-}
-
-export interface StudentUpdate {
-  roll_no?: string;
-  name?: string;
-  class_id?: number;
-}
-
-export interface StudentListResponse {
-  students: Student[];
-  total: number;
-  page: number;
-  per_page: number;
-}
-
-export interface Class {
+export interface ApiClass {
   id: number;
   class_name: string;
   division: string;
+  subjects?: ApiSubject[];
 }
+
+export interface ApiSubject {
+  id: number;
+  subject_name: string;
+  code: string;
+}
+
+export interface ApiTeacher {
+  id: number;
+  name: string;
+  teacher_id: string;
+}
+
+export interface ConstraintStatusItem {
+  id: string;
+  name: string;
+  satisfied: boolean;
+  count: number;
+}
+

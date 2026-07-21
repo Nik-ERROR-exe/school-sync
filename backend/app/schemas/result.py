@@ -1,7 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional, List
 
-# --- Existing classes ---
 class MarkEntry(BaseModel):
     student_id: int
     marks_obtained: float
@@ -13,11 +12,32 @@ class ResultSubmitRequest(BaseModel):
     total_marks: float = 100.0
     marks: List[MarkEntry]
 
+class TeacherMarkEntry(BaseModel):
+    student_id: int
+    subject_id: int
+    marks_obtained: float
+
+class TeacherResultSubmit(BaseModel):
+    class_id: int
+    exam_type_id: int
+    total_marks: float = 100.0
+    marks: List[TeacherMarkEntry]
+
 class ResultResponse(BaseModel):
     id: int
     student_id: int
+    student_roll_no: Optional[str] = None
+    student_name: Optional[str] = None
+    student_class: Optional[str] = None
+    student_division: Optional[str] = None
+    
     subject_id: int
+    subject_name: Optional[str] = None
+    subject_code: Optional[str] = None
+    
     exam_type_id: int
+    exam_type_name: Optional[str] = None
+    
     marks_obtained: float
     total_marks: float
     percentage: float
@@ -36,18 +56,17 @@ class ResultResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# --- Result Creation Schemas ---
 class ResultCreate(BaseModel):
     student_id: int
     subject_id: int
     exam_type_id: int
     marks_obtained: float
     total_marks: float = 100.0
+    percentage: Optional[float] = None
+    grade: Optional[str] = None
+    submitted_by_id: Optional[int] = None
 
 class ResultBatchCreate(BaseModel):
-    class_id: int
-    exam_type_id: int
-    total_marks: float = 100.0
     results: List[ResultCreate]
 
 # --- Result Update Schemas ---
@@ -58,4 +77,5 @@ class ResultUpdate(BaseModel):
 
 # --- Result Approval Schema ---
 class ResultApproval(BaseModel):
-    approved: bool = True  # True = approve, False = reject
+    status: Optional[str] = None
+    approved: Optional[bool] = None

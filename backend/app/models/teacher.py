@@ -1,6 +1,6 @@
-from sqlalchemy import String, Integer
+from sqlalchemy import String, Integer, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from typing import Optional
+from typing import Optional, List
 from app.database import Base
 
 class Teacher(Base):
@@ -14,14 +14,13 @@ class Teacher(Base):
     role: Mapped[str] = mapped_column(String(20), default="TEACHER", nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="PENDING", nullable=False)
     max_lectures_per_day: Mapped[int] = mapped_column(Integer, default=4, nullable=False)
+    # availability: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
-    # --- DISABLE ALL RELATIONSHIPS ---
-    # classes_managed: Mapped[List["SchoolClass"]] = relationship(...)
-    # timetable_slots: Mapped[List["TimetableSlot"]] = relationship(...)
+    # ADD THIS RELATIONSHIP
+    classes_managed: Mapped[List["SchoolClass"]] = relationship(
+        "SchoolClass",
+        back_populates="class_teacher",
+        lazy="select"
+    )
     
-    # --- ADD RELATIONSHIP FOR TEACHER-CLASS-SUBJECT MAPPING ---
-    # teacher_class_subjects: Mapped[list["TeacherClassSubject"]] = relationship(
-    #     "TeacherClassSubject",
-    #     back_populates="teacher",
-    #     cascade="all, delete-orphan"
-    # )
+    # If you have other relationships, keep them too

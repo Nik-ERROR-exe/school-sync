@@ -1,7 +1,14 @@
-from sqlalchemy import String, Integer, ForeignKey, UniqueConstraint
+from sqlalchemy import String, Integer, ForeignKey, UniqueConstraint, Table, Column
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import List, Optional
 from app.database import Base
+
+class_subjects = Table(
+    "class_subjects",
+    Base.metadata,
+    Column("class_id", Integer, ForeignKey("classes.id", ondelete="CASCADE"), primary_key=True),
+    Column("subject_id", Integer, ForeignKey("subjects.id", ondelete="CASCADE"), primary_key=True),
+)
 
 class SchoolClass(Base):
     __tablename__ = "classes"
@@ -15,5 +22,30 @@ class SchoolClass(Base):
         UniqueConstraint("class_name", "division", name="uq_class_division"),
     )
 
-    # --- KEEP THIS RELATIONSHIP ---
-    students: Mapped[List["Student"]] = relationship("Student", back_populates="school_class", cascade="all, delete-orphan")
+    # Relationships
+    subjects: Mapped[List["Subject"]] = relationship(
+        "Subject",
+        secondary="class_subjects",
+        lazy="select"
+    )
+    
+    # ADD THESE RELATIONSHIPS (uncomment and add)
+    class_teacher: Mapped[Optional["Teacher"]] = relationship(
+        "Teacher",
+        back_populates="classes_managed",
+        lazy="select"
+    )
+    
+    students: Mapped[List["Student"]] = relationship(
+        "Student",
+        back_populates="school_class",
+        cascade="all, delete-orphan",
+        lazy="select"
+    )
+    
+    timetable_slots: Mapped[List["TimetableSlot"]] = relationship(
+        "TimetableSlot",
+        back_populates="school_class",
+        cascade="all, delete-orphan",
+        lazy="select"
+    )
