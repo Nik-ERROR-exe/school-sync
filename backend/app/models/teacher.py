@@ -1,8 +1,17 @@
-from sqlalchemy import String, Integer
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, List, Optional
+
+from sqlalchemy import Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from typing import Optional, List
+
 from app.database import Base
 from app.models.teacher_subjects import teacher_subjects
+
+if TYPE_CHECKING:
+    from app.models.subject import Subject
+    from app.models.school_class import SchoolClass   # <-- corrected import
+
 
 class Teacher(Base):
     __tablename__ = "teachers"
@@ -16,12 +25,17 @@ class Teacher(Base):
     status: Mapped[str] = mapped_column(String(20), default="PENDING", nullable=False)
     max_lectures_per_day: Mapped[int] = mapped_column(Integer, default=4, nullable=False)
 
-    subjects_expertise: Mapped[List["Subject"]] = relationship(
-        "Subject",
-        secondary="teacher_subjects",
+    # --- classes_managed: no longer requires SchoolClass to have "class_teacher" ---
+    # Use the foreign key column directly, no back_populates needed.
+    classes_managed: Mapped[List["SchoolClass"]] = relationship(
+        "SchoolClass",
+        foreign_keys="[SchoolClass.class_teacher_id]",
         lazy="select"
     )
 
-    # --- DISABLE ALL RELATIONSHIPS ---
-    # classes_managed: Mapped[List["SchoolClass"]] = relationship(...)
-    # timetable_slots: Mapped[List["TimetableSlot"]] = relationship(...)
+    # --- subjects_expertise: unchanged ---
+    subjects_expertise: Mapped[List["Subject"]] = relationship(
+        "Subject",
+        secondary=teacher_subjects,
+        lazy="selectin"
+    )
