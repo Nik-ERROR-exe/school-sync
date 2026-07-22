@@ -51,22 +51,20 @@ const ResultsEntry: React.FC = () => {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [examTypes, setExamTypes] = useState<ExamType[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [loadingClassData, setLoadingClassData] = useState(false);
 
   const [selectedClass, setSelectedClass] = useState<number | ''>('');
   const [selectedExam, setSelectedExam] = useState<number | ''>('');
   const [totalMarks, setTotalMarks] = useState<number>(100);
-  const [marks, setMarks] = useState<{ [key: string]: number | undefined }>({});
-  const [statusMap, setStatusMap] = useState<{ [key: string]: { status: string | null; result_id: number | null } }>({});
+  const [marks, setMarks] = useState<{ [key: string]: string }>({});
   const [loading, setLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [fetchingData, setFetchingData] = useState(false);
 
   // Load teacher's classes
   useEffect(() => {
     const fetchClasses = async () => {
       try {
         const response = await api.get('/teacher/classes/my-classes');
-        setClasses(response.data);
+        setClasses(response.data || []);
       } catch (error) {
         toast.error('Failed to load classes');
       }
@@ -79,7 +77,7 @@ const ResultsEntry: React.FC = () => {
     const fetchExamTypes = async () => {
       try {
         const response = await api.get('/teacher/exam-types');
-        setExamTypes(response.data);
+        setExamTypes(response.data || []);
       } catch (error) {
         toast.error('Failed to load exam types');
       }
@@ -93,76 +91,27 @@ const ResultsEntry: React.FC = () => {
       setStudents([]);
       setSubjects([]);
       setMarks({});
-      setStatusMap({});
       return;
     }
 
     const fetchClassData = async () => {
+      setLoadingClassData(true);
       try {
-        setFetchingData(true);
         const response = await api.get(`/teacher/students/by-class/${selectedClass}`);
-        setStudents(response.data.students || []);
-        setSubjects(response.data.subjects || []);
+        const data = response.data;
+        setStudents(data.students || []);
+        setSubjects(data.subjects || []);
+        setMarks({});
       } catch (error) {
         toast.error('Failed to load class data');
+        setStudents([]);
+        setSubjects([]);
       } finally {
-        setFetchingData(false);
+        setLoadingClassData(false);
       }
     };
     fetchClassData();
   }, [selectedClass]);
-
-  // Load ALL marks with status using teacher endpoint (backend must provide status)
-  useEffect(() => {
-    if (!selectedClass || !selectedExam || !subjects.length || !students.length) {
-      setMarks({});
-      setStatusMap({});
-      return;
-    }
-
-    const fetchAllMarksWithStatus = async () => {
-      try {
-        const response = await api.get(`/teacher/results/with-status/class/${selectedClass}/exam/${selectedExam}`);
-        const data = response.data;
-        const studentsData = data.students || [];
-        const newMarks: { [key: string]: number | undefined } = {};
-        const newStatusMap: { [key: string]: { status: string | null; result_id: number | null } } = {};
-
-        studentsData.forEach((student: any) => {
-          student.subjects.forEach((subj: any) => {
-            const key = `${student.student_id}_${subj.subject_id}`;
-            if (subj.marks_obtained !== null && subj.marks_obtained !== undefined) {
-              newMarks[key] = subj.marks_obtained;
-            }
-            newStatusMap[key] = {
-              status: subj.status,
-              result_id: subj.result_id
-            };
-          });
-        });
-
-        setMarks(newMarks);
-        setStatusMap(newStatusMap);
-      } catch (error) {
-        console.error('Error loading marks with status:', error);
-        // Fallback: load only marks (no status) – will treat all as editable
-        try {
-          const fallbackResponse = await api.get(`/teacher/results/class/${selectedClass}/exam/${selectedExam}`);
-          const marksData = fallbackResponse.data || {};
-          const fallbackMarks: { [key: string]: number | undefined } = {};
-          Object.entries(marksData).forEach(([key, value]) => {
-            fallbackMarks[key] = value as number;
-          });
-          setMarks(fallbackMarks);
-          setStatusMap({});
-        } catch (fallbackError) {
-          setMarks({});
-          setStatusMap({});
-        }
-      }
-    };
-    fetchAllMarksWithStatus();
-  }, [selectedClass, selectedExam, subjects, students]);
 
   const calculateGrade = (percentage: number): string => {
     if (percentage >= 90) return 'A+';
@@ -174,96 +123,21 @@ const ResultsEntry: React.FC = () => {
     return 'F';
   };
 
-  const getGradeColor = (grade: string): string => {
-    switch (grade) {
-      case 'A+': return 'bg-purple-100 text-purple-800';
-      case 'A': return 'bg-green-100 text-green-800';
-      case 'B': return 'bg-blue-100 text-blue-800';
-      case 'C': return 'bg-yellow-100 text-yellow-800';
-      case 'D': return 'bg-orange-100 text-orange-800';
-      case 'E': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  // Check if a student-subject is editable (not submitted or approved)
-  const isEditable = (studentId: number, subjectId: number): boolean => {
+  const handleMarkChange = (studentId: number, subjectId: number, value: string) => {
     const key = `${studentId}_${subjectId}`;
-    const status = statusMap[key]?.status;
-    return !status || status === 'pending' || status === 'draft';
+    setMarks(prev => ({ ...prev, [key]: value }));
   };
 
-  // Get mark for a student-subject
-  const getMarkValue = (studentId: number, subjectId: number): number | undefined => {
+  const getMark = (studentId: number, subjectId: number): string => {
     const key = `${studentId}_${subjectId}`;
-    return marks[key];
+    return marks[key] !== undefined ? marks[key] : '';
   };
 
-  // ============================================================
-  // AUTO-SAVE: Immediately save on change (like admin)
-  // ============================================================
-  const handleMarkChange = async (studentId: number, subjectId: number, value: string) => {
-    const key = `${studentId}_${subjectId}`;
-
-    if (value === '') {
-      setMarks(prev => ({ ...prev, [key]: undefined }));
-      try {
-        await api.post('/teacher/results/auto-save', {
-          student_id: studentId,
-          subject_id: subjectId,
-          exam_type_id: Number(selectedExam),
-          class_id: Number(selectedClass),
-          marks_obtained: 0,
-          total_marks: totalMarks
-        });
-      } catch (error) {
-        console.error('Auto-save error:', error);
-      }
-      return;
-    }
-
-    const numValue = parseFloat(value);
-    if (isNaN(numValue)) return;
-    const finalValue = Math.min(numValue, totalMarks);
-    setMarks(prev => ({ ...prev, [key]: finalValue }));
-
-    try {
-      await api.post('/teacher/results/auto-save', {
-        student_id: studentId,
-        subject_id: subjectId,
-        exam_type_id: Number(selectedExam),
-        class_id: Number(selectedClass),
-        marks_obtained: finalValue,
-        total_marks: totalMarks
-      });
-    } catch (error) {
-      console.error('Auto-save error:', error);
-    }
-  };
-
-  // Calculate student totals
-  const calculateStudentTotals = (studentId: number) => {
-    let totalObtained = 0;
-    let totalMax = 0;
-    let allEditableFilled = true;
-
+  const calculateStudentTotal = (studentId: number): number => {
+    let total = 0;
     subjects.forEach(subject => {
-      const key = `${studentId}_${subject.id}`;
-      if (isEditable(studentId, subject.id)) {
-        const mark = marks[key];
-        if (mark === undefined || mark === null) {
-          allEditableFilled = false;
-        } else {
-          totalObtained += mark;
-          totalMax += totalMarks;
-        }
-      } else {
-        const mark = marks[key];
-        if (mark !== undefined && mark !== null) {
-          totalObtained += mark;
-          totalMax += totalMarks;
-        }
-      }
+      const val = parseFloat(getMark(studentId, subject.id));
+      if (!isNaN(val)) total += val;
     });
 
     const percentage = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0;
@@ -271,102 +145,49 @@ const ResultsEntry: React.FC = () => {
     return { totalObtained, totalMax, percentage, grade, allEditableFilled };
   };
 
-  // ============================================================
-  // VALIDATION: Check all editable fields are filled
-  // ============================================================
-  const validateAllFilled = (): boolean => {
-    for (const student of students) {
-      for (const subject of subjects) {
-        const key = `${student.id}_${subject.id}`;
-        if (isEditable(student.id, subject.id) && (marks[key] === undefined || marks[key] === null || marks[key] === '')) {
-          return false;
-        }
-      }
-    }
-    return true;
+  const calculateStudentPercentage = (studentId: number): number => {
+    const total = calculateStudentTotal(studentId);
+    let validCount = 0;
+    subjects.forEach(subject => {
+      if (getMark(studentId, subject.id) !== '') validCount++;
+    });
+    const maxTotal = validCount * totalMarks;
+    return maxTotal > 0 ? (total / maxTotal) * 100 : 0;
   };
 
-  // Check if there are any editable students
-  const hasEditableStudents = (): boolean => {
-    for (const student of students) {
-      for (const subject of subjects) {
-        if (isEditable(student.id, subject.id)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  };
-
-  // ============================================================
-  // SUBMIT ONLY EDITABLE RESULTS
-  // ============================================================
   const handleSubmit = async () => {
     if (!selectedClass || !selectedExam) {
-      toast.error('Please select class and exam type');
+      toast.error('Please select class and exam type before submitting');
       return;
     }
 
-    if (!subjects.length) {
-      toast.error('No subjects found for this class');
-      return;
-    }
-
-    if (!validateAllFilled()) {
-      toast.error('Please fill all marks for editable students before submitting.');
-      return;
-    }
-
-    const marksData = [];
-    for (const student of students) {
-      for (const subject of subjects) {
-        const key = `${student.id}_${subject.id}`;
-        if (isEditable(student.id, subject.id)) {
-          const marksObtained = marks[key] !== undefined ? marks[key] : 0;
-          marksData.push({
+    const resultsData: any[] = [];
+    students.forEach(student => {
+      subjects.forEach(subject => {
+        const rawMark = getMark(student.id, subject.id);
+        if (rawMark !== '') {
+          const mark = parseFloat(rawMark);
+          resultsData.push({
             student_id: student.id,
             subject_id: subject.id,
-            marks_obtained: marksObtained
+            exam_type_id: Number(selectedExam),
+            marks_obtained: isNaN(mark) ? 0 : Math.min(Math.max(0, mark), totalMarks),
+            total_marks: totalMarks,
           });
         }
-      }
-    }
+      });
+    });
 
-    if (marksData.length === 0) {
-      toast.error('No editable marks to submit.');
+    if (resultsData.length === 0) {
+      toast.error('Please enter marks for at least one student and subject');
       return;
     }
 
-    if (!window.confirm('Are you sure you want to submit these results for approval? You cannot edit after submission.')) {
-      return;
-    }
-
-    setSubmitting(true);
+    setLoading(true);
     try {
-      const response = await api.post('/teacher/results/submit', {
-        class_id: Number(selectedClass),
-        exam_type_id: Number(selectedExam),
-        total_marks: totalMarks,
-        marks: marksData
-      });
-
-      toast.success(`Results submitted for approval! (${response.data.submitted_count} submitted)`);
-      // Refresh statuses after submission
-      const refreshResponse = await api.get(`/teacher/results/with-status/class/${selectedClass}/exam/${selectedExam}`);
-      const data = refreshResponse.data;
-      const studentsData = data.students || [];
-      const newStatusMap: { [key: string]: { status: string | null; result_id: number | null } } = {};
-      studentsData.forEach((student: any) => {
-        student.subjects.forEach((subj: any) => {
-          const key = `${student.student_id}_${subj.subject_id}`;
-          newStatusMap[key] = {
-            status: subj.status,
-            result_id: subj.result_id
-          };
-        });
-      });
-      setStatusMap(newStatusMap);
-
+      await api.post('/teacher/results/', { results: resultsData });
+      toast.success('Results submitted successfully!');
+      setMarks({});
     } catch (error: any) {
       console.error('❌ Submit error:', error);
       toast.error(error.response?.data?.detail || 'Failed to submit results');
@@ -375,196 +196,182 @@ const ResultsEntry: React.FC = () => {
     }
   };
 
-  // Determine if submit button should be disabled
-  const isSubmitDisabled = () => {
-    if (submitting || loading || fetchingData || !selectedClass || !selectedExam || students.length === 0 || subjects.length === 0) return true;
-    if (!hasEditableStudents()) return true;
-    if (!validateAllFilled()) return true;
-    return false;
-  };
+  const selectedClassObj = classes.find(c => c.id === selectedClass);
+  const classHeader = selectedClassObj
+    ? `Standard ${selectedClassObj.class_name} - ${selectedClassObj.division}`
+    : '';
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Enter Results</h1>
-        <span className="text-xs text-green-600 bg-green-50 px-3 py-1 rounded-full">Auto-save enabled</span>
-      </div>
+      <h1 className="text-2xl font-bold">📝 Enter Results</h1>
 
       {/* Selection Section */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Class</label>
-          <select
-            value={selectedClass}
-            onChange={(e) => setSelectedClass(Number(e.target.value))}
-            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Select Class</option>
-            {classes.map((cls) => (
-              <option key={cls.id} value={cls.id}>
-                {cls.class_name} - {cls.division}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div className="bg-white p-6 rounded-xl border shadow-sm">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Class</label>
+            <select
+              value={selectedClass}
+              onChange={(e) => {
+                setSelectedClass(e.target.value ? Number(e.target.value) : '');
+                setSelectedExam('');
+              }}
+              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Select Class</option>
+              {classes.map(c => (
+                <option key={c.id} value={c.id}>
+                  Standard {c.class_name} - {c.division}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Exam Type</label>
-          <select
-            value={selectedExam}
-            onChange={(e) => setSelectedExam(Number(e.target.value))}
-            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Select Exam</option>
-            {examTypes.map((exam) => (
-              <option key={exam.id} value={exam.id}>
-                {exam.name}
-              </option>
-            ))}
-          </select>
-        </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Exam Type</label>
+            <select
+              value={selectedExam}
+              onChange={(e) => setSelectedExam(e.target.value ? Number(e.target.value) : '')}
+              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={!selectedClass}
+            >
+              <option value="">Select Exam</option>
+              {examTypes.map(e => (
+                <option key={e.id} value={e.id}>{e.name}</option>
+              ))}
+            </select>
+          </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Total Marks</label>
-          <input
-            type="number"
-            value={totalMarks}
-            onChange={(e) => setTotalMarks(Number(e.target.value))}
-            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            min="1"
-          />
+          <div>
+            <label className="block text-sm font-medium mb-1">Total Marks</label>
+            <input
+              type="number"
+              value={totalMarks}
+              onChange={(e) => setTotalMarks(Math.max(1, Number(e.target.value)))}
+              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              min={1}
+              disabled={!selectedClass}
+            />
+          </div>
         </div>
       </div>
 
-      {/* Students and Subjects Table */}
-      {selectedClass && selectedExam && (
-        <div className="mt-6">
-          {fetchingData ? (
-            <div className="text-center py-4">Loading...</div>
-          ) : students.length === 0 ? (
-            <div className="text-center py-4 text-gray-500">No students found</div>
-          ) : subjects.length === 0 ? (
-            <div className="text-center py-4 text-gray-500">No subjects assigned</div>
-          ) : (
+      {/* Loading state */}
+      {loadingClassData && (
+        <div className="text-center py-8 text-gray-500">
+          Loading class data...
+        </div>
+      )}
+
+      {/* No students found */}
+      {!loadingClassData && selectedClass && students.length === 0 && (
+        <div className="text-center py-12 text-gray-500">
+          No students found for this class.
+        </div>
+      )}
+
+      {/* No timetable assignments */}
+      {!loadingClassData && selectedClass && students.length > 0 && subjects.length === 0 && (
+        <div className="bg-orange-50 border border-orange-300 text-orange-800 p-4 rounded-lg">
+          <strong>⚠️ No timetable assignments found for your account in this class.</strong>
+          <br />
+          The admin needs to generate and save the timetable before you can enter marks.
+          Contact your administrator.
+        </div>
+      )}
+
+      {/* Exam type not selected yet but students/subjects loaded */}
+      {!loadingClassData && students.length > 0 && subjects.length > 0 && !selectedExam && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-800 p-4 rounded-lg">
+          <strong>✅ Class loaded:</strong> {classHeader} — {students.length} students, {subjects.length} subjects ({subjects.map(s => s.subject_name).join(', ')})
+          <br />
+          <span className="text-sm mt-1 block">Select an Exam Type above to start entering marks.</span>
+        </div>
+      )}
+
+      {/* Marks Table — shown once class + exam both selected */}
+      {!loadingClassData && students.length > 0 && subjects.length > 0 && selectedExam && (
+        <>
+          <div className="bg-blue-50 border border-blue-200 text-blue-900 p-4 rounded-lg">
+            <strong>Entering marks for:</strong> {classHeader} &nbsp;|&nbsp;
+            <strong>Exam:</strong> {examTypes.find(e => e.id === selectedExam)?.name} &nbsp;|&nbsp;
+            <strong>Subjects:</strong> {subjects.map(s => s.subject_name).join(', ')}
+          </div>
+
+          <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="min-w-full bg-white border border-gray-200">
-                <thead className="bg-gray-50">
+              <table className="w-full border-collapse">
+                <thead className="bg-gray-50 border-b">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50">Roll No</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase sticky left-16 bg-gray-50">Student</th>
-                    {subjects.map((subject) => (
-                      <th key={subject.id} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-r sticky left-0 bg-gray-50">Roll No</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-r sticky left-16 bg-gray-50">Student Name</th>
+                    {subjects.map(subject => (
+                      <th key={subject.id} className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r min-w-[80px]">
                         {subject.subject_name}
+                        <div className="text-gray-400 font-normal normal-case">/{totalMarks}</div>
                       </th>
                     ))}
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">%</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Grade</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r">Total</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r">%</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Grade</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {students.map((student) => {
-                    const { totalObtained, totalMax, percentage, grade, allEditableFilled } = calculateStudentTotals(student.id);
-                    const hasAnyEditable = subjects.some(sub => isEditable(student.id, sub.id));
-                    const allEditableFilledStatus = subjects.every(sub => !isEditable(student.id, sub.id) || marks[`${student.id}_${sub.id}`] !== undefined);
+                <tbody className="divide-y">
+                  {students.map(student => {
+                    const total = calculateStudentTotal(student.id);
+                    const percentage = calculateStudentPercentage(student.id);
+                    const grade = total > 0 ? calculateGrade(percentage) : '-';
 
                     return (
                       <tr key={student.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 font-medium sticky left-0 bg-white">{student.roll_no}</td>
-                        <td className="px-4 py-3 font-medium sticky left-16 bg-white">{student.name}</td>
-                        {subjects.map((subject) => {
-                          const key = `${student.id}_${subject.id}`;
-                          const editable = isEditable(student.id, subject.id);
-                          const currentStatus = statusMap[key]?.status;
-                          const mark = marks[key] !== undefined ? marks[key] : '';
-
-                          return (
-                            <td key={subject.id} className="px-4 py-3">
-                              {editable ? (
-                                <input
-                                  type="number"
-                                  value={mark}
-                                  onChange={(e) => handleMarkChange(student.id, subject.id, e.target.value)}
-                                  className="w-20 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                  min="0"
-                                  max={totalMarks}
-                                  step="0.5"
-                                />
-                              ) : (
-                                <span className="text-gray-500">
-                                  {mark !== '' ? mark : '-'}
-                                  {currentStatus === 'submitted' && <span className="ml-1 text-xs text-blue-600">(submitted)</span>}
-                                  {currentStatus === 'approved' && <span className="ml-1 text-xs text-green-600">(approved)</span>}
-                                </span>
-                              )}
-                            </td>
-                          );
-                        })}
-                        <td className="px-4 py-3 font-medium">
-                          {totalMax > 0 ? `${totalObtained} / ${totalMax}` : '-'}
-                        </td>
-                        <td className="px-4 py-3 font-medium">
-                          {totalMax > 0 ? `${percentage.toFixed(1)}%` : '-'}
-                        </td>
-                        <td className="px-4 py-3">
-                          {totalMax > 0 ? (
-                            <span className={`px-2 py-1 rounded text-sm font-medium ${getGradeColor(grade)}`}>
-                              {grade}
-                            </span>
-                          ) : '-'}
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          {!hasAnyEditable ? (
-                            <span className="text-green-600">Submitted</span>
-                          ) : allEditableFilledStatus ? (
-                            <span className="text-yellow-600">Draft</span>
-                          ) : (
-                            <span className="text-red-500">Incomplete</span>
-                          )}
+                        <td className="px-4 py-3 font-medium border-r sticky left-0 bg-white">{student.roll_no}</td>
+                        <td className="px-4 py-3 font-medium border-r sticky left-16 bg-white">{student.name}</td>
+                        {subjects.map(subject => (
+                          <td key={subject.id} className="px-2 py-2 text-center border-r">
+                            <input
+                              type="number"
+                              min={0}
+                              max={totalMarks}
+                              value={getMark(student.id, subject.id)}
+                              onChange={(e) => handleMarkChange(student.id, subject.id, e.target.value)}
+                              placeholder="—"
+                              className="w-16 px-2 py-1 border rounded text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </td>
+                        ))}
+                        <td className="px-4 py-3 text-center font-bold border-r">{total > 0 ? total : '—'}</td>
+                        <td className="px-4 py-3 text-center font-medium border-r">{total > 0 ? `${percentage.toFixed(1)}%` : '—'}</td>
+                        <td className="px-4 py-3 text-center font-bold">
+                          <span className={`px-2 py-1 rounded text-sm ${
+                            grade === 'A+' || grade === 'A' ? 'bg-green-100 text-green-800' :
+                            grade === 'B' || grade === 'C' ? 'bg-yellow-100 text-yellow-800' :
+                            grade === 'F' ? 'bg-red-100 text-red-800' :
+                            'text-gray-500'
+                          }`}>
+                            {grade}
+                          </span>
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
-                <tfoot className="bg-gray-50 font-medium">
-                  <tr>
-                    <td colSpan={2} className="px-4 py-3 text-right text-sm text-gray-500">Subject Totals:</td>
-                    {subjects.map((subject) => {
-                      let subjectTotal = 0;
-                      students.forEach(student => {
-                        const key = `${student.id}_${subject.id}`;
-                        if (marks[key] !== undefined) subjectTotal += marks[key];
-                      });
-                      return (
-                        <td key={subject.id} className="px-4 py-3 text-sm">
-                          {subjectTotal.toFixed(0)}
-                        </td>
-                      );
-                    })}
-                    <td colSpan={3} className="px-4 py-3"></td>
-                  </tr>
-                </tfoot>
               </table>
             </div>
-          )}
 
-          {/* Submit Button & Info Messages */}
-          <div className="mt-6 flex justify-end">
-            <button
-              onClick={handleSubmit}
-              disabled={isSubmitDisabled()}
-              className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-            >
-              <Send className="w-4 h-4" />
-              {submitting ? 'Submitting...' : 'Submit Results'}
-            </button>
+            <div className="px-6 py-4 border-t bg-gray-50 flex items-center justify-between">
+              <span className="text-sm text-gray-500">
+                {students.length} students · {subjects.length} subjects
+              </span>
+              <button
+                onClick={handleSubmit}
+                disabled={loading}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+              >
+                {loading ? 'Submitting...' : '📤 Submit Results'}
+              </button>
+            </div>
           </div>
-          {!hasEditableStudents() && (
-            <p className="text-sm text-gray-500 mt-2">All students already have submitted/approved results.</p>
-          )}
-          {/* The red error message has been removed as requested */}
-        </div>
+        </>
       )}
     </div>
   );

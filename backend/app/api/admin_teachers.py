@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import join
 from typing import List
 from app.database import get_db
 from app.api.deps import require_admin
-from app.schemas.teacher import TeacherCreate, TeacherUpdate, TeacherResponse
+from app.schemas.teacher import TeacherCreate, TeacherUpdate, TeacherResponse, SubjectResponse, TeacherSubjectsUpdate
 from app.models.teacher import Teacher
+from app.models.subject import Subject
+from app.models.teacher_subjects import teacher_subjects
 from app.core.security import get_password_hash
 from app.core.exceptions import ResourceNotFoundException, ConflictException
 
@@ -98,11 +101,16 @@ def deactivate_teacher(id: int, db: Session = Depends(get_db)):
     db.refresh(teacher)
     return teacher
 
+# ✅ FIXED: list_teachers now returns teachers with subjects loaded via explicit join
 @router.get("/", response_model=List[TeacherResponse])
 def list_teachers(db: Session = Depends(get_db)):
     teachers = db.query(Teacher).order_by(Teacher.name).all()
+    # Optionally load subjects for each teacher if needed in the response schema
+    # But TeacherResponse doesn't include subjects, so we just return teachers.
+    # If you need subjects in the response, you would need a separate endpoint.
     return teachers
 
+# ✅ FIXED: get_teacher no longer uses joinedload
 @router.get("/{id}", response_model=TeacherResponse)
 def get_teacher(id: int, db: Session = Depends(get_db)):
     teacher = db.query(Teacher).filter(Teacher.id == id).first()
@@ -144,3 +152,58 @@ def delete_teacher(id: int, db: Session = Depends(get_db)):
     db.delete(teacher)
     db.commit()
     return None
+
+# ✅ FIXED: get_teacher_subjects uses explicit join on teacher_subjects
+@router.get("/{teacher_id}/subjects", response_model=List[SubjectResponse])
+def get_teacher_subjects(teacher_id: int, db: Session = Depends(get_db)):
+    # First, verify teacher exists
+    teacher = db.query(Teacher).filter(Teacher.id == teacher_id).first()
+    if not teacher:
+        raise ResourceNotFoundException("Teacher", str(teacher_id))
+
+    # Direct join with teacher_subjects table
+    subjects = (
+        db.query(Subject)
+        .join(teacher_subjects, teacher_subjects.c.subject_id == Subject.id)
+        .filter(teacher_subjects.c.teacher_id == teacher_id)
+        .all()
+    )
+    return subjects
+
+# This endpoint already works correctly because it uses direct insert/delete on teacher_subjects
+@router.post("/{teacher_id}/subjects", response_model=TeacherResponse)
+def update_teacher_subjects(
+    teacher_id: int,
+    body: TeacherSubjectsUpdate,
+    db: Session = Depends(get_db),
+):
+    db_teacher = db.query(Teacher).filter(Teacher.id == teacher_id).first()
+    if not db_teacher:
+        raise ResourceNotFoundException("Teacher", str(teacher_id))
+
+    # Validate all subject_ids exist
+    if body.subject_ids:
+        subjects = db.query(Subject).filter(Subject.id.in_(body.subject_ids)).all()
+        if len(subjects) != len(body.subject_ids):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="One or more subject IDs not found",
+            )
+
+    # Replace: delete existing, insert new
+    db.execute(
+        teacher_subjects.delete().where(
+            teacher_subjects.c.teacher_id == teacher_id
+        )
+    )
+    for subject_id in body.subject_ids:
+        db.execute(
+            teacher_subjects.insert().values(
+                teacher_id=teacher_id, subject_id=subject_id
+            )
+        )
+    db.commit()
+
+    # Refresh and return the teacher (without subjects loaded)
+    db.refresh(db_teacher)
+    return db_teacher

@@ -47,15 +47,18 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
         setClasses(classesRes.data);
         setTeachers(teachersRes.data);
 
-        const allDbReqs = dbReqsRes.data.map((r: WeeklyReqState) => ({
+        const allDbReqs = dbReqsRes.data.map((r: any) => ({
           id: r.id,
-          class_id: r.class_id,
-          subject_id: r.subject_id,
-          periods_per_week: r.periods_per_week,
+          class_id: Number(r.class_id),
+          subject_id: Number(r.subject_id),
+          periods_per_week: Number(r.periods_per_week),
         }));
         
         // Filter DB requirements to only those belonging to selectedClassIds
-        const filteredDbReqs = allDbReqs.filter((r: WeeklyReqState) => selectedClassIds.includes(r.class_id));
+        // Use Number() on both sides to prevent string/number mismatch
+        const filteredDbReqs = allDbReqs.filter((r: WeeklyReqState) =>
+          selectedClassIds.some(id => Number(id) === Number(r.class_id))
+        );
         setInitialDbReqs(filteredDbReqs);
 
         // Initialize localReqs state
@@ -63,23 +66,25 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
 
         // For each selected class standard
         selectedClassIds.forEach(classId => {
-          const classData = (classesRes.data as ApiClass[]).find((c: ApiClass) => c.id === classId);
+          const numClassId = Number(classId);
+          const classData = (classesRes.data as ApiClass[]).find((c: ApiClass) => Number(c.id) === numClassId);
           const classSubjects = classData?.subjects || [];
-          const classDbReqs = filteredDbReqs.filter((r: WeeklyReqState) => r.class_id === classId);
+          const classDbReqs = filteredDbReqs.filter((r: WeeklyReqState) => Number(r.class_id) === numClassId);
 
           classSubjects.forEach((sub: ApiSubject) => {
-            const dbReq = classDbReqs.find((r: WeeklyReqState) => r.subject_id === sub.id);
+            const numSubId = Number(sub.id);
+            const dbReq = classDbReqs.find((r: WeeklyReqState) => Number(r.subject_id) === numSubId);
             if (dbReq) {
               initialLocalReqs.push({
                 id: dbReq.id,
-                class_id: classId,
-                subject_id: sub.id,
+                class_id: numClassId,
+                subject_id: numSubId,
                 periods_per_week: dbReq.periods_per_week,
               });
             } else {
               initialLocalReqs.push({
-                class_id: classId,
-                subject_id: sub.id,
+                class_id: numClassId,
+                subject_id: numSubId,
                 periods_per_week: 1, // Pre-fill with default 1 period
               });
             }
@@ -210,6 +215,18 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
         document.getElementById(`class-card-${classId}`)?.scrollIntoView({ behavior: 'smooth' });
         return;
       }
+    }
+
+    // Warn if all requirements are suspiciously set to 1 but DB had higher values
+    const allAreOne = localReqs.length > 0 && localReqs.every(r => r.periods_per_week === 1);
+    const dbHadHigherValues = initialDbReqs.some(r => r.periods_per_week > 1);
+    if (allAreOne && dbHadHigherValues) {
+      const confirmed = window.confirm(
+        'Warning: All subjects show 1 period/week, but your saved configuration had higher values.\n\n'
+        + 'This could mean the requirements were not loaded correctly.\n'
+        + 'Click OK to save anyway, or Cancel to review your settings.'
+      );
+      if (!confirmed) return;
     }
 
     setSaving(true);

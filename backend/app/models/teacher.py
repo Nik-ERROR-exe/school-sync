@@ -1,7 +1,15 @@
-from sqlalchemy import String, Integer, JSON
+from typing import TYPE_CHECKING, List, Optional
+
+from sqlalchemy import Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from typing import Optional, List
+
 from app.database import Base
+from app.models.teacher_subjects import teacher_subjects
+
+if TYPE_CHECKING:
+    from app.models.subject import Subject
+    from app.models.class_ import SchoolClass  # adjust import path if different
+
 
 class Teacher(Base):
     __tablename__ = "teachers"
@@ -16,11 +24,19 @@ class Teacher(Base):
     max_lectures_per_day: Mapped[int] = mapped_column(Integer, default=4, nullable=False)
     # availability: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
-    # ADD THIS RELATIONSHIP
+    # Relationship to classes this teacher manages
     classes_managed: Mapped[List["SchoolClass"]] = relationship(
         "SchoolClass",
         back_populates="class_teacher",
         lazy="select"
     )
-    
-    # If you have other relationships, keep them too
+
+    # Relationship to subjects this teacher is qualified to teach,
+    # via the teacher_subjects association table.
+    # Named to match the `hasattr(data, "subjects_expertise")` check
+    # in TeacherResponse's model_validator.
+    subjects_expertise: Mapped[List["Subject"]] = relationship(
+        "Subject",
+        secondary=teacher_subjects,
+        lazy="selectin"
+    )
