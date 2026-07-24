@@ -7,17 +7,26 @@ import {
   Trash2,
   Search,
   RefreshCw,
-  BookOpen,
+  School,
   X,
-  ChevronDown,
-  ChevronUp,
   AlertTriangle,
   Save,
   Check,
+  Plus,
 } from 'lucide-react';
 
 interface SubjectBasic {
   id: number;
+  subject_name: string;
+  code: string;
+}
+
+interface ClassSubjectAssignment {
+  id: number;
+  class_id: number;
+  subject_id: number;
+  class_name: string;
+  division: string;
   subject_name: string;
   code: string;
 }
@@ -30,7 +39,8 @@ interface Teacher {
   status: string;
   role: string;
   max_lectures_per_day: number;
-  subjects: SubjectBasic[];
+  subjects: SubjectBasic[];          // still loaded but not shown
+  classSubjects?: ClassSubjectAssignment[];
 }
 
 const STATUS_OPTIONS = ['ALL', 'ACTIVE', 'PENDING', 'INACTIVE'];
@@ -48,78 +58,82 @@ const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
   );
 };
 
-/* ─── Subject Edit Panel ────────────────────────────────────── */
-interface SubjectEditPanelProps {
+/* ─── Class-Subject Edit Panel (3-way mapping) ────────────── */
+interface ClassSubjectEditPanelProps {
   teacher: Teacher;
+  allClasses: { id: number; class_name: string; division: string }[];
   allSubjects: SubjectBasic[];
-  onSave: (teacherId: number, subjectIds: number[]) => Promise<void>;
+  onSave: (teacherId: number, assignments: { class_id: number; subject_id: number }[]) => Promise<void>;
   onClose: () => void;
 }
 
-const SubjectEditPanel: React.FC<SubjectEditPanelProps> = ({
+const ClassSubjectEditPanel: React.FC<ClassSubjectEditPanelProps> = ({
   teacher,
+  allClasses,
   allSubjects,
   onSave,
   onClose,
 }) => {
-  const [selectedIds, setSelectedIds] = useState<number[]>(
-    teacher.subjects.map((s) => s.id)
+  const [assignments, setAssignments] = useState<{ class_id: number; subject_id: number }[]>(
+    (teacher.classSubjects || []).map((cs) => ({ class_id: cs.class_id, subject_id: cs.subject_id }))
   );
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [subjectSearch, setSubjectSearch] = useState('');
+  const [selClass, setSelClass] = useState<number>(0);
+  const [selSubject, setSelSubject] = useState<number>(0);
 
-  const selectedSubjects = allSubjects.filter((s) => selectedIds.includes(s.id));
-  const availableSubjects = allSubjects.filter(
-    (s) =>
-      !selectedIds.includes(s.id) &&
-      (s.subject_name.toLowerCase().includes(subjectSearch.toLowerCase()) ||
-        s.code.toLowerCase().includes(subjectSearch.toLowerCase()))
-  );
-
-  const addSubject = (id: number) => {
-    setSelectedIds((prev) => [...prev, id]);
-    setSubjectSearch('');
-    setDropdownOpen(false);
+  const addPair = () => {
+    if (!selClass || !selSubject) return;
+    const exists = assignments.some((a) => a.class_id === selClass && a.subject_id === selSubject);
+    if (exists) {
+      toast.error('This class-subject pair already exists.');
+      return;
+    }
+    setAssignments((prev) => [...prev, { class_id: selClass, subject_id: selSubject }]);
     setSaved(false);
   };
 
-  const removeSubject = (id: number) => {
-    setSelectedIds((prev) => prev.filter((sid) => sid !== id));
+  const removePair = (classId: number, subjectId: number) => {
+    setAssignments((prev) => prev.filter((a) => !(a.class_id === classId && a.subject_id === subjectId)));
     setSaved(false);
   };
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await onSave(teacher.id, selectedIds);
+      await onSave(teacher.id, assignments);
       setSaved(true);
-      setTimeout(() => {
-        onClose();
-      }, 800);
+      setTimeout(() => onClose(), 800);
     } catch {
-      // error handled by parent
+      // parent handles error
     } finally {
       setSaving(false);
     }
   };
 
-  const hasChanges =
-    selectedIds.length !== teacher.subjects.length ||
-    selectedIds.some((id) => !teacher.subjects.find((s) => s.id === id));
+  const initial = (teacher.classSubjects || []).map((cs) => `${cs.class_id}-${cs.subject_id}`);
+  const current = assignments.map((a) => `${a.class_id}-${a.subject_id}`);
+  const hasChanges = initial.length !== current.length || initial.some((k) => !current.includes(k)) || current.some((k) => !initial.includes(k));
+
+  const getClassName = (id: number) => {
+    const c = allClasses.find((cls) => cls.id === id);
+    return c ? `${c.class_name}-${c.division}` : `Class #${id}`;
+  };
+  const getSubjectName = (id: number) => {
+    const s = allSubjects.find((sub) => sub.id === id);
+    return s ? s.subject_name : `Subject #${id}`;
+  };
 
   return (
     <tr>
       <td colSpan={7} className="px-0 py-0">
-        <div className="bg-gradient-to-b from-blue-50/70 to-white border-t border-blue-100 px-6 py-5 animate-in slide-in-from-top-2">
-          <div className="max-w-3xl">
-            {/* Header */}
+        <div className="bg-gradient-to-b from-green-50/70 to-white border-t border-green-100 px-6 py-5 animate-in slide-in-from-top-2">
+          <div className="max-w-4xl">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <BookOpen className="h-4 w-4 text-blue-600" />
+                <School className="h-4 w-4 text-green-600" />
                 <h3 className="text-sm font-bold text-slate-900">
-                  Subjects taught by {teacher.name}
+                  Class-Subject Assignments for {teacher.name}
                 </h3>
               </div>
               <button
@@ -130,28 +144,28 @@ const SubjectEditPanel: React.FC<SubjectEditPanelProps> = ({
               </button>
             </div>
 
-            {/* Current Subject Chips */}
+            {/* Current assignments */}
             <div className="mb-4">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                Assigned Subjects ({selectedSubjects.length})
+                Assigned Pairs ({assignments.length})
               </p>
               <div className="flex flex-wrap gap-2 min-h-[36px]">
-                {selectedSubjects.length === 0 ? (
+                {assignments.length === 0 ? (
                   <span className="inline-flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-full">
                     <AlertTriangle className="h-3 w-3" />
-                    No subjects assigned
+                    No class-subject assignments
                   </span>
                 ) : (
-                  selectedSubjects.map((subj) => (
+                  assignments.map((a) => (
                     <span
-                      key={subj.id}
-                      className="inline-flex items-center gap-1.5 bg-blue-100 text-blue-800 border border-blue-200 text-xs font-semibold px-2.5 py-1 rounded-full group hover:bg-blue-200 transition-colors"
+                      key={`${a.class_id}-${a.subject_id}`}
+                      className="inline-flex items-center gap-1.5 bg-green-100 text-green-800 border border-green-200 text-xs font-semibold px-2.5 py-1 rounded-full group hover:bg-green-200 transition-colors"
                     >
-                      {subj.subject_name}
+                      {getClassName(a.class_id)} — {getSubjectName(a.subject_id)}
                       <button
-                        onClick={() => removeSubject(subj.id)}
-                        className="p-0.5 rounded-full hover:bg-blue-300 text-blue-600 hover:text-blue-900 transition-colors"
-                        title={`Remove ${subj.subject_name}`}
+                        onClick={() => removePair(a.class_id, a.subject_id)}
+                        className="p-0.5 rounded-full hover:bg-green-300 text-green-600 hover:text-green-900 transition-colors"
+                        title="Remove"
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -161,61 +175,47 @@ const SubjectEditPanel: React.FC<SubjectEditPanelProps> = ({
               </div>
             </div>
 
-            {/* Add Subject Dropdown */}
-            <div className="mb-4 relative">
+            {/* Add new pair */}
+            <div className="mb-4">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                Add Subject
+                Add Class-Subject Pair
               </p>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={subjectSearch}
-                  onChange={(e) => {
-                    setSubjectSearch(e.target.value);
-                    setDropdownOpen(true);
-                  }}
-                  onFocus={() => setDropdownOpen(true)}
-                  placeholder="Search subjects to add..."
-                  className="w-full max-w-md rounded-lg border border-slate-200 py-2 pl-3 pr-8 text-sm text-slate-900 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 focus:outline-none shadow-sm"
-                />
-                <button
-                  onClick={() => setDropdownOpen(!dropdownOpen)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400"
+              <div className="flex items-center gap-2 flex-wrap">
+                <select
+                  value={selClass}
+                  onChange={(e) => setSelClass(Number(e.target.value))}
+                  className="rounded-lg border border-slate-200 py-2 px-3 text-sm text-slate-900 focus:border-green-400 focus:ring-2 focus:ring-green-100 focus:outline-none shadow-sm bg-white"
                 >
-                  {dropdownOpen ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
+                  <option value={0}>Select Class…</option>
+                  {allClasses.map((cls) => (
+                    <option key={cls.id} value={cls.id}>
+                      {cls.class_name}-{cls.division}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={selSubject}
+                  onChange={(e) => setSelSubject(Number(e.target.value))}
+                  className="rounded-lg border border-slate-200 py-2 px-3 text-sm text-slate-900 focus:border-green-400 focus:ring-2 focus:ring-green-100 focus:outline-none shadow-sm bg-white"
+                >
+                  <option value={0}>Select Subject…</option>
+                  {allSubjects.map((sub) => (
+                    <option key={sub.id} value={sub.id}>
+                      {sub.subject_name} ({sub.code})
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={addPair}
+                  disabled={!selClass || !selSubject}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add
                 </button>
               </div>
-              {dropdownOpen && (
-                <div className="absolute z-20 mt-1 w-full max-w-md bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                  {availableSubjects.length === 0 ? (
-                    <div className="px-3 py-2 text-xs text-slate-400">
-                      {allSubjects.length === selectedIds.length
-                        ? 'All subjects already assigned'
-                        : 'No matching subjects'}
-                    </div>
-                  ) : (
-                    availableSubjects.map((subj) => (
-                      <button
-                        key={subj.id}
-                        onClick={() => addSubject(subj.id)}
-                        className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-800 transition-colors flex items-center justify-between"
-                      >
-                        <span className="font-medium">{subj.subject_name}</span>
-                        <span className="text-xs text-slate-400 font-mono">
-                          {subj.code}
-                        </span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
             </div>
 
-            {/* Action Buttons */}
             <div className="flex items-center gap-3">
               <button
                 onClick={handleSave}
@@ -239,7 +239,7 @@ const SubjectEditPanel: React.FC<SubjectEditPanelProps> = ({
                 ) : (
                   <>
                     <Save className="h-4 w-4" />
-                    Save Subjects
+                    Save Assignments
                   </>
                 )}
               </button>
@@ -266,17 +266,28 @@ const SubjectEditPanel: React.FC<SubjectEditPanelProps> = ({
 const AllTeachers: React.FC = () => {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [allSubjects, setAllSubjects] = useState<SubjectBasic[]>([]);
+  const [allClasses, setAllClasses] = useState<{ id: number; class_name: string; division: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('ALL');
   const [search, setSearch] = useState('');
   const [actionLoading, setActionLoading] = useState<number | null>(null);
-  const [editingTeacherId, setEditingTeacherId] = useState<number | null>(null);
+  const [editingClassesTeacherId, setEditingClassesTeacherId] = useState<number | null>(null);
 
   const fetchTeachers = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get('/admin/teachers/');
-      setTeachers(res.data);
+      const teacherList: Teacher[] = res.data;
+      const teachersWithCS = await Promise.all(
+        teacherList.map(async (t) => {
+          try {
+            const csRes = await api.get(`/admin/teachers/${t.id}/class-subjects`);
+            t.classSubjects = csRes.data;
+          } catch { t.classSubjects = []; }
+          return t;
+        })
+      );
+      setTeachers(teachersWithCS);
     } catch {
       toast.error('Failed to load teachers.');
     } finally {
@@ -284,20 +295,28 @@ const AllTeachers: React.FC = () => {
     }
   }, []);
 
-  // Load all subjects once on mount
   const fetchSubjects = useCallback(async () => {
     try {
       const res = await api.get('/admin/subjects/');
       setAllSubjects(res.data);
-    } catch {
-      // non-critical — panel will show empty dropdown
-    }
+    } catch {}
+  }, []);
+
+  const fetchClasses = useCallback(async () => {
+    try {
+      const res = await api.get('/admin/classes/');
+      setAllClasses(res.data);
+    } catch {}
   }, []);
 
   useEffect(() => {
-    fetchTeachers(); // eslint-disable-line react-hooks/set-state-in-effect
-    fetchSubjects();
-  }, [fetchTeachers, fetchSubjects]);
+    const init = async () => {
+      await Promise.all([fetchSubjects(), fetchClasses()]);
+      fetchTeachers();
+    };
+    init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleActivate = async (id: number, name: string) => {
     setActionLoading(id);
@@ -305,9 +324,8 @@ const AllTeachers: React.FC = () => {
       await api.put(`/admin/teachers/${id}/activate`);
       toast.success(`${name} activated.`);
       fetchTeachers();
-    } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.detail || 'Failed to activate teacher.'; // eslint-disable-line @typescript-eslint/no-explicit-any
-      toast.error(msg);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to activate teacher.');
     } finally {
       setActionLoading(null);
     }
@@ -319,9 +337,8 @@ const AllTeachers: React.FC = () => {
       await api.put(`/admin/teachers/${id}/deactivate`);
       toast.success(`${name} deactivated.`);
       fetchTeachers();
-    } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.detail || 'Failed to deactivate teacher.'; // eslint-disable-line @typescript-eslint/no-explicit-any
-      toast.error(msg);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to deactivate teacher.');
     } finally {
       setActionLoading(null);
     }
@@ -334,25 +351,23 @@ const AllTeachers: React.FC = () => {
       await api.delete(`/admin/teachers/${id}`);
       toast.success(`${name} deleted.`);
       fetchTeachers();
-    } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.detail || 'Failed to delete teacher.'; // eslint-disable-line @typescript-eslint/no-explicit-any
-      toast.error(msg);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to delete teacher.');
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleSaveSubjects = async (teacherId: number, subjectIds: number[]) => {
+  const handleSaveClassSubjects = async (teacherId: number, assignments: { class_id: number; subject_id: number }[]) => {
     try {
-      await api.post(`/admin/teachers/${teacherId}/subjects`, {
-        subject_ids: subjectIds,
+      await api.post(`/admin/teachers/${teacherId}/class-subjects`, {
+        assignments,
       });
-      toast.success('Subjects updated successfully.');
+      toast.success('Class-subject assignments updated successfully.');
       fetchTeachers();
-    } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.detail || 'Failed to save subjects.'; // eslint-disable-line @typescript-eslint/no-explicit-any
-      toast.error(msg);
-      throw err; // re-throw so panel knows save failed
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to save class-subject assignments.');
+      throw err;
     }
   };
 
@@ -367,7 +382,6 @@ const AllTeachers: React.FC = () => {
 
   return (
     <div className="space-y-6 font-body">
-      {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">All Teachers</h1>
@@ -385,7 +399,6 @@ const AllTeachers: React.FC = () => {
         </button>
       </div>
 
-      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute inset-y-0 left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -408,7 +421,6 @@ const AllTeachers: React.FC = () => {
         </select>
       </div>
 
-      {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200">
@@ -417,7 +429,7 @@ const AllTeachers: React.FC = () => {
                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Teacher ID</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Name</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Email</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Subjects</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Class-Subject Assignments</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Role</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
@@ -447,7 +459,7 @@ const AllTeachers: React.FC = () => {
                   <React.Fragment key={teacher.id}>
                     <tr
                       className={`hover:bg-slate-50 transition-colors ${
-                        editingTeacherId === teacher.id ? 'bg-blue-50/50' : ''
+                        editingClassesTeacherId === teacher.id ? 'bg-green-50/50' : ''
                       }`}
                     >
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -464,42 +476,41 @@ const AllTeachers: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{teacher.email}</td>
-                      {/* Subjects Column */}
                       <td className="px-6 py-4">
                         <div className="flex flex-wrap items-center gap-1.5 max-w-xs">
-                          {(!teacher.subjects || teacher.subjects.length === 0) ? (
+                          {(!teacher.classSubjects || teacher.classSubjects.length === 0) ? (
                             <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
                               <AlertTriangle className="h-3 w-3" />
-                              No subjects
+                              No assignments
                             </span>
                           ) : (
                             <>
-                              {teacher.subjects.slice(0, 3).map((s) => (
+                              {teacher.classSubjects.slice(0, 3).map((cs) => (
                                 <span
-                                  key={s.id}
-                                  className="inline-flex items-center text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full"
-                                  title={s.subject_name}
+                                  key={`${cs.class_id}-${cs.subject_id}`}
+                                  className="inline-flex items-center text-xs font-medium text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full"
+                                  title={`${cs.class_name}-${cs.division} — ${cs.subject_name}`}
                                 >
-                                  {s.code}
+                                  {cs.class_name}-{cs.division}: {cs.code}
                                 </span>
                               ))}
-                              {teacher.subjects.length > 3 && (
+                              {teacher.classSubjects.length > 3 && (
                                 <span className="text-xs text-slate-400 font-medium">
-                                  +{teacher.subjects.length - 3}
+                                  +{teacher.classSubjects.length - 3}
                                 </span>
                               )}
                             </>
                           )}
                           <button
                             onClick={() =>
-                              setEditingTeacherId(
-                                editingTeacherId === teacher.id ? null : teacher.id
+                              setEditingClassesTeacherId(
+                                editingClassesTeacherId === teacher.id ? null : teacher.id
                               )
                             }
-                            title="Edit Subjects"
-                            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors ml-1"
+                            title="Manage Class-Subject Assignments"
+                            className="p-1 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors ml-1"
                           >
-                            <BookOpen className="h-3.5 w-3.5" />
+                            <School className="h-3.5 w-3.5" />
                           </button>
                         </div>
                       </td>
@@ -546,13 +557,14 @@ const AllTeachers: React.FC = () => {
                         </div>
                       </td>
                     </tr>
-                    {/* Expandable Subject Edit Panel */}
-                    {editingTeacherId === teacher.id && (
-                      <SubjectEditPanel
+                    {/* Class-Subject Edit Panel */}
+                    {editingClassesTeacherId === teacher.id && (
+                      <ClassSubjectEditPanel
                         teacher={teacher}
+                        allClasses={allClasses}
                         allSubjects={allSubjects}
-                        onSave={handleSaveSubjects}
-                        onClose={() => setEditingTeacherId(null)}
+                        onSave={handleSaveClassSubjects}
+                        onClose={() => setEditingClassesTeacherId(null)}
                       />
                     )}
                   </React.Fragment>

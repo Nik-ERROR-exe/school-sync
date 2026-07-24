@@ -24,6 +24,7 @@ class Teacher(Base):
     role: Mapped[str] = mapped_column(String(20), default="TEACHER", nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="PENDING", nullable=False)
     max_lectures_per_day: Mapped[int] = mapped_column(Integer, default=4, nullable=False)
+    # availability: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     # --- classes_managed: no longer requires SchoolClass to have "class_teacher" ---
     # Use the foreign key column directly, no back_populates needed.

@@ -33,17 +33,17 @@ def create_student(
     current_admin: Teacher = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    # Check uniqueness per class, not globally
+    # Check if roll_no already exists in the SAME class
     existing = db.query(Student).filter(
-        Student.class_id == data.class_id,
         Student.roll_no == data.roll_no,
+        Student.class_id == data.class_id
     ).first()
     if existing:
         raise HTTPException(
-            status_code=400,
-            detail="Roll number already exists in this class.",
+            status_code=400, 
+            detail=f"Roll number {data.roll_no} already exists in this class"
         )
-
+    
     new_student = Student(
         roll_no=data.roll_no,
         name=data.name,
@@ -65,28 +65,39 @@ def update_student(
     student = db.query(Student).filter(Student.id == id).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
-
-    # Determine the effective class ID (after possible update)
-    effective_class_id = data.class_id if data.class_id is not None else student.class_id
-
-    if data.roll_no is not None:
-        # Check uniqueness in the target class (existing student excluded)
-        conflict = db.query(Student).filter(
-            Student.class_id == effective_class_id,
+    
+    if data.roll_no:
+        # Check if roll_no already exists in the SAME class (excluding current student)
+        existing = db.query(Student).filter(
             Student.roll_no == data.roll_no,
-            Student.id != id,
+            Student.class_id == student.class_id,
+            Student.id != id
         ).first()
-        if conflict:
+        if existing:
             raise HTTPException(
-                status_code=400,
-                detail="Roll number already in use in this class.",
+                status_code=400, 
+                detail=f"Roll number {data.roll_no} already exists in this class"
             )
         student.roll_no = data.roll_no
 
     if data.name is not None:
         student.name = data.name
-
-    if data.class_id is not None:
+    
+    if data.class_id:
+        # If class is changing, check if roll_no exists in the new class
+        new_class_id = data.class_id
+        roll_no_to_check = data.roll_no if data.roll_no else student.roll_no
+        
+        existing = db.query(Student).filter(
+            Student.roll_no == roll_no_to_check,
+            Student.class_id == new_class_id,
+            Student.id != id
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Roll number {roll_no_to_check} already exists in the new class"
+            )
         student.class_id = data.class_id
 
     db.commit()

@@ -19,6 +19,9 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
   const [searchQuery, setSearchQuery] = useState('');
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
+  // Teacher‑class assignments from three‑way mapping: key=teacherId, value=Set<classId>
+  const [teacherClassMap, setTeacherClassMap] = useState<Record<number, Set<number>>>({});
+
   const fetchData = async () => {
     setLoading(true);
     setError(null);
@@ -33,16 +36,24 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
       const fetchedSubjects: ApiSubject[] = subjectsRes.data;
       const fetchedClasses: ApiClass[] = classesRes.data;
 
-      // Only show active teachers
       const activeTeachers = fetchedTeachers.filter(t => t.status === 'ACTIVE');
       setTeachers(activeTeachers);
       setSubjects(fetchedSubjects);
       setClasses(fetchedClasses);
 
-      // Cache in context
+      // Build teacher -> Set of class IDs using /class-subjects endpoint
+      const map: Record<number, Set<number>> = {};
+      await Promise.all(activeTeachers.map(async (t) => {
+        try {
+          const res = await api.get(`/admin/teachers/${t.id}/class-subjects`);
+          const classIds = res.data.map((item: any) => item.class_id);
+          map[t.id] = new Set(classIds);
+        } catch { map[t.id] = new Set(); }
+      }));
+      setTeacherClassMap(map);
+
       updateState({ _teachersCache: activeTeachers, _subjectsCache: fetchedSubjects });
 
-      // Auto-detect PT subject
       if (ptSubjectId === null) {
         const ptSub = fetchedSubjects.find(
           s => s.subject_name.toLowerCase() === 'pt' || s.code.toLowerCase() === 'pt'
@@ -52,7 +63,7 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
         }
       }
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to load teachers and subjects. Make sure the backend is running.');
+      setError(err.response?.data?.detail || 'Failed to load teachers and subjects.');
     } finally {
       setLoading(false);
     }
@@ -66,6 +77,15 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
         try {
           const classesRes = await api.get('/admin/classes/');
           setClasses(classesRes.data);
+          const map: Record<number, Set<number>> = {};
+          await Promise.all(state._teachersCache.map(async (t: ApiTeacher) => {
+            try {
+              const res = await api.get(`/admin/teachers/${t.id}/class-subjects`);
+              const classIds = res.data.map((item: any) => item.class_id);
+              map[t.id] = new Set(classIds);
+            } catch { map[t.id] = new Set(); }
+          }));
+          setTeacherClassMap(map);
           setLoading(false);
         } catch (err: any) {
           setError('Failed to load classes.');
@@ -100,7 +120,8 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
   };
 
   const selectAll = () => {
-    setSelectedIds(new Set(teachers.map(t => t.id)));
+    // Select all teachers currently visible (after filtering)
+    setSelectedIds(new Set(filteredTeachers.map(t => t.id)));
     setValidationErrors([]);
   };
   const deselectAll = () => {
@@ -111,15 +132,24 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
     return subjects.find(s => s.id === subjectId)?.subject_name ?? `#${subjectId}`;
   };
 
-  const filteredTeachers = teachers.filter(t => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      t.name.toLowerCase().includes(q) ||
-      (t.teacher_id || '').toLowerCase().includes(q) ||
-      t.email.toLowerCase().includes(q)
+  // Filter teachers: if classes selected, teacher must either have at least one of those classes
+  // OR have no class assignments at all (fallback to all teachers)
+  const teachersVisible = teachers.filter(t => {
+    const matchesSearch = !searchQuery || (
+      t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (t.teacher_id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.email.toLowerCase().includes(searchQuery.toLowerCase())
     );
+    if (selectedClassIds.size === 0) return matchesSearch;
+
+    const teacherClasses = teacherClassMap[t.id];
+    if (!teacherClasses || teacherClasses.size === 0) return false;
+
+    const hasAny = Array.from(selectedClassIds).some(cid => teacherClasses.has(cid));
+    return matchesSearch && hasAny;
   });
+
+  const filteredTeachers = teachersVisible;
 
   const handleContinue = () => {
     const errors: string[] = [];
@@ -146,7 +176,7 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
     onNext();
   };
 
-  // --- Loading state (Skeleton layout) ---
+  // --- Loading / error states unchanged ---
   if (loading) {
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -155,18 +185,14 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
           <p className="text-sm text-slate-500 mt-1">Loading classes and teachers from the database…</p>
         </div>
         <div className="p-8 space-y-6">
-          {/* Skeleton for classes selector */}
           <div className="space-y-2">
             <div className="h-4 w-40 bg-slate-100 rounded animate-pulse" />
             <div className="flex gap-2 flex-wrap">
-              {[1, 2, 3, 4].map(n => (
-                <div key={n} className="h-8 w-16 bg-slate-100 rounded-full animate-pulse" />
-              ))}
+              {[1,2,3,4].map(n => (<div key={n} className="h-8 w-16 bg-slate-100 rounded-full animate-pulse" />))}
             </div>
           </div>
-          {/* Skeleton for teachers list */}
           <div className="space-y-3">
-            {[1, 2, 3, 4].map(n => (
+            {[1,2,3,4].map(n => (
               <div key={n} className="flex items-center gap-4 p-4 rounded-xl border border-slate-100 animate-pulse">
                 <div className="w-5 h-5 bg-slate-100 rounded shrink-0" />
                 <div className="flex-1 space-y-2">
@@ -182,7 +208,6 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
     );
   }
 
-  // --- Error state ---
   if (error) {
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -208,7 +233,6 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
 
   const hasTeachersWithNoSubjects = teachers.some(t => !t.subject_expertise || t.subject_expertise.length === 0);
 
-  // --- Main render ---
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="px-8 py-6 border-b border-slate-100 bg-slate-50/50">
@@ -217,7 +241,6 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
       </div>
 
       <div className="p-8 space-y-6">
-        {/* Class Selection Chips */}
         <div className="space-y-3">
           <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
             Select Classes for This Timetable *
@@ -243,7 +266,6 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
           </div>
         </div>
 
-        {/* PT Subject Selector */}
         <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-5 space-y-2">
           <label className="text-xs font-bold text-amber-900 uppercase tracking-wider block">PT (Physical Training) Subject *</label>
           <select
@@ -262,7 +284,6 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
           <p className="text-xs text-amber-700">The solver treats PT differently — multiple classes can share the ground period.</p>
         </div>
 
-        {/* Warning banner for unassigned subjects */}
         {hasTeachersWithNoSubjects && (
           <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg">
             <AlertCircle className="text-amber-500 shrink-0 mt-0.5" size={16} />
@@ -272,7 +293,6 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
           </div>
         )}
 
-        {/* Search + bulk actions */}
         <div className="flex items-center gap-4 flex-wrap">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -291,14 +311,15 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
             Deselect All
           </button>
           <span className="text-xs font-semibold text-slate-500 ml-auto">
-            {selectedIds.size} of {teachers.length} selected
+            {selectedIds.size} of {filteredTeachers.length} selected
           </span>
         </div>
 
-        {/* Teacher Cards */}
         <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
           {filteredTeachers.length === 0 && (
-            <p className="text-slate-400 text-sm text-center py-8">No teachers match your search.</p>
+            <p className="text-slate-400 text-sm text-center py-8">
+              {selectedClassIds.size > 0 ? 'No teachers assigned to the selected classes. Assign teachers to classes in Admin → Teachers.' : 'No teachers match your search.'}
+            </p>
           )}
           {filteredTeachers.map(teacher => {
             const isSelected = selectedIds.has(teacher.id);
@@ -343,7 +364,6 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
           })}
         </div>
 
-        {/* Validation Errors */}
         {validationErrors.length > 0 && (
           <div className="space-y-1.5 bg-red-50 border border-red-200 text-red-700 text-sm font-medium px-4 py-3 rounded-lg">
             {validationErrors.map((err, idx) => (

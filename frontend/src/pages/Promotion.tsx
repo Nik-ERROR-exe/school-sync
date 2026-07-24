@@ -10,10 +10,8 @@ import {
   HelpCircle, 
   CheckSquare, 
   Plus, 
-  Trash2, 
   ArrowRight,
   GraduationCap,
-  Sparkles,
   X
 } from 'lucide-react';
 
@@ -257,34 +255,32 @@ const Promotion: React.FC = () => {
                 </div>
               </div>
 
-              {/* Table */}
+              {/* Table - Only Current Class, Movement, Next Class */}
               <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm bg-white">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead className="bg-slate-50 text-slate-700 font-extrabold uppercase text-[9px] tracking-wider border-b border-slate-100">
                     <tr>
-                      <th className="px-6 py-3">Roll No</th>
-                      <th className="px-6 py-3">Student Name</th>
-                      <th className="px-6 py-3">{t('promotion.current_class')}</th>
+                      <th className="px-6 py-3">Current Class</th>
                       <th className="px-6 py-3 text-center">Movement</th>
-                      <th className="px-6 py-3">{t('promotion.next_class')}</th>
+                      <th className="px-6 py-3">Next Class</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
                     {previews.map(p => (
                       <tr key={p.studentId} className="hover:bg-slate-50/50">
-                        <td className="px-6 py-3 font-bold text-slate-400">{p.rollNo}</td>
-                        <td className="px-6 py-3 font-bold text-slate-900">{p.studentName}</td>
-                        <td className="px-6 py-3">Standard {p.currentClassName}{p.currentDivision}</td>
+                        <td className="px-6 py-3 font-medium text-slate-800">
+                          Standard {p.currentClassName}{p.currentDivision}
+                        </td>
                         <td className="px-6 py-3 text-center">
                           <ArrowRight className="h-3.5 w-3.5 mx-auto text-slate-400" />
                         </td>
                         <td className="px-6 py-3">
-                          <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                          <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${
                             p.action === 'graduate' 
-                              ? 'bg-rose-50 text-rose-700 border border-rose-100' 
-                              : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                              ? 'bg-amber-100 text-amber-700' 
+                              : 'bg-emerald-100 text-emerald-700'
                           }`}>
-                            {p.action === 'graduate' ? t('promotion.graduated') : p.nextClassName}
+                            {p.action === 'graduate' ? '🎓 Graduated' : p.nextClassName}
                           </span>
                         </td>
                       </tr>

@@ -21,6 +21,7 @@ from app.models.timetable import TimetableSlot
 from app.models.teacher import Teacher
 from app.models.school_class import SchoolClass
 from app.models.weekly_requirement import WeeklyRequirement
+from app.models.teacher_class_subject import TeacherClassSubject
 from app.core.exceptions import ValidationException
 
 router = APIRouter(
@@ -140,6 +141,15 @@ def generate_timetable(
         for s in existing_slots_db
     ]
 
+    # Load 3-way teacher-class-subject mappings from DB
+    tcs_rows = db.execute(select(TeacherClassSubject)).scalars().all()
+    class_subject_teachers = {}
+    for row in tcs_rows:
+        key = (row.class_id, row.subject_id)
+        if key not in class_subject_teachers:
+            class_subject_teachers[key] = []
+        class_subject_teachers[key].append(row.teacher_id)
+
     solver_input = SolverInput(
         teachers=solver_teachers,
         classes=solver_classes,
@@ -148,7 +158,8 @@ def generate_timetable(
         periods_per_day=req.periods_per_day,
         lunch_period=req.lunch_period,
         pt_subject_id=req.pt_subject_id,
-        existing_slots=solver_existing_slots
+        existing_slots=solver_existing_slots,
+        class_subject_teachers=class_subject_teachers
     )
 
     solver = TimetableSolver(solver_input)
@@ -275,4 +286,4 @@ def get_timetable_settings(db: Session = Depends(get_db)):
         "period_duration": existing.period_duration,
         "lunch_period": existing.lunch_period,
         "pt_subject_id": existing.pt_subject_id,
-    }
+    }

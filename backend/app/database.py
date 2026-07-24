@@ -16,8 +16,8 @@ engine = create_engine(
     _db_url,
     pool_pre_ping=True,       # Test connection before using — detects dead connections
     pool_recycle=280,         # Recycle connections every 280 seconds (Render kills at ~300s)
-    pool_size=5,              # Keep pool small — Render free tier max is 25 total
-    max_overflow=10,          # Allow up to 10 extra connections on burst
+    pool_size=15,             # Keep pool ready for concurrent queries
+    max_overflow=10,          # Allow extra connections on burst
     connect_args={
         "sslmode": "prefer" if is_local else "require",         # Prefer for local, require for Render
         "connect_timeout": 10,        # Don't wait forever if connection fails

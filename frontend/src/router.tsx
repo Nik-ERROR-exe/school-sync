@@ -8,13 +8,13 @@ import DashboardHome from './pages/DashboardHome';
 import Results from './pages/Results';
 import Timetable from './pages/Timetable';
 import Substitute from './pages/Substitute';
+import Students from './pages/admin/Students';
 import Promotion from './pages/Promotion';
 import Settings from './pages/Settings';
 import Register from './pages/Register';
 import PendingTeachers from './pages/admin/PendingTeachers';
 import AllTeachers from './pages/admin/AllTeachers';
 import ClassManagement from './pages/admin/ClassManagement';
-import Students from './pages/admin/Students';
 import ClassSubjectMapping from './pages/admin/ClassSubjectMapping';
 import Profile from './pages/teacher/Profile';
 import ResultsEntry from './pages/teacher/ResultsEntry'; // Teacher's result entry page
@@ -127,6 +127,12 @@ const substituteRoute = createRoute({
   component: Substitute,
 });
 
+const studentsRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/admin/students',
+  component: Students,
+});
+
 const promotionRoute = createRoute({
   getParentRoute: () => dashboardLayoutRoute,
   path: '/promotion',
@@ -163,12 +169,6 @@ const teacherProfileRoute = createRoute({
   component: Profile,
 });
 
-const studentsRoute = createRoute({
-  getParentRoute: () => dashboardLayoutRoute,
-  path: '/admin/students',
-  component: Students,
-});
-
 const classSubjectMappingRoute = createRoute({
   getParentRoute: () => dashboardLayoutRoute,
   path: '/admin/class-subject-mapping',
@@ -186,13 +186,13 @@ const routeTree = rootRoute.addChildren([
     resultsEntryRoute,     // Teacher: /teacher/results-entry
     timetableRoute,
     substituteRoute,
+    studentsRoute,
     promotionRoute,
     settingsRoute,
     pendingTeachersRoute,
     allTeachersRoute,
     classManagementRoute,
     teacherProfileRoute,
-    studentsRoute,           
     classSubjectMappingRoute, 
   ]),
 ]);

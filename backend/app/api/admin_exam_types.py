@@ -4,15 +4,16 @@ from sqlalchemy.future import select
 from typing import List
 from app.database import get_db
 from app.api.deps import require_admin
-from app.schemas.exam_type import ExamTypeCreate, ExamTypeResponse
 from app.models.exam_type import ExamType
-from app.core.exceptions import ResourceNotFoundException
+from app.schemas.exam_type import ExamTypeCreate, ExamTypeUpdate, ExamTypeResponse
+from app.core.exceptions import ResourceNotFoundException, ConflictException
 
 router = APIRouter(
     prefix="/admin/exam-types",
-    tags=["Admin - Exam Type Management"],
+    tags=["Admin - Exam Types"],
     dependencies=[Depends(require_admin)]
 )
+
 
 @router.post("/", response_model=ExamTypeResponse, status_code=status.HTTP_201_CREATED)
 def create_exam_type(data: ExamTypeCreate, db: Session = Depends(get_db)):

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 @dataclass
 class SolverTeacher:
@@ -40,3 +40,4 @@ class SolverInput:
     lunch_period: Optional[int]
     pt_subject_id: int
     existing_slots: List[SolverSlot] = field(default_factory=list)
+    class_subject_teachers: Dict[Tuple[int, int], List[int]] = field(default_factory=dict)  # (class_id, subject_id) -> [teacher_ids]

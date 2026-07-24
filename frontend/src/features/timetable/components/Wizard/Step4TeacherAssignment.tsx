@@ -74,13 +74,14 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
 
       onGenerateComplete(response.data.schedule, state);
     } catch (err: any) {
+      console.error('Generate error:', err.response?.data || err.message);
       const detail = err.response?.data?.detail;
       if (typeof detail === 'string') {
         setError(detail);
       } else if (Array.isArray(detail)) {
         setError(detail.map((d: any) => d.msg).join('; '));
       } else {
-        setError('Timetable generation failed. Please go back and adjust your settings.');
+        setError(err.response?.data?.detail || err.message || 'Timetable generation failed. Please go back and adjust your settings.');
       }
       setIsGenerating(false);
     }

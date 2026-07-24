@@ -3,19 +3,19 @@ import { Link, useRouterState } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import api from '../api';
-import { 
-  LayoutDashboard, 
-  FileSpreadsheet, 
-  Clock, 
-  UserCheck, 
-  ArrowUpCircle, 
-  Settings, 
+import {
+  LayoutDashboard,
+  FileSpreadsheet,
+  Clock,
+  UserCheck,
+  ArrowUpCircle,
+  Settings,
   LogOut,
   X,
   GraduationCap,
   Users,
   UserPlus,
-  UserCircle
+  UserCircle,
 } from 'lucide-react';
 
 const Sidebar: React.FC = () => {
@@ -64,15 +64,15 @@ const Sidebar: React.FC = () => {
     // TEACHER ONLY: Results Entry
     {
       to: '/teacher/results-entry',
-      label: ' Enter Results',
+      label: 'Enter Results',
       icon: FileSpreadsheet,
       roles: ['TEACHER'],
       badge: null,
     },
-    // ADMIN ONLY: Results Review
+    // ADMIN: Review & Approve Results (existing page)
     {
       to: '/admin/results',
-      label: ' Review Results',
+      label: 'Review Results',
       icon: FileSpreadsheet,
       roles: ['ADMIN'],
       badge: null,
@@ -101,7 +101,7 @@ const Sidebar: React.FC = () => {
     // Admin Only: Student Management
     {
       to: '/admin/students',
-      label: ' Students',
+      label: 'Students',
       icon: Users,
       roles: ['ADMIN'],
       badge: null,
@@ -109,21 +109,21 @@ const Sidebar: React.FC = () => {
     // Admin Only: Class-Subject Mapping
     {
       to: '/admin/class-subject-mapping',
-      label: ' Class-Subject',
+      label: 'Class-Subject',
       icon: Users,
       roles: ['ADMIN'],
       badge: null,
     },
     {
       to: '/admin/teachers/pending',
-      label: ' Pending Approvals',
+      label: 'Pending Approvals',
       icon: UserPlus,
       roles: ['ADMIN'],
       badge: pendingCount > 0 ? pendingCount : null,
     },
     {
       to: '/admin/teachers',
-      label: '👨 All Teachers',
+      label: 'All Teachers',
       icon: Users,
       roles: ['ADMIN'],
       badge: null,
@@ -137,7 +137,7 @@ const Sidebar: React.FC = () => {
     },
     {
       to: '/teacher/profile',
-      label: ' My Profile',
+      label: 'My Profile',
       icon: UserCircle,
       roles: ['TEACHER', 'ADMIN'],
       badge: null,
@@ -157,17 +157,19 @@ const Sidebar: React.FC = () => {
     <>
       {/* Mobile Drawer Overlay */}
       {isOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-sm md:hidden"
           onClick={() => setIsOpen(false)}
         />
       )}
 
       {/* Sidebar Container */}
-      <aside className={`
+      <aside
+        className={`
         fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-slate-950 text-slate-300 transition-transform duration-300 ease-in-out md:static md:translate-x-0
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-      `}>
+      `}
+      >
         {/* Sidebar Header */}
         <div className="flex h-16 items-center justify-between px-6 border-b border-slate-800/60">
           <Link to="/dashboard" className="flex items-center gap-2">
@@ -176,7 +178,7 @@ const Sidebar: React.FC = () => {
               Amarkor ERP
             </span>
           </Link>
-          <button 
+          <button
             onClick={() => setIsOpen(false)}
             className="rounded p-1 text-slate-400 hover:bg-slate-900 hover:text-white md:hidden"
           >
@@ -190,20 +192,27 @@ const Sidebar: React.FC = () => {
             .filter(item => user && item.roles.includes(user.role))
             .map(item => {
               const Icon = item.icon;
-              const isActive = activePath === item.to || activePath.startsWith(item.to + '/');
+              const isActive =
+                activePath === item.to || activePath.startsWith(item.to + '/');
               return (
                 <Link
                   key={item.to}
                   to={item.to}
                   className={`
                     flex items-center justify-between gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200
-                    ${isActive 
-                      ? 'bg-accent text-white shadow-lg shadow-accent/20' 
-                      : 'hover:bg-slate-900 hover:text-white text-slate-400'}
+                    ${
+                      isActive
+                        ? 'bg-accent text-white shadow-lg shadow-accent/20'
+                        : 'hover:bg-slate-900 hover:text-white text-slate-400'
+                    }
                   `}
                 >
                   <div className="flex items-center gap-3">
-                    <Icon className={`h-4 w-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                    <Icon
+                      className={`h-4 w-4 ${
+                        isActive ? 'text-white' : 'text-slate-400'
+                      }`}
+                    />
                     <span>{item.label}</span>
                   </div>
                   {item.badge !== null && (
@@ -224,8 +233,12 @@ const Sidebar: React.FC = () => {
                 {user.name.charAt(0)}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-white truncate">{user.name}</p>
-                <p className="text-[10px] text-slate-500 truncate mb-1">{user.email}</p>
+                <p className="text-xs font-semibold text-white truncate">
+                  {user.name}
+                </p>
+                <p className="text-[10px] text-slate-500 truncate mb-1">
+                  {user.email}
+                </p>
                 <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-900 text-accent border border-accent/20 uppercase">
                   {user.role}
                 </span>

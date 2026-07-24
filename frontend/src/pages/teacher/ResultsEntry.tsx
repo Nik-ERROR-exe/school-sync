@@ -100,6 +100,7 @@ const ResultsEntry: React.FC = () => {
     if (percentage >= 70) return 'B';
     if (percentage >= 60) return 'C';
     if (percentage >= 50) return 'D';
+    if (percentage >= 40) return 'E';
     return 'F';
   };
 
@@ -166,6 +167,7 @@ const ResultsEntry: React.FC = () => {
       toast.success('Results submitted successfully!');
       setMarks({});
     } catch (error: any) {
+      console.error('❌ Submit error:', error);
       toast.error(error.response?.data?.detail || 'Failed to submit results');
     } finally {
       setLoading(false);

@@ -45,6 +45,13 @@ class ResultResponse(BaseModel):
     status: str
     submitted_by_id: int
     approved_by_id: Optional[int] = None
+    student_roll_no: Optional[str] = None
+    student_name: Optional[str] = None
+    student_class: Optional[str] = None
+    student_division: Optional[str] = None
+    subject_name: Optional[str] = None
+    subject_code: Optional[str] = None
+    exam_type_name: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -62,11 +69,13 @@ class ResultCreate(BaseModel):
 class ResultBatchCreate(BaseModel):
     results: List[ResultCreate]
 
+# --- Result Update Schemas ---
 class ResultUpdate(BaseModel):
     marks_obtained: Optional[float] = None
     total_marks: Optional[float] = None
     status: Optional[str] = None
 
+# --- Result Approval Schema ---
 class ResultApproval(BaseModel):
     status: Optional[str] = None
     approved: Optional[bool] = None
