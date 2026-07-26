@@ -16,6 +16,8 @@ import {
   Users,
   UserPlus,
   UserCircle,
+  UserMinus,
+  BookOpen,
 } from 'lucide-react';
 
 const Sidebar: React.FC = () => {
@@ -84,11 +86,20 @@ const Sidebar: React.FC = () => {
       roles: ['ADMIN', 'TEACHER'],
       badge: null,
     },
+    // ADMIN: Substitute Management (future slots)
     {
-      to: '/substitute',
-      label: t('common.substitute'),
-      icon: UserCheck,
-      roles: ['ADMIN', 'TEACHER'],
+      to: '/admin/substitute',
+      label: 'Substitute Mgmt',
+      icon: UserMinus,
+      roles: ['ADMIN'],
+      badge: null,
+    },
+    // Teacher only: My Substitutions
+    {
+      to: '/teacher/substitute',
+      label: 'My Substitutions',
+      icon: BookOpen,
+      roles: ['TEACHER'],
       badge: null,
     },
     {
