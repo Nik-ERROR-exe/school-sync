@@ -1,141 +1,142 @@
-import { SubstituteAssignment, SubstituteNotification } from '../types';
-import { initialSubstituteAssignments, initialNotifications } from '../mockData';
-import { TimetableService } from '../../timetable/services';
-import { initialSubjects, initialClasses } from '../../results/mockData';
-import { TimetableTeacher } from '../../timetable/mockData';
+import api from '../../../api';
+import { SubstituteAssignment, AffectedPeriod, AvailableTeacher } from '../types';
 
-const initializeSubstituteDB = () => {
-  if (!localStorage.getItem('substitute_assignments')) {
-    localStorage.setItem('substitute_assignments', JSON.stringify(initialSubstituteAssignments));
-  }
-  if (!localStorage.getItem('substitute_notifications')) {
-    localStorage.setItem('substitute_notifications', JSON.stringify(initialNotifications));
-  }
-};
-
-initializeSubstituteDB();
+interface AvailableTeachersResponse {
+  class_id: number;
+  class_name: string;
+  division: string;
+  subject_id: number;
+  subject_name: string | null;
+  available_teachers: AvailableTeacher[];
+}
 
 export const SubstituteService = {
-  getAssignments: async (): Promise<SubstituteAssignment[]> => {
-    return JSON.parse(localStorage.getItem('substitute_assignments') || '[]');
+  getAssignments: async (role?: string): Promise<SubstituteAssignment[]> => {
+    const url = role === 'ADMIN'
+      ? '/admin/substitute'
+      : '/teacher/timetable/substitutions';
+    const response = await api.get(url);
+    return response.data;
   },
 
-  getNotifications: async (): Promise<SubstituteNotification[]> => {
-    return JSON.parse(localStorage.getItem('substitute_notifications') || '[]');
+  getAffectedPeriods: async (
+    date: string,
+    absentTeacherId: number
+  ): Promise<{
+    class_id: number;
+    class_name: string;
+    division: string;
+    subject_id: number;
+    subject_name: string | null;
+    period_number: number;
+  }[]> => {
+    const response = await api.get('/admin/substitute/affected-periods', {
+      params: { date, absent_teacher_id: absentTeacherId }
+    });
+    return response.data;
   },
 
-  markNotificationAsRead: async (notificationId: number): Promise<boolean> => {
-    const notifications: SubstituteNotification[] = JSON.parse(localStorage.getItem('substitute_notifications') || '[]');
-    const index = notifications.findIndex(n => n.id === notificationId);
-    if (index !== -1) {
-      notifications[index].read = true;
-      localStorage.setItem('substitute_notifications', JSON.stringify(notifications));
-      return true;
-    }
-    return false;
+  getFutureAffectedPeriods: async (
+    absentTeacherId: number,
+    dayOfWeek: string
+  ): Promise<{
+    class_id: number;
+    class_name: string;
+    division: string;
+    subject_id: number;
+    subject_name: string | null;
+    period_number: number;
+    day_of_week: string;
+  }[]> => {
+    const response = await api.get('/admin/substitute/affected-periods', {
+      params: { absent_teacher_id: absentTeacherId, day_of_week: dayOfWeek }
+    });
+    return response.data;
   },
 
-  // Core substitution engine: Find teachers who are FREE (not teaching in timetable) in dayOfWeek & periodNumber
   getAvailableTeachers: async (
-    classId: number,
-    dayOfWeek: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday',
+    date: string,
     periodNumber: number,
-    subjectId: number
-  ): Promise<{ teacher: TimetableTeacher; isExpert: boolean; availabilityText: string }[]> => {
-    const allTeachers = await TimetableService.getTeachers();
-    const timetable = await TimetableService.getTimetable();
-    
-    // Find who is teaching during this slot
-    const busyTeacherIds = timetable
-      .filter(s => s.day_of_week === dayOfWeek && s.period_number === periodNumber)
-      .map(s => s.teacher_id);
-
-    const available: { teacher: TimetableTeacher; isExpert: boolean; availabilityText: string }[] = [];
-
-    allTeachers.forEach(teacher => {
-      // Check if teacher is busy
-      const isBusy = busyTeacherIds.includes(teacher.id);
-      if (isBusy) return;
-
-      // Check if teacher availability list includes this period
-      const availablePeriods = teacher.availability[dayOfWeek] || [];
-      const isScheduledAvailable = availablePeriods.includes(periodNumber);
-      if (!isScheduledAvailable) return;
-
-      // Check subject expertise
-      const isExpert = teacher.subjects.includes(subjectId);
-      
-      // Determine availability description
-      const expertiseList = teacher.subjects.map(sid => {
-        const sub = initialSubjects.find(s => s.id === sid);
-        return sub ? sub.subject_name : `Subject #${sid}`;
-      });
-
-      available.push({
-        teacher,
-        isExpert,
-        availabilityText: `Free, Teaches: ${expertiseList.join(', ')} (Max: ${teacher.max_lectures_per_day} lecs/day)`
-      });
+    absentTeacherId: number
+  ): Promise<AvailableTeachersResponse> => {
+    const response = await api.get('/admin/substitute/available', {
+      params: {
+        date,
+        period_number: periodNumber,
+        absent_teacher_id: absentTeacherId
+      }
     });
+    return response.data;
+  },
 
-    // Sort available teachers: Experts first, then others
-    return available.sort((a, b) => {
-      if (a.isExpert && !b.isExpert) return -1;
-      if (!a.isExpert && b.isExpert) return 1;
-      return a.teacher.name.localeCompare(b.teacher.name);
+  getAvailableTeachersForFutureSlot: async (
+    classId: number,
+    dayOfWeek: string,
+    period: number,
+    subjectId: number,
+    excludeTeacherId: number
+  ): Promise<{
+    class_id: number;
+    day_of_week: string;
+    period_number: number;
+    subject_id: number;
+    available_teachers: AvailableTeacher[];
+  }> => {
+    const response = await api.get('/admin/substitute/available-teachers', {
+      params: {
+        class_id: classId,
+        day_of_week: dayOfWeek,
+        period,
+        subject_id: subjectId,
+        exclude_teacher_id: excludeTeacherId
+      }
     });
+    return response.data;
   },
 
   assignSubstitute: async (
-    classId: number,
-    dayOfWeek: string,
+    date: string,
     periodNumber: number,
+    classId: number,
+    subjectId: number,
     originalTeacherId: number,
-    substituteTeacherId: number,
-    subjectId: number
+    substituteTeacherId: number
   ): Promise<SubstituteAssignment> => {
-    const assignments: SubstituteAssignment[] = JSON.parse(localStorage.getItem('substitute_assignments') || '[]');
-    const notifications: SubstituteNotification[] = JSON.parse(localStorage.getItem('substitute_notifications') || '[]');
-    
-    const nextId = assignments.length > 0 ? Math.max(...assignments.map(a => a.id)) + 1 : 1;
-    const nextNotifId = notifications.length > 0 ? Math.max(...notifications.map(n => n.id)) + 1 : 1;
-    
-    const todayStr = new Date().toISOString().split('T')[0];
-
-    const newAssignment: SubstituteAssignment = {
-      id: nextId,
-      date: todayStr,
-      class_id: classId,
+    const response = await api.post('/admin/substitute/', {
+      date,
       period_number: periodNumber,
-      original_teacher_id: originalTeacherId,
-      substitute_teacher_id: substituteTeacherId,
+      class_id: classId,
       subject_id: subjectId,
-      status: 'notified'
-    };
+      original_teacher_id: originalTeacherId,
+      substitute_teacher_id: substituteTeacherId
+    });
+    return response.data;
+  },
 
-    // Get helper names
-    const schoolClass = initialClasses.find(c => c.id === classId);
-    const className = schoolClass ? `${schoolClass.class_name}${schoolClass.division}` : `Class #${classId}`;
-    const subject = initialSubjects.find(s => s.id === subjectId);
-    const subjectName = subject ? subject.subject_name : `Subject #${subjectId}`;
+  assignFutureSubstitutes: async (
+    originalTeacherId: number,
+    assignments: {
+      class_id: number;
+      subject_id: number;
+      day_of_week: string;
+      period_number: number;
+      substitute_teacher_id: number;
+    }[]
+  ): Promise<SubstituteAssignment[]> => {
+    const response = await api.post('/admin/substitute/assign', {
+      original_teacher_id: originalTeacherId,
+      assignments
+    });
+    return response.data;
+  },
 
-    const newNotification: SubstituteNotification = {
-      id: nextNotifId,
-      message: `You are assigned Class ${className} Subject ${subjectName} Period ${periodNumber}`,
-      timestamp: new Date().toISOString(),
-      read: false,
-      class_id: classId,
-      period_number: periodNumber,
-      subject_id: subjectId
-    };
+  getNotifications: async (): Promise<any[]> => {
+    const response = await api.get('/teacher/timetable/substitutions');
+    return response.data;
+  },
 
-    // Save to local storage
-    assignments.push(newAssignment);
-    notifications.push(newNotification);
-
-    localStorage.setItem('substitute_assignments', JSON.stringify(assignments));
-    localStorage.setItem('substitute_notifications', JSON.stringify(notifications));
-
-    return newAssignment;
+  markNotificationAsRead: async (id: number): Promise<any> => {
+    const response = await api.put(`/notifications/${id}`);
+    return response.data;
   }
 };
