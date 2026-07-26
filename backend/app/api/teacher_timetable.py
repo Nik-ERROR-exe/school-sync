@@ -59,10 +59,13 @@ def get_substitute_assignments(
             SubstituteAssignmentResponse(
                 id=a.id,
                 date=a.date,
+                day_of_week=a.day_of_week,
                 period_number=a.period_number,
                 class_id=a.class_id,
+                subject_id=a.subject_id,
                 class_name=a.school_class.class_name,
                 division=a.school_class.division,
+                subject_name=a.subject.subject_name if a.subject else None,
                 original_teacher_id=a.original_teacher_id,
                 original_teacher_name=a.original_teacher.name,
                 substitute_teacher_id=a.substitute_teacher_id,
