@@ -8,6 +8,7 @@ import DashboardHome from './pages/DashboardHome';
 import Results from './pages/Results';
 import Timetable from './pages/Timetable';
 import Substitute from './pages/Substitute';
+import SubstituteManagement from './pages/admin/SubstituteManagement';
 import Students from './pages/admin/Students';
 import Promotion from './pages/Promotion';
 import Settings from './pages/Settings';
@@ -127,6 +128,19 @@ const substituteRoute = createRoute({
   component: Substitute,
 });
 
+const substituteManagementRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/admin/substitute',
+  component: SubstituteManagement,
+});
+
+// Teacher-only substitute route
+const teacherSubstituteRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/teacher/substitute',
+  component: Substitute,
+});
+
 const studentsRoute = createRoute({
   getParentRoute: () => dashboardLayoutRoute,
   path: '/admin/students',
@@ -186,6 +200,8 @@ const routeTree = rootRoute.addChildren([
     resultsEntryRoute,     // Teacher: /teacher/results-entry
     timetableRoute,
     substituteRoute,
+    substituteManagementRoute,
+    teacherSubstituteRoute,
     studentsRoute,
     promotionRoute,
     settingsRoute,
