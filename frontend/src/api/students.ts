@@ -19,6 +19,21 @@ export interface StudentUpdate {
   class_id?: number;
 }
 
+export interface BulkRowResult {
+  row_number: number;
+  roll_no?: string;
+  name?: string;
+  status: 'inserted' | 'skipped';
+  reason?: string;
+}
+
+export interface StudentBulkUploadResponse {
+  total_rows: number;
+  inserted: number;
+  skipped: number;
+  results: BulkRowResult[];
+}
+
 export const studentApi = {
   // Get all students - uses teacher endpoint if class_id provided
   getStudents: async (class_id?: number, search?: string): Promise<Student[]> => {
@@ -56,5 +71,20 @@ export const studentApi = {
   // Delete a student
   deleteStudent: async (id: number): Promise<void> => {
     await api.delete(`/admin/students/${id}`);
+  },
+
+  // Bulk upload students from an .xlsx/.csv file
+  uploadStudents: async (file: File, defaultClassId?: number): Promise<StudentBulkUploadResponse> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (defaultClassId) formData.append('default_class_id', String(defaultClassId));
+    const response = await api.post('/admin/students/upload', formData);
+    return response.data;
+  },
+
+  // Download an .xlsx template for bulk upload
+  downloadTemplate: async (): Promise<Blob> => {
+    const response = await api.get('/admin/students/template', { responseType: 'blob' });
+    return response.data;
   }
 };
