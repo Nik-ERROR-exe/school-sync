@@ -30,19 +30,6 @@ const StudentRegistry = () => {
   fetchData();
 }, []);
 
-    // Fetch students
-    const fetchStudents = async () => {
-      try {
-        const response = await api.get('/admin/students');
-        console.log('✅ Students loaded:', response.data);
-        setStudents(response.data.students || []);
-      } catch (err) {
-        console.error('❌ Error fetching students:', err);
-      }
-    };
-    fetchStudents();
-  }, []);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     console.log('📤 Submitting form:', formData);
