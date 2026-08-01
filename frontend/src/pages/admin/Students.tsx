@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { toast } from 'react-hot-toast';
 import { Plus, Edit, Trash2, Search, X, Upload, Download } from 'lucide-react';
 import { studentApi, Student, StudentCreate, StudentBulkUploadResponse } from '../../api/students';
@@ -159,7 +160,7 @@ const Students: React.FC = () => {
             className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
           >
             <Upload className="h-4 w-4" />
-            Bulk Upload
+            Upload Excel
           </button>
           <button
             onClick={handleAdd}
@@ -236,7 +237,7 @@ const Students: React.FC = () => {
         </div>
       </div>
       
-      {isModalOpen && (
+      {isModalOpen && createPortal(
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-md">
             <div className="flex justify-between items-center mb-4">
@@ -299,10 +300,11 @@ const Students: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {isUploadOpen && (
+      {isUploadOpen && createPortal(
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
@@ -384,7 +386,8 @@ const Students: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
