@@ -17,10 +17,21 @@ export interface PromotionResult {
   graduated_count: number;
 }
 
+export interface PromotionSummaryItem {
+  class_name: string;
+  total_students: number;
+}
+
 export const promotionApi = {
   // Get promotion preview
   getPreview: async (): Promise<PromotionPreview[]> => {
     const response = await api.get('/admin/promotion/preview');
+    return response.data;
+  },
+
+  // Get total students per standard (across all divisions)
+  getSummary: async (): Promise<PromotionSummaryItem[]> => {
+    const response = await api.get('/admin/promotion/summary');
     return response.data;
   },
 

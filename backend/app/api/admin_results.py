@@ -13,6 +13,7 @@ from app.models.exam_type import ExamType
 from app.models.school_class import SchoolClass, class_subjects
 from app.schemas.result import ResultBatchCreate, ResultResponse, ResultUpdate
 from app.services.result_service import calculate_grade_and_percentage, create_result_batch
+from app.services.report_service import generate_results_excel
 import csv
 import io
 
@@ -258,26 +259,48 @@ def update_result(
 def export_results(
     class_id: int = Query(...),
     exam_type_id: int = Query(...),
+    format: str = Query("csv"),
     db: Session = Depends(get_db)
 ):
-    """Export results as CSV for a class and exam type."""
-    # Fetch results similar to class/exam endpoint
+    """Export results for a class and exam type as CSV or Excel (.xlsx)."""
+    # Fetch results similar to the class/exam endpoint. Subject is loaded via
+    # joinedload (aliased to subjects_1 in SQL), so it must NOT be referenced
+    # in ORDER BY — sorting by subject is done in Python instead.
     stmt = (
         select(Result)
         .options(
-            joinedload(Result.student),
+            joinedload(Result.student).joinedload(Student.school_class),
             joinedload(Result.subject),
+            joinedload(Result.exam_type),
         )
         .join(Result.student)
         .where(
             Student.class_id == class_id,
             Result.exam_type_id == exam_type_id,
         )
-        .order_by(Student.roll_no, Subject.subject_name)
+        .order_by(Student.roll_no)
     )
     results = db.execute(stmt).scalars().unique().all()
 
-    # Build CSV
+    # Sort by roll number, then subject name (avoid UndefinedColumn on the
+    # joinedload-aliased subjects table).
+    results = sorted(
+        results,
+        key=lambda r: (
+            r.student.roll_no if r.student else "",
+            r.subject.subject_name if r.subject else "",
+        ),
+    )
+
+    if format == "excel":
+        buffer = generate_results_excel(results)
+        return StreamingResponse(
+            iter([buffer.getvalue()]),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=results_class{class_id}_exam{exam_type_id}.xlsx"}
+        )
+
+    # Build CSV (default)
     output = io.StringIO()
     writer = csv.writer(output)
     # Header

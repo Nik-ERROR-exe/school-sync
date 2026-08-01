@@ -9,3 +9,8 @@ export interface PromotionPreview {
   nextClassName: string;      // e.g. '2A' or 'Graduated'
   action: 'promote' | 'graduate';
 }
+
+export interface PromotionSummaryItem {
+  class_name: string;
+  total_students: number;
+}

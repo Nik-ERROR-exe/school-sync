@@ -270,12 +270,13 @@ const Results: React.FC = () => {
       const response = await api.get('/admin/results/export', {
         params: {
           class_id: selectedClass,
-          exam_type_id: selectedExam
+          exam_type_id: selectedExam,
+          format: 'excel'
         },
         responseType: 'blob'
       });
       const contentDisposition = response.headers['content-disposition'];
-      let filename = 'results.csv';
+      let filename = 'results.xlsx';
       if (contentDisposition) {
         const match = contentDisposition.match(/filename="?([^"]+)"?/);
         if (match) filename = match[1];
@@ -291,7 +292,22 @@ const Results: React.FC = () => {
       toast.success(`File downloaded: ${filename}`);
     } catch (error: any) {
       console.error('Download error:', error);
-      toast.error(error.response?.data?.detail || 'Failed to download file');
+      // responseType: 'blob' hides JSON errors, so read the blob body for the detail
+      let message = 'Failed to download file';
+      try {
+        const blob = error.response?.data;
+        if (blob && blob instanceof Blob) {
+          const parsed = JSON.parse(await blob.text());
+          if (typeof parsed?.detail === 'string') {
+            message = parsed.detail;
+          } else if (Array.isArray(parsed?.detail) && parsed.detail.length > 0) {
+            message = parsed.detail.map((d: any) => d?.msg ?? 'Invalid field').join('; ');
+          }
+        }
+      } catch {
+        // not JSON — keep fallback message
+      }
+      toast.error(message);
     } finally {
       setDownloading(false);
     }

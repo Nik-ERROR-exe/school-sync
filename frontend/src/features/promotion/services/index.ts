@@ -1,4 +1,4 @@
-import { PromotionPreview } from '../types';
+import { PromotionPreview, PromotionSummaryItem } from '../types';
 import { studentApi, Student } from '../../../api/students';
 import { classApi, Class } from '../../../api/classes';
 import { promotionApi } from '../../../api/promotion';
@@ -8,15 +8,15 @@ export const PromotionService = {
     try {
       // Try to get data from backend first
       const data = await promotionApi.getPreview();
-      
+
       // Map backend response to frontend format
       return data.map(item => ({
         studentId: item.student_id,
         studentName: item.student_name,
         rollNo: item.roll_no,
         currentClassId: 0,
-        currentClassName: item.current_class.replace(/[0-9]/g, ''),
-        currentDivision: item.current_class.replace(/[^0-9]/g, ''),
+        currentClassName: item.current_class.replace(/[^0-9]/g, ''),
+        currentDivision: item.current_class.replace(/[0-9]/g, ''),
         nextClassId: item.next_class_id || null,
         nextClassName: item.next_class,
         action: item.action
@@ -25,6 +25,10 @@ export const PromotionService = {
       console.error('Failed to get promotion preview from backend, using fallback:', error);
       return this.getPromotionPreviewFallback();
     }
+  },
+
+  getPromotionSummary: async (): Promise<PromotionSummaryItem[]> => {
+    return promotionApi.getSummary();
   },
 
   // Keep existing fallback logic
