@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
 import api from '../../api';
 
+// Marks range rule: entered marks must be between 35 and 100.
+const MIN_MARKS = 35;
+const MAX_MARKS = 100;
+
 interface Class {
   id: number;
   class_name: string;
@@ -139,22 +143,26 @@ const ResultsEntry: React.FC = () => {
       return;
     }
 
+    const maxAllowed = Math.min(totalMarks, MAX_MARKS);
     const resultsData: any[] = [];
-    students.forEach(student => {
-      subjects.forEach(subject => {
+    for (const student of students) {
+      for (const subject of subjects) {
         const rawMark = getMark(student.id, subject.id);
-        if (rawMark !== '') {
-          const mark = parseFloat(rawMark);
-          resultsData.push({
-            student_id: student.id,
-            subject_id: subject.id,
-            exam_type_id: Number(selectedExam),
-            marks_obtained: isNaN(mark) ? 0 : Math.min(Math.max(0, mark), totalMarks),
-            total_marks: totalMarks,
-          });
+        if (rawMark === '') continue;
+        const mark = parseFloat(rawMark);
+        if (isNaN(mark) || mark < MIN_MARKS || mark > maxAllowed) {
+          toast.error(`Marks for ${student.name} (${subject.subject_name}) must be between ${MIN_MARKS} and ${maxAllowed}.`);
+          return;
         }
-      });
-    });
+        resultsData.push({
+          student_id: student.id,
+          subject_id: subject.id,
+          exam_type_id: Number(selectedExam),
+          marks_obtained: mark,
+          total_marks: totalMarks,
+        });
+      }
+    }
 
     if (resultsData.length === 0) {
       toast.error('Please enter marks for at least one student and subject');
@@ -168,7 +176,7 @@ const ResultsEntry: React.FC = () => {
       setMarks({});
     } catch (error: any) {
       console.error('❌ Submit error:', error);
-      toast.error(error.response?.data?.detail || 'Failed to submit results');
+      toast.error(error.response?.data?.detail?.message || error.response?.data?.detail || 'Failed to submit results');
     } finally {
       setLoading(false);
     }
@@ -225,9 +233,10 @@ const ResultsEntry: React.FC = () => {
             <input
               type="number"
               value={totalMarks}
-              onChange={(e) => setTotalMarks(Math.max(1, Number(e.target.value)))}
+              onChange={(e) => setTotalMarks(Math.max(MIN_MARKS, Math.min(MAX_MARKS, Number(e.target.value))))}
               className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              min={1}
+              min={MIN_MARKS}
+              max={MAX_MARKS}
               disabled={!selectedClass}
             />
           </div>
@@ -308,8 +317,8 @@ const ResultsEntry: React.FC = () => {
                           <td key={subject.id} className="px-2 py-2 text-center border-r">
                             <input
                               type="number"
-                              min={0}
-                              max={totalMarks}
+                              min={MIN_MARKS}
+                              max={Math.min(totalMarks, MAX_MARKS)}
                               value={getMark(student.id, subject.id)}
                               onChange={(e) => handleMarkChange(student.id, subject.id, e.target.value)}
                               placeholder="—"
