@@ -78,7 +78,12 @@ export const studentApi = {
     const formData = new FormData();
     formData.append('file', file);
     if (defaultClassId) formData.append('default_class_id', String(defaultClassId));
-    const response = await api.post('/admin/students/upload', formData);
+    // Clear the instance's application/json default so axios sends multipart
+    // with a browser-set boundary (otherwise FormData is JSON-serialized and
+    // the server receives no `file` field -> 422).
+    const response = await api.post('/admin/students/upload', formData, {
+      headers: { 'Content-Type': undefined },
+    });
     return response.data;
   },
 
