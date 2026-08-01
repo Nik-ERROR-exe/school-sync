@@ -11,8 +11,8 @@ from app.models.student import Student
 from app.models.subject import Subject
 from app.models.exam_type import ExamType
 from app.models.school_class import SchoolClass, class_subjects
-from app.schemas.result import ResultResponse, ResultUpdate
-from app.services.result_service import calculate_grade_and_percentage
+from app.schemas.result import ResultBatchCreate, ResultResponse, ResultUpdate
+from app.services.result_service import calculate_grade_and_percentage, create_result_batch
 import csv
 import io
 
@@ -41,6 +41,44 @@ def list_results(
         stmt = stmt.where(Result.status == status)
 
     results = db.execute(stmt).scalars().unique().all()
+    return [
+        ResultResponse(
+            id=r.id,
+            student_id=r.student_id,
+            student_roll_no=r.student.roll_no if r.student else None,
+            student_name=r.student.name if r.student else None,
+            student_class=r.student.school_class.class_name if r.student and r.student.school_class else None,
+            student_division=r.student.school_class.division if r.student and r.student.school_class else None,
+            subject_id=r.subject_id,
+            subject_name=r.subject.subject_name if r.subject else None,
+            subject_code=r.subject.code if r.subject else None,
+            exam_type_id=r.exam_type_id,
+            exam_type_name=r.exam_type.name if r.exam_type else None,
+            marks_obtained=r.marks_obtained,
+            total_marks=r.total_marks,
+            percentage=r.percentage,
+            grade=r.grade,
+            status=r.status,
+            submitted_by_id=r.submitted_by_id,
+            approved_by_id=r.approved_by_id,
+        )
+        for r in results
+    ]
+
+
+@router.post("/", response_model=List[ResultResponse], status_code=201)
+def create_or_update_results(
+    req: ResultBatchCreate,
+    admin: Teacher = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Create or update results directly as an admin.
+
+    Allows the admin to enter marks for any student/subject even when no
+    teacher submission exists yet. Upserts on (student_id, subject_id, exam_type_id).
+    """
+    results = create_result_batch(db, req.results, admin.id)
     return [
         ResultResponse(
             id=r.id,
