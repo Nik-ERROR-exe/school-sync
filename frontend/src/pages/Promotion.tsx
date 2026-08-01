@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PromotionService } from '../features/promotion/services';
-import { PromotionPreview } from '../features/promotion/types';
-import { ResultsService } from '../features/results/services';
-import { SchoolClass } from '../features/results/types';
+import { PromotionPreview, PromotionSummaryItem } from '../features/promotion/types';
 import { toast } from 'react-hot-toast';
 import { 
   ArrowUpCircle, 
@@ -20,7 +18,7 @@ const Promotion: React.FC = () => {
   
   // State
   const [previews, setPreviews] = useState<PromotionPreview[]>([]);
-  const [classes, setClasses] = useState<SchoolClass[]>([]);
+  const [cohortSummary, setCohortSummary] = useState<PromotionSummaryItem[]>([]);
   
   // Preview / Confirm Modal
   const [showPreviewModal, setShowPreviewModal] = useState(false);
@@ -32,10 +30,12 @@ const Promotion: React.FC = () => {
   const [newDivision, setNewDivision] = useState<'A' | 'B'>('A');
 
   const loadPromotionData = async () => {
-    const previewData = await PromotionService.getPromotionPreview();
-    const classData = await ResultsService.getClasses();
+    const [previewData, summaryData] = await Promise.all([
+      PromotionService.getPromotionPreview(),
+      PromotionService.getPromotionSummary(),
+    ]);
     setPreviews(previewData);
-    setClasses(classData);
+    setCohortSummary(summaryData);
   };
 
   useEffect(() => {
@@ -89,24 +89,6 @@ const Promotion: React.FC = () => {
     }
   };
 
-  // Group previews by current class to show neat cohort counts
-  const getCohortSummary = () => {
-    const summary: { [className: string]: { promote: number, graduate: number } } = {};
-    previews.forEach(p => {
-      if (!summary[p.currentClassName]) {
-        summary[p.currentClassName] = { promote: 0, graduate: 0 };
-      }
-      if (p.action === 'promote') {
-        summary[p.currentClassName].promote++;
-      } else {
-        summary[p.currentClassName].graduate++;
-      }
-    });
-    return summary;
-  };
-
-  const cohorts = getCohortSummary();
-
   return (
     <div className="space-y-8 font-body">
       
@@ -148,17 +130,17 @@ const Promotion: React.FC = () => {
           Current Student Registry Status
         </h4>
         <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
-          {Object.entries(cohorts).map(([cName, info]) => (
-            <div key={cName} className="rounded-xl border border-slate-150 p-4 bg-white shadow-sm">
-              <span className="text-[10px] font-bold text-slate-400 block uppercase">Standard {cName}</span>
+          {cohortSummary.map(item => (
+            <div key={item.class_name} className="rounded-xl border border-slate-150 p-4 bg-white shadow-sm">
+              <span className="text-[10px] font-bold text-slate-400 block uppercase">Standard {item.class_name}</span>
               <div className="mt-2 flex items-baseline gap-2">
                 <span className="text-xl font-extrabold text-slate-900">
-                  {info.promote + info.graduate}
+                  {item.total_students}
                 </span>
                 <span className="text-xs text-slate-500 font-semibold">students</span>
               </div>
               <span className="mt-2 block text-[10px] text-slate-500 font-medium">
-                {info.graduate > 0 ? 'Will Graduate & Exit' : `Will promote to Class ${Number(cName) + 1}`}
+                {Number(item.class_name) === 10 ? 'Will Graduate & Exit' : `Will promote to Class ${Number(item.class_name) + 1}`}
               </span>
             </div>
           ))}

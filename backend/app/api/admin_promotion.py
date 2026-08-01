@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
@@ -9,23 +10,45 @@ from app.models.school_class import SchoolClass
 
 router = APIRouter(prefix="/admin/promotion", tags=["Admin - Promotion"])
 
+@router.get("/summary")
+def get_promotion_summary(
+    current_admin: Teacher = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Return total students per standard (class), aggregated across divisions."""
+    rows = (
+        db.query(SchoolClass.class_name, func.count(Student.id))
+        .outerjoin(Student, Student.class_id == SchoolClass.id)
+        .filter(SchoolClass.class_name.isdigit())  # standards only
+        .group_by(SchoolClass.class_name)
+        .all()
+    )
+    rows.sort(key=lambda r: int(r[0]))  # numeric order: 1..10
+    return [{"class_name": name, "total_students": count} for name, count in rows]
+
+
 @router.get("/preview")
 def get_promotion_preview(
     current_admin: Teacher = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
-    """Get promotion preview for all students"""
+    """Get promotion preview for all students (2 queries total, no N+1)."""
+    classes = db.query(SchoolClass).all()
+    class_by_id = {c.id: c for c in classes}
+    class_by_key = {(c.class_name, c.division): c for c in classes}
+
     students = db.query(Student).all()
-    
+
     preview = []
     for student in students:
-        current_class = db.query(SchoolClass).filter(SchoolClass.id == student.class_id).first()
-        if not current_class:
+        current_class = class_by_id.get(student.class_id)
+        if not current_class or not current_class.class_name.isdigit():
+            # Skip non-numeric classes (e.g. KG) — not part of the standard promotion flow
             continue
-        
+
         class_num = int(current_class.class_name)
         division = current_class.division
-        
+
         if class_num == 10:
             preview.append({
                 "student_id": student.id,
@@ -38,25 +61,20 @@ def get_promotion_preview(
             })
         else:
             next_class_num = class_num + 1
-            next_class = db.query(SchoolClass).filter(
-                SchoolClass.class_name == str(next_class_num),
-                SchoolClass.division == division
-            ).first()
-            
-            next_class_name = f"{next_class_num}{division}" if next_class else f"{next_class_num}{division}"
+            next_class = class_by_key.get((str(next_class_num), division))
+
             next_class_id = next_class.id if next_class else None
-            
             preview.append({
                 "student_id": student.id,
                 "roll_no": student.roll_no,
                 "student_name": student.name,
                 "current_class": f"{class_num}{division}",
                 "movement": "→",
-                "next_class": next_class_name,
+                "next_class": f"{next_class_num}{division}",
                 "action": "promote",
                 "next_class_id": next_class_id
             })
-    
+
     return preview
 
 @router.post("/execute")
