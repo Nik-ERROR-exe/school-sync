@@ -11,6 +11,18 @@ interface Class {
   division: string;
 }
 
+// FastAPI errors: HTTPException detail is a string, 422 validation detail is
+// an array of {type, loc, msg, input} objects. Normalize to a readable string
+// so it can be rendered in a toast without React crashing.
+function getApiErrorMessage(error: any, fallback: string): string {
+  const detail = error?.response?.data?.detail;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail) && detail.length > 0) {
+    return detail.map((d: any) => d?.msg ?? 'Invalid field').join('; ');
+  }
+  return fallback;
+}
+
 const Students: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
@@ -87,7 +99,7 @@ const Students: React.FC = () => {
       setIsModalOpen(false);
       fetchData();
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to save student');
+      toast.error(getApiErrorMessage(error, 'Failed to save student'));
     }
   };
   
@@ -116,7 +128,7 @@ const Students: React.FC = () => {
       window.URL.revokeObjectURL(url);
       toast.success('Template downloaded');
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to download template');
+      toast.error(getApiErrorMessage(error, 'Failed to download template'));
     }
   };
 
@@ -137,7 +149,7 @@ const Students: React.FC = () => {
       toast.success(`Upload complete: ${result.inserted} added, ${result.skipped} skipped`);
       fetchData();
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Upload failed');
+      toast.error(getApiErrorMessage(error, 'Upload failed'));
     } finally {
       setUploading(false);
     }
