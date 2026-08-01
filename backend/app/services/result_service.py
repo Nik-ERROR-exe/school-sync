@@ -5,15 +5,21 @@ from app.models.student import Student
 from app.models.school_class import SchoolClass
 from app.models.subject import Subject
 from app.models.exam_type import ExamType
-from app.schemas.result import ResultCreate
+from app.schemas.result import ResultCreate, MIN_MARKS, MAX_MARKS
 from app.core.exceptions import ResourceNotFoundException, ValidationException
 from typing import List, Optional
 from datetime import datetime
 
 def calculate_grade_and_percentage(marks_obtained: float, total_marks: float) -> tuple[float, str]:
     """Helper function to calculate percentage and assign grades based on marks."""
-    if total_marks <= 0:
-        raise ValidationException("Total marks must be greater than zero.")
+    if total_marks < MIN_MARKS:
+        raise ValidationException(f"Total marks must be at least {MIN_MARKS}.")
+    if total_marks > MAX_MARKS:
+        raise ValidationException(f"Total marks cannot exceed {MAX_MARKS}.")
+    if marks_obtained < MIN_MARKS:
+        raise ValidationException(f"Marks obtained must be at least {MIN_MARKS}.")
+    if marks_obtained > MAX_MARKS:
+        raise ValidationException(f"Marks obtained cannot exceed {MAX_MARKS}.")
     if marks_obtained > total_marks:
         raise ValidationException("Marks obtained cannot exceed total marks.")
         
