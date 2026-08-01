@@ -128,15 +128,5 @@ export const SubstituteService = {
       assignments
     });
     return response.data;
-  },
-
-  getNotifications: async (): Promise<any[]> => {
-    const response = await api.get('/teacher/timetable/substitutions');
-    return response.data;
-  },
-
-  markNotificationAsRead: async (id: number): Promise<any> => {
-    const response = await api.put(`/notifications/${id}`);
-    return response.data;
   }
 };

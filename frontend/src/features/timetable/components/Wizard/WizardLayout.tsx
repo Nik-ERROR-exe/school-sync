@@ -25,6 +25,13 @@ const WizardStepsContent: React.FC<WizardLayoutProps> = ({ onGenerateComplete })
 
   const nextStep = () => setCurrentStep(prev => Math.min(prev + 1, steps.length));
   const prevStep = () => setCurrentStep(prev => Math.max(prev - 1, 1));
+  const goToStep = (step: number) => setCurrentStep(Math.max(1, Math.min(step, steps.length)));
+
+  // Expose goToStep for error recovery from generation step
+  React.useEffect(() => {
+    (window as any).__wizardGoToStep = goToStep;
+    return () => { delete (window as any).__wizardGoToStep; };
+  }, [goToStep]);
 
   return (
     <div className="flex flex-col h-full w-full bg-slate-50 font-sans">

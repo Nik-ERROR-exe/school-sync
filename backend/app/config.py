@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     INITIAL_ADMIN_TEACHER_ID: str = "ADM001"
     INITIAL_ADMIN_NAME: str = "System Administrator"
 
+    # Data archival: substitute assignments dated before this day are purged.
+    # Format: YYYY-MM-DD (start of the current academic term).
+    ACADEMIC_TERM_START: str = "2026-04-01"
+
     # Pydantic Settings Configuration
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"),

@@ -1,6 +1,6 @@
 from datetime import date as pydate, datetime
 from typing import List, Optional, Tuple, Any
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, delete
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload, Session
 from app.models.teacher import Teacher
@@ -14,8 +14,9 @@ from app.schemas.substitute import (
     TeacherListResponse,
     FutureSubstituteAssignRequest,
 )
+from app.core.date_utils import day_to_int, int_to_day
 from app.core.exceptions import ValidationException, ResourceNotFoundException
-from app.services.notification_service import create_notification
+from app.services.notification_service import send_notification_email
 
 
 def get_all_assignments(db: Session) -> List[SubstituteAssignmentResponse]:
@@ -84,7 +85,7 @@ def get_affected_periods(
     if absent_date < today:
         raise ValidationException("Cannot assign substitutes for past dates.")
 
-    day_name = absent_date.strftime("%A")
+    day_int = day_to_int(absent_date.strftime("%A"))
 
     stmt = (
         select(TimetableSlot)
@@ -94,7 +95,7 @@ def get_affected_periods(
         )
         .where(
             TimetableSlot.teacher_id == absent_teacher_id,
-            TimetableSlot.day_of_week == day_name
+            TimetableSlot.day_of_week == day_int
         )
         .order_by(TimetableSlot.period_number)
     )
@@ -137,7 +138,7 @@ def find_available_substitutes(
     then identifies eligible substitute teachers who are free and haven't reached their daily limit.
     Teachers with matching subject expertise are prioritized.
     """
-    day_name = absent_date.strftime("%A")  # 'Monday', 'Tuesday', etc.
+    day_int = day_to_int(absent_date.strftime("%A"))  # 1..7 stored in DB
 
     # 1. Fetch the master timetable slot that needs substitution
     slot_stmt = select(TimetableSlot).options(
@@ -145,7 +146,7 @@ def find_available_substitutes(
         joinedload(TimetableSlot.subject)
     ).where(
         TimetableSlot.teacher_id == absent_teacher_id,
-        TimetableSlot.day_of_week == day_name,
+        TimetableSlot.day_of_week == day_int,
         TimetableSlot.period_number == period_number
     )
 
@@ -171,7 +172,7 @@ def find_available_substitutes(
         # Check if they are teaching in the master timetable at this exact time
         master_slot_stmt = select(TimetableSlot).where(
             TimetableSlot.teacher_id == candidate.id,
-            TimetableSlot.day_of_week == day_name,
+            TimetableSlot.day_of_week == day_int,
             TimetableSlot.period_number == period_number
         )
         master_slot = db.execute(master_slot_stmt).scalar_one_or_none()
@@ -199,7 +200,7 @@ def find_available_substitutes(
         # a. Master slots
         master_count_stmt = select(func.count(TimetableSlot.id)).where(
             TimetableSlot.teacher_id == candidate.id,
-            TimetableSlot.day_of_week == day_name
+            TimetableSlot.day_of_week == day_int
         )
         master_count = db.execute(master_count_stmt).scalar() or 0
 
@@ -295,8 +296,7 @@ def assign_substitute(
         f"for absent teacher {assignment_loaded.original_teacher.name}."
     )
 
-    from app.services.notification_service import create_notification
-    create_notification(
+    send_notification_email(
         db=db,
         user_id=substitute_teacher_id,
         message=message,
@@ -387,7 +387,7 @@ def assign_substitutes_batch(
             f"for absent teacher {assignment_loaded.original_teacher.name}."
         )
 
-        create_notification(
+        send_notification_email(
             db=db,
             user_id=assignment_loaded.substitute_teacher_id,
             message=message,
@@ -409,6 +409,8 @@ def get_future_affected_periods(
     Returns timetable slots for the absent teacher on the given day_of_week.
     Excludes slots that already have a substitute assignment pending/accepted.
     """
+    day_int = day_to_int(day_of_week)
+
     stmt = (
         select(TimetableSlot)
         .options(
@@ -417,7 +419,7 @@ def get_future_affected_periods(
         )
         .where(
             TimetableSlot.teacher_id == absent_teacher_id,
-            TimetableSlot.day_of_week == day_of_week
+            TimetableSlot.day_of_week == day_int
         )
         .order_by(TimetableSlot.period_number)
     )
@@ -430,7 +432,7 @@ def get_future_affected_periods(
                 SubstituteAssignment.class_id == slot.class_id,
                 SubstituteAssignment.period_number == slot.period_number,
                 SubstituteAssignment.original_teacher_id == absent_teacher_id,
-                SubstituteAssignment.day_of_week == day_of_week,
+                SubstituteAssignment.day_of_week == day_int,
                 SubstituteAssignment.status.in_(["pending", "notified", "accepted"])
             )
         ).scalar_one_or_none()
@@ -445,7 +447,7 @@ def get_future_affected_periods(
                 subject_id=slot.subject_id,
                 subject_name=slot.subject.subject_name if slot.subject else None,
                 period_number=slot.period_number,
-                day_of_week=slot.day_of_week
+                day_of_week=day_of_week
             )
         )
 
@@ -465,6 +467,8 @@ def find_available_teachers_for_slot(
     (checking both timetable and substitute_assignments).
     Teachers with matching subject expertise are prioritized.
     """
+    day_int = day_to_int(day_of_week)
+
     teachers_stmt = select(Teacher).where(
         Teacher.id != exclude_teacher_id,
         Teacher.status == "ACTIVE"
@@ -477,14 +481,14 @@ def find_available_teachers_for_slot(
     for candidate in candidates:
         master_slot_stmt = select(TimetableSlot).where(
             TimetableSlot.teacher_id == candidate.id,
-            TimetableSlot.day_of_week == day_of_week,
+            TimetableSlot.day_of_week == day_int,
             TimetableSlot.period_number == period_number
         )
         master_slot = db.execute(master_slot_stmt).scalar_one_or_none()
 
         sub_slot_stmt = select(SubstituteAssignment).where(
             SubstituteAssignment.substitute_teacher_id == candidate.id,
-            SubstituteAssignment.day_of_week == day_of_week,
+            SubstituteAssignment.day_of_week == day_int,
             SubstituteAssignment.period_number == period_number,
             SubstituteAssignment.status.in_(["pending", "notified", "accepted"])
         )
@@ -532,6 +536,7 @@ def assign_future_substitutes(
     for idx, assignment_data in enumerate(assignments):
         period_number = assignment_data.period_number
         day_of_week = assignment_data.day_of_week
+        day_int = day_to_int(day_of_week)
         substitute_teacher_id = assignment_data.substitute_teacher_id
 
         if day_of_week not in day_names:
@@ -540,7 +545,7 @@ def assign_future_substitutes(
             )
 
         existing_sub_stmt = select(SubstituteAssignment).where(
-            SubstituteAssignment.day_of_week == day_of_week,
+            SubstituteAssignment.day_of_week == day_int,
             SubstituteAssignment.period_number == period_number,
             SubstituteAssignment.substitute_teacher_id == substitute_teacher_id,
             SubstituteAssignment.status.in_(["pending", "notified", "accepted"])
@@ -552,7 +557,7 @@ def assign_future_substitutes(
             )
 
         existing_orig_stmt = select(SubstituteAssignment).where(
-            SubstituteAssignment.day_of_week == day_of_week,
+            SubstituteAssignment.day_of_week == day_int,
             SubstituteAssignment.period_number == period_number,
             SubstituteAssignment.original_teacher_id == original_teacher_id,
             SubstituteAssignment.class_id == assignment_data.class_id,
@@ -568,7 +573,7 @@ def assign_future_substitutes(
     for assignment_data in assignments:
         assignment = SubstituteAssignment(
             date=None,
-            day_of_week=assignment_data.day_of_week,
+            day_of_week=day_to_int(assignment_data.day_of_week),
             period_number=assignment_data.period_number,
             class_id=assignment_data.class_id,
             subject_id=assignment_data.subject_id,
@@ -600,11 +605,11 @@ def assign_future_substitutes(
             f"{assignment_loaded.original_teacher.name} in "
             f"Class {assignment_loaded.school_class.class_name}"
             f"{assignment_loaded.school_class.division} "
-            f"for {subj_name} on {assignment_loaded.day_of_week} "
+            f"for {subj_name} on {int_to_day(assignment_loaded.day_of_week)} "
             f"Period {assignment_loaded.period_number}."
         )
 
-        create_notification(
+        send_notification_email(
             db=db,
             user_id=assignment_loaded.substitute_teacher_id,
             message=message,
@@ -615,6 +620,23 @@ def assign_future_substitutes(
         result.append(assignment_loaded)
 
     return result
+
+
+def purge_historical_substitute_assignments(db: Session, cutoff_date: pydate) -> int:
+    """
+    Deletes dated substitute assignments older than the current academic term start
+    (data archival to keep the append-only table bounded).
+
+    Recurring (day-of-week) assignments have no date and represent ongoing coverage,
+    so they are always kept. Returns the number of rows deleted.
+    """
+    stmt = delete(SubstituteAssignment).where(
+        SubstituteAssignment.date.isnot(None),
+        SubstituteAssignment.date < cutoff_date
+    )
+    result = db.execute(stmt)
+    db.commit()
+    return result.rowcount or 0
 
 
 def __timedelta(days: int):

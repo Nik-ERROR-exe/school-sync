@@ -253,7 +253,6 @@ function AdminTimetableFlow() {
         selectedTeacherIds: [],
         ptSubjectId: savedPt ? Number(savedPt) : null,
         selectedClassId: savedClassId ? Number(savedClassId) : null,
-        selectedClassIds: savedClassIds ? JSON.parse(savedClassIds) : [],
         weeklyRequirements: [],
         _teachersCache: [],
         _subjectsCache: [],
@@ -302,7 +301,7 @@ function AdminTimetableFlow() {
           lunchPeriod: s.lunch_period,
           ptSubjectId: s.pt_subject_id,
           selectedTeacherIds: prev?.selectedTeacherIds ?? [],
-          selectedClassIds: prev?.selectedClassIds ?? [],
+          selectedClassId: prev?.selectedClassId ?? null,
           weeklyRequirements: prev?.weeklyRequirements ?? [],
           endTime: prev?.endTime ?? '14:30',
           _teachersCache: prev?._teachersCache ?? [],
@@ -347,7 +346,6 @@ function AdminTimetableFlow() {
           selectedTeacherIds: prev?.selectedTeacherIds ?? [],
           ptSubjectId: ptSub.id,
           selectedClassId: prev?.selectedClassId ?? null,
-          selectedClassIds: prev?.selectedClassIds ?? [],
           _teachersCache: prev?._teachersCache ?? [],
           _subjectsCache: prev?._subjectsCache ?? [],
           weeklyRequirements: prev?.weeklyRequirements ?? [],
@@ -362,17 +360,14 @@ function AdminTimetableFlow() {
     setHasSavedTimetable(true);
     setMode('grid');
 
-    // Persist settings to DB so grid renders correctly on any device
     api.post('/admin/timetable/settings', {
       school_days: wizardState.schoolDays,
       periods_per_day: wizardState.periodsPerDay,
       saturday_periods: wizardState.saturdayPeriods,
       start_time: wizardState.startTime,
       period_duration: wizardState.periodDuration,
-      lunch_period: wizardState.lunchPeriod,
       pt_subject_id: wizardState.ptSubjectId,
     }).catch(err => console.error('Failed to save timetable settings:', err));
-    // Don't await — fire and forget, don't block the UI
   };
 
   const handleSave = async () => {

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime               # <-- NEW import
+from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Integer, Float, String, ForeignKey, DateTime, Index
+from sqlalchemy import Integer, Numeric, String, ForeignKey, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -23,10 +24,11 @@ class Result(Base):
     subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id"), index=True, nullable=False)
     exam_type_id: Mapped[int] = mapped_column(ForeignKey("exam_types.id"), index=True, nullable=False)
 
-    marks_obtained: Mapped[float] = mapped_column(Float, nullable=False)
-    total_marks: Mapped[float] = mapped_column(Float, default=100.0, nullable=False)
-    percentage: Mapped[float] = mapped_column(Float, nullable=False)
-    grade: Mapped[str] = mapped_column(String(10), nullable=False)
+    # Storage optimization: compact numeric types (5,2) for marks, short grade code.
+    marks_obtained: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    total_marks: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=100.0, nullable=False)
+    percentage: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    grade: Mapped[str] = mapped_column(String(4), nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), default="pending", index=True, nullable=False
     )  # 'pending', 'submitted', 'approved'
@@ -37,11 +39,6 @@ class Result(Base):
     # --- NEW columns ---
     submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-
-    __table_args__ = (
-        Index("idx_results_student_subject_exam", "student_id", "subject_id", "exam_type_id"),
-        Index("idx_results_student_exam", "student_id", "exam_type_id"),
-    )
 
     # ---------- Relationships (decoupled, no back_populates) ----------
     student: Mapped["Student"] = relationship(

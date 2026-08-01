@@ -16,7 +16,6 @@ from app.api.admin_reports import router as admin_reports_router
 from app.api.admin_substitute import router as admin_substitute_router
 from app.api.teacher_results import router as teacher_results_router
 from app.api.teacher_timetable import router as teacher_timetable_router
-from app.api.notifications import router as notifications_router
 from app.api.admin_weekly_requirements import router as admin_weekly_requirements_router
 from app.api.admin_subjects import router as admin_subjects_router
 from app.api.admin_classes import router as admin_classes_router
@@ -61,7 +60,6 @@ app.include_router(admin_reports_router, prefix=API_PREFIX)
 app.include_router(admin_substitute_router, prefix=API_PREFIX)
 app.include_router(teacher_results_router, prefix=API_PREFIX)
 app.include_router(teacher_timetable_router, prefix=API_PREFIX)
-app.include_router(notifications_router, prefix=API_PREFIX)
 app.include_router(admin_weekly_requirements_router, prefix=API_PREFIX)
 app.include_router(admin_subjects_router, prefix=API_PREFIX)
 app.include_router(admin_classes_router, prefix=API_PREFIX)
@@ -109,6 +107,26 @@ def seed_initial_admin():
                 print(f"[ERROR] Seed error after {max_retries} attempts: {e}")
         finally:
             db.close()
+
+    # Data archival: purge substitute assignments older than the current academic term.
+    purge_old_substitute_assignments()
+
+
+def purge_old_substitute_assignments():
+    """Automated data archival for the append-only substitute_assignments log."""
+    from datetime import datetime
+    from app.services.substitute_service import purge_historical_substitute_assignments
+
+    db = SessionLocal()
+    try:
+        cutoff = datetime.strptime(settings.ACADEMIC_TERM_START, "%Y-%m-%d").date()
+        deleted = purge_historical_substitute_assignments(db, cutoff)
+        print(f"[OK] Archived substitute_assignments: purged {deleted} row(s) older than {settings.ACADEMIC_TERM_START}.")
+    except Exception as e:
+        db.rollback()
+        print(f"[WARN] Substitute archival skipped: {e}")
+    finally:
+        db.close()
 
 @app.get("/")
 async def root_status():

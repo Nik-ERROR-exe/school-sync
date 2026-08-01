@@ -20,7 +20,6 @@ from app.models import (  # noqa: F401
     ExamType,
     TimetableSlot,
     Result,
-    Notification,
     SubstituteAssignment,
     WeeklyRequirement,
     TimetableSettings,

@@ -6,7 +6,6 @@ from sqlalchemy import Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
-from app.models.teacher_subjects import teacher_subjects
 
 if TYPE_CHECKING:
     from app.models.subject import Subject
@@ -34,9 +33,14 @@ class Teacher(Base):
         lazy="select"
     )
 
-    # --- subjects_expertise: unchanged ---
+    # --- subjects_expertise: derived from teacher_class_subjects (distinct subjects taught) ---
+    # The teacher_subjects mapping table was dropped; expertise is the set of subjects a
+    # teacher teaches across all classes in teacher_class_subjects.
     subjects_expertise: Mapped[List["Subject"]] = relationship(
         "Subject",
-        secondary=teacher_subjects,
-        lazy="selectin"
+        secondary="teacher_class_subjects",
+        primaryjoin="Teacher.id == TeacherClassSubject.teacher_id",
+        secondaryjoin="Subject.id == TeacherClassSubject.subject_id",
+        lazy="selectin",
+        viewonly=True,
     )

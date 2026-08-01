@@ -2,9 +2,10 @@ import React, { useMemo, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useWizard } from '../../WizardContext';
+import { useWizard, computePeriodsPerDay, DiagnosticIssue } from '../../WizardContext';
 import api from '../../../../api';
 import { ApiClass } from '../../types';
+import DiagnosticBanner from './DiagnosticBanner';
 
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
@@ -12,7 +13,6 @@ const schema = z.object({
   workingDays: z.array(z.string()).min(1, 'Select at least one working day'),
   schoolStartTime: z.string(),
   schoolEndTime: z.string(),
-  periodsPerDay: z.number().min(1, 'At least 1 period required'),
   periodDuration: z.number().min(1, 'Duration must be at least 1 minute'),
   saturdayHalfDay: z.boolean(),
   saturdayPeriodCount: z.number().optional(),
@@ -25,6 +25,11 @@ type FormData = z.infer<typeof schema>;
 export default function Step1SchoolSettings({ onNext }: { onNext: () => void }) {
   const { state, updateState } = useWizard();
   const [classes, setClasses] = useState<ApiClass[]>([]);
+
+  const computedPeriodsPerDay = useMemo(
+    () => computePeriodsPerDay(state.startTime, state.endTime, state.periodDuration),
+    [state.startTime, state.endTime, state.periodDuration]
+  );
 
   useEffect(() => {
     const fetchClasses = async () => {
@@ -44,7 +49,6 @@ export default function Step1SchoolSettings({ onNext }: { onNext: () => void }) 
       workingDays: state.schoolDays,
       schoolStartTime: state.startTime,
       schoolEndTime: state.endTime,
-      periodsPerDay: state.periodsPerDay,
       periodDuration: state.periodDuration,
       saturdayHalfDay: state.schoolDays.includes('Saturday'),
       saturdayPeriodCount: state.saturdayPeriods,
@@ -54,23 +58,28 @@ export default function Step1SchoolSettings({ onNext }: { onNext: () => void }) 
   });
 
   const watchSatHalfDay = watch('saturdayHalfDay');
-  const watchPeriodsPerDay = watch('periodsPerDay');
+  const watchStartTime = watch('schoolStartTime');
+  const watchEndTime = watch('schoolEndTime');
+  const watchPeriodDuration = watch('periodDuration');
 
-  // Build lunch period options dynamically based on periodsPerDay
+  const formComputedPeriodsPerDay = useMemo(
+    () => computePeriodsPerDay(watchStartTime, watchEndTime, watchPeriodDuration),
+    [watchStartTime, watchEndTime, watchPeriodDuration]
+  );
+
   const lunchOptions = useMemo(() => {
-    const count = watchPeriodsPerDay || 0;
     const opts: { value: number | null; label: string }[] = [{ value: null, label: 'None' }];
-    for (let i = 1; i <= count; i++) {
+    for (let i = 1; i <= formComputedPeriodsPerDay; i++) {
       opts.push({ value: i, label: `Period ${i}` });
     }
     return opts;
-  }, [watchPeriodsPerDay]);
+  }, [formComputedPeriodsPerDay]);
 
   const onSubmit = (data: FormData) => {
     updateState({
       schoolDays: data.workingDays,
-      periodsPerDay: data.periodsPerDay,
-      saturdayPeriods: data.saturdayHalfDay ? (data.saturdayPeriodCount ?? 4) : data.periodsPerDay,
+      periodsPerDay: formComputedPeriodsPerDay,
+      saturdayPeriods: data.saturdayHalfDay ? (data.saturdayPeriodCount ?? 4) : formComputedPeriodsPerDay,
       startTime: data.schoolStartTime,
       endTime: data.schoolEndTime,
       periodDuration: data.periodDuration,
@@ -87,6 +96,11 @@ export default function Step1SchoolSettings({ onNext }: { onNext: () => void }) 
         <p className="text-sm text-slate-500 mt-1">Configure global parameters for the timetable generation.</p>
       </div>
 
+      {/* Diagnostic Banner for Step 1 issues */}
+      <div className="px-8 pt-4">
+        <DiagnosticBanner issues={state.diagnosticIssues} stepNumber={1} />
+      </div>
+
       <form onSubmit={handleSubmit(onSubmit)} className="p-8 space-y-8">
         {/* Target Class Selection */}
         <div className="space-y-2">
@@ -99,16 +113,15 @@ export default function Step1SchoolSettings({ onNext }: { onNext: () => void }) 
             }}
             className="w-full md:w-64 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
           >
-            <option value="">All Classes (Master Timetable)</option>
+            <option value="">-- Select a Class --</option>
             {classes.map(cls => (
               <option key={cls.id} value={cls.id}>
                 Class {cls.class_name} - Division {cls.division}
               </option>
             ))}
           </select>
-          <p className="text-xs text-slate-400">
-            Generate the timetable for all classes or select a specific class to generate for.
-          </p>
+          {errors.selectedClassId && <p className="text-xs text-red-500 mt-1">{errors.selectedClassId.message}</p>}
+          <p className="text-xs text-slate-400">Select exactly one class to generate its timetable.</p>
         </div>
 
         {/* Working Days */}
@@ -136,12 +149,15 @@ export default function Step1SchoolSettings({ onNext }: { onNext: () => void }) 
             <input type="time" {...register('schoolEndTime')} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Periods/Day</label>
-            <input type="number" {...register('periodsPerDay', { valueAsNumber: true })} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Period Duration (min)</label>
+            <input type="number" {...register('periodDuration', { valueAsNumber: true })} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Duration (min)</label>
-            <input type="number" {...register('periodDuration', { valueAsNumber: true })} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Periods/Day (auto)</label>
+            <div className="w-full bg-slate-100 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-bold text-slate-600 text-center">
+              {formComputedPeriodsPerDay}
+            </div>
+            <p className="text-[10px] text-slate-400">Calculated from start/end time and duration</p>
           </div>
         </div>
 
@@ -169,7 +185,7 @@ export default function Step1SchoolSettings({ onNext }: { onNext: () => void }) 
             <input type="checkbox" {...register('saturdayHalfDay')} className="w-5 h-5 text-blue-600 rounded border-blue-300 focus:ring-blue-500" />
             <span className="text-sm font-bold text-blue-900">Enable Saturday Half Day</span>
           </label>
-          
+
           {watchSatHalfDay && (
             <div className="pl-8 animate-in fade-in slide-in-from-top-2 duration-300">
               <label className="text-xs font-bold text-blue-800 uppercase tracking-wider block mb-2">Saturday Period Count</label>

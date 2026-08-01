@@ -3,6 +3,7 @@ import api from '../../../../api';
 import { useWizard, ApiTeacher, ApiSubject } from '../../WizardContext';
 import { Loader2, AlertCircle, Search } from 'lucide-react';
 import { ApiClass } from '../../types';
+import DiagnosticBanner from './DiagnosticBanner';
 
 export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; onPrev: () => void }) {
   const { state, updateState } = useWizard();
@@ -14,12 +15,12 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
   const [error, setError] = useState<string | null>(null);
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set(state.selectedTeacherIds));
-  const [selectedClassIds, setSelectedClassIds] = useState<Set<number>>(new Set(state.selectedClassIds));
+  const [selectedClassId, setSelectedClassId] = useState<number | null>(state.selectedClassId);
   const [ptSubjectId, setPtSubjectId] = useState<number | null>(state.ptSubjectId);
   const [searchQuery, setSearchQuery] = useState('');
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
-  // Teacher‑class assignments from three‑way mapping: key=teacherId, value=Set<classId>
+  // Teacher-class assignments from three-way mapping: key=teacherId, value=Set<classId>
   const [teacherClassMap, setTeacherClassMap] = useState<Record<number, Set<number>>>({});
 
   const fetchData = async () => {
@@ -109,18 +110,12 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
     setValidationErrors([]);
   };
 
-  const toggleClass = (id: number) => {
-    setSelectedClassIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const selectClass = (id: number | null) => {
+    setSelectedClassId(id);
     setValidationErrors([]);
   };
 
   const selectAll = () => {
-    // Select all teachers currently visible (after filtering)
     setSelectedIds(new Set(filteredTeachers.map(t => t.id)));
     setValidationErrors([]);
   };
@@ -132,29 +127,28 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
     return subjects.find(s => s.id === subjectId)?.subject_name ?? `#${subjectId}`;
   };
 
-  // Filter teachers: if classes selected, teacher must either have at least one of those classes
-  // OR have no class assignments at all (fallback to all teachers)
+  // Filter teachers: if a class is selected, teacher must be assigned to that class
   const teachersVisible = teachers.filter(t => {
     const matchesSearch = !searchQuery || (
       t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (t.teacher_id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.email.toLowerCase().includes(searchQuery.toLowerCase())
     );
-    if (selectedClassIds.size === 0) return matchesSearch;
+
+    if (!selectedClassId) return matchesSearch;
 
     const teacherClasses = teacherClassMap[t.id];
     if (!teacherClasses || teacherClasses.size === 0) return false;
 
-    const hasAny = Array.from(selectedClassIds).some(cid => teacherClasses.has(cid));
-    return matchesSearch && hasAny;
+    return matchesSearch && teacherClasses.has(selectedClassId);
   });
 
   const filteredTeachers = teachersVisible;
 
   const handleContinue = () => {
     const errors: string[] = [];
-    if (selectedClassIds.size === 0) {
-      errors.push('At least 1 class must be selected.');
+    if (selectedClassId === null) {
+      errors.push('Please select one class for this timetable.');
     }
     if (selectedIds.size === 0) {
       errors.push('At least 1 teacher must be selected.');
@@ -169,20 +163,19 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
     }
 
     updateState({
-      selectedClassIds: Array.from(selectedClassIds),
+      selectedClassId,
       selectedTeacherIds: Array.from(selectedIds),
       ptSubjectId,
     });
     onNext();
   };
 
-  // --- Loading / error states unchanged ---
   if (loading) {
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
         <div className="px-8 py-6 border-b border-slate-100 bg-slate-50/50">
-          <h2 className="text-lg font-bold text-slate-900">Step 2: Select Teachers & Classes</h2>
-          <p className="text-sm text-slate-500 mt-1">Loading classes and teachers from the database…</p>
+          <h2 className="text-lg font-bold text-slate-900">Step 2: Select Teachers</h2>
+          <p className="text-sm text-slate-500 mt-1">Loading teachers and subjects from the database…</p>
         </div>
         <div className="p-8 space-y-6">
           <div className="space-y-2">
@@ -212,7 +205,7 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
         <div className="px-8 py-6 border-b border-slate-100 bg-slate-50/50">
-          <h2 className="text-lg font-bold text-slate-900">Step 2: Select Teachers & Classes</h2>
+          <h2 className="text-lg font-bold text-slate-900">Step 2: Select Teachers</h2>
         </div>
         <div className="flex flex-col items-center justify-center p-16 text-center">
           <AlertCircle className="text-red-500 mb-4" size={40} />
@@ -236,23 +229,28 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="px-8 py-6 border-b border-slate-100 bg-slate-50/50">
-        <h2 className="text-lg font-bold text-slate-900">Step 2: Select Teachers & Classes</h2>
-        <p className="text-sm text-slate-500 mt-1">Choose which classes and teachers will participate in this timetable generation.</p>
+        <h2 className="text-lg font-bold text-slate-900">Step 2: Select Teachers</h2>
+        <p className="text-sm text-slate-500 mt-1">Choose which teachers and class will participate in this timetable generation.</p>
+      </div>
+
+      {/* Diagnostic Banner for Step 2 issues */}
+      <div className="px-8 pt-4">
+        <DiagnosticBanner issues={state.diagnosticIssues} stepNumber={2} />
       </div>
 
       <div className="p-8 space-y-6">
-        <div className="space-y-3">
+        <div className="space-y-2">
           <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-            Select Classes for This Timetable *
+            Select Class for This Timetable *
           </label>
           <div className="flex flex-wrap gap-2">
             {classes.map(cls => {
-              const isSelected = selectedClassIds.has(cls.id);
+              const isSelected = selectedClassId === cls.id;
               return (
                 <button
                   key={cls.id}
                   type="button"
-                  onClick={() => toggleClass(cls.id)}
+                  onClick={() => selectClass(cls.id)}
                   className={`px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200 border ${
                     isSelected
                       ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-600/20'
@@ -318,7 +316,7 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
         <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
           {filteredTeachers.length === 0 && (
             <p className="text-slate-400 text-sm text-center py-8">
-              {selectedClassIds.size > 0 ? 'No teachers assigned to the selected classes. Assign teachers to classes in Admin → Teachers.' : 'No teachers match your search.'}
+              {selectedClassId ? 'No teachers assigned to the selected class. Assign teachers to classes in Admin → Teachers.' : 'No teachers match your search.'}
             </p>
           )}
           {filteredTeachers.map(teacher => {

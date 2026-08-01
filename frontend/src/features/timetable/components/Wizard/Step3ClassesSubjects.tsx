@@ -37,8 +37,9 @@ export default function Step3ClassesSubjects({ onNext, onPrev }: { onNext: () =>
   }, [state._subjectsCache, state.ptSubjectId]);
 
   const selectedClasses = useMemo(() => {
-    return classes.filter(c => state.selectedClassIds.includes(c.id));
-  }, [classes, state.selectedClassIds]);
+    if (!state.selectedClassId) return [];
+    return classes.filter(c => c.id === state.selectedClassId);
+  }, [classes, state.selectedClassId]);
 
   const maxAllowedSlots = useMemo(() => {
     return computeMaxRequirements(state.schoolDays, state.periodsPerDay, state.lunchPeriod);
@@ -47,14 +48,14 @@ export default function Step3ClassesSubjects({ onNext, onPrev }: { onNext: () =>
   // Compute used slots per class
   const classUsage = useMemo(() => {
     const usage: Record<number, number> = {};
-    state.selectedClassIds.forEach(classId => {
+    if (state.selectedClassId) {
       const total = state.weeklyRequirements
-        .filter(r => r.class_id === classId)
+        .filter(r => r.class_id === state.selectedClassId)
         .reduce((sum, r) => sum + r.periods_per_week, 0);
-      usage[classId] = total;
-    });
+      usage[state.selectedClassId] = total;
+    }
     return usage;
-  }, [state.weeklyRequirements, state.selectedClassIds]);
+  }, [state.weeklyRequirements, state.selectedClassId]);
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in duration-300">

@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, String, ForeignKey, Date
+from sqlalchemy import Integer, String, SmallInteger, ForeignKey, Date
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import Optional
 from datetime import date as pydate
@@ -9,7 +9,7 @@ class SubstituteAssignment(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     date: Mapped[Optional[pydate]] = mapped_column(Date, nullable=True)
-    day_of_week: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    day_of_week: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)  # 1=Monday .. 7=Sunday
     class_id: Mapped[int] = mapped_column(ForeignKey("classes.id"), nullable=False)
     subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id"), nullable=False)
     period_number: Mapped[int] = mapped_column(Integer, nullable=False)

@@ -4,6 +4,7 @@ from datetime import date as pydate
 from typing import List
 from app.database import get_db
 from app.api.deps import require_admin
+from app.core.date_utils import int_to_day
 from app.schemas.substitute import (
     SubstituteAssignRequest,
     SubstituteAssignBatchRequest,
@@ -144,7 +145,7 @@ def create_substitute_assignment(
     return SubstituteAssignmentResponse(
         id=assignment.id,
         date=assignment.date,
-        day_of_week=assignment.day_of_week,
+        day_of_week=int_to_day(assignment.day_of_week),
         period_number=assignment.period_number,
         class_id=assignment.class_id,
         subject_id=assignment.subject_id,
@@ -181,7 +182,7 @@ def assign_future_substitutes_batch(
         SubstituteAssignmentResponse(
             id=a.id,
             date=a.date,
-            day_of_week=a.day_of_week,
+            day_of_week=int_to_day(a.day_of_week),
             period_number=a.period_number,
             class_id=a.class_id,
             subject_id=a.subject_id,
@@ -196,3 +197,25 @@ def assign_future_substitutes_batch(
         )
         for a in created
     ]
+
+
+@router.post("/cleanup")
+def cleanup_historical_substitute_assignments(
+    db: Session = Depends(get_db)
+):
+    """
+    Data archival routine: deletes dated substitute assignments older than the
+    current academic term start so the append-only log stays bounded.
+    """
+    from datetime import datetime
+    from app.config import settings
+    from app.services.substitute_service import purge_historical_substitute_assignments
+
+    cutoff = datetime.strptime(settings.ACADEMIC_TERM_START, "%Y-%m-%d").date()
+    deleted = purge_historical_substitute_assignments(db, cutoff)
+
+    return {
+        "success": True,
+        "deleted": deleted,
+        "message": f"Purged {deleted} historical substitute assignment(s) older than {settings.ACADEMIC_TERM_START}."
+    }

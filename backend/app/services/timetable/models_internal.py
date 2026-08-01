@@ -41,3 +41,4 @@ class SolverInput:
     pt_subject_id: int
     existing_slots: List[SolverSlot] = field(default_factory=list)
     class_subject_teachers: Dict[Tuple[int, int], List[int]] = field(default_factory=dict)  # (class_id, subject_id) -> [teacher_ids]
+    subject_names: Dict[int, str] = field(default_factory=dict)  # subject_id -> display name (for diagnostics)

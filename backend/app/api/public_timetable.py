@@ -6,6 +6,7 @@ from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.teacher import Teacher
 from app.models.timetable_settings import TimetableSettings
+from app.core.date_utils import format_time
 
 router = APIRouter(
     prefix="/timetable",
@@ -37,7 +38,7 @@ def get_timetable_settings_public(
         "school_days": school_days_list,
         "periods_per_day": settings.periods_per_day,
         "saturday_periods": settings.saturday_periods,
-        "start_time": settings.start_time,
+        "start_time": format_time(settings.start_time),
         "period_duration": settings.period_duration,
         "lunch_period": settings.lunch_period,
         "pt_subject_id": settings.pt_subject_id,
@@ -45,7 +46,7 @@ def get_timetable_settings_public(
             "school_days": school_days_list,
             "periods_per_day": settings.periods_per_day,
             "saturday_periods": settings.saturday_periods,
-            "start_time": settings.start_time,
+            "start_time": format_time(settings.start_time),
             "period_duration": settings.period_duration,
             "lunch_period": settings.lunch_period,
             "pt_subject_id": settings.pt_subject_id,

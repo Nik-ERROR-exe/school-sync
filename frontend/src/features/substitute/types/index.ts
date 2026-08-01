@@ -15,16 +15,6 @@ export interface SubstituteAssignment {
   substitute_teacher_name?: string;
 }
 
-export interface SubstituteNotification {
-  id: number;
-  message: string;
-  timestamp: string;
-  read: boolean;
-  class_id: number;
-  period_number: number;
-  subject_id: number;
-}
-
 export interface AffectedPeriod {
   class_id: number;
   class_name: string;

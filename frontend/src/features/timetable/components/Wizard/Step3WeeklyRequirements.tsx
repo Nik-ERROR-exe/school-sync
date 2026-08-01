@@ -4,6 +4,7 @@ import { useWizard, WeeklyReqEntry, computeMaxRequirements, ApiTeacher, ApiSubje
 import { Loader2, AlertCircle, Trash2, Save, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { ApiClass } from '../../types';
 import { toast } from 'react-hot-toast';
+import DiagnosticBanner from './DiagnosticBanner';
 
 interface WeeklyReqState {
   id?: number;
@@ -26,7 +27,7 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
   const [error, setError] = useState<string | null>(null);
 
   // Load configuration from WizardContext
-  const { schoolDays, periodsPerDay, lunchPeriod, selectedClassIds, selectedTeacherIds } = state;
+  const { schoolDays, periodsPerDay, lunchPeriod, selectedClassId, selectedTeacherIds } = state;
 
   const maxAllowedSlots = useMemo(() => {
     return computeMaxRequirements(schoolDays, periodsPerDay, lunchPeriod);
@@ -54,19 +55,18 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
           periods_per_week: Number(r.periods_per_week),
         }));
         
-        // Filter DB requirements to only those belonging to selectedClassIds
-        // Use Number() on both sides to prevent string/number mismatch
+        // Filter DB requirements to only those belonging to selectedClassId
         const filteredDbReqs = allDbReqs.filter((r: WeeklyReqState) =>
-          selectedClassIds.some(id => Number(id) === Number(r.class_id))
+          selectedClassId ? Number(r.class_id) === Number(selectedClassId) : false
         );
         setInitialDbReqs(filteredDbReqs);
 
         // Initialize localReqs state
         const initialLocalReqs: WeeklyReqState[] = [];
 
-        // For each selected class standard
-        selectedClassIds.forEach(classId => {
-          const numClassId = Number(classId);
+        // For the selected class
+        if (selectedClassId) {
+          const numClassId = Number(selectedClassId);
           const classData = (classesRes.data as ApiClass[]).find((c: ApiClass) => Number(c.id) === numClassId);
           const classSubjects = classData?.subjects || [];
           const classDbReqs = filteredDbReqs.filter((r: WeeklyReqState) => Number(r.class_id) === numClassId);
@@ -85,11 +85,11 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
               initialLocalReqs.push({
                 class_id: numClassId,
                 subject_id: numSubId,
-                periods_per_week: 1, // Pre-fill with default 1 period
+                periods_per_week: 1,
               });
             }
           });
-        });
+        }
 
         setLocalReqs(initialLocalReqs);
       } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -100,7 +100,7 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
     };
 
     fetchAllData();
-  }, [selectedClassIds]);
+  }, [selectedClassId]);
 
   // Derive unique subjects from all classes to use for lookup
   const subjects = useMemo(() => {
@@ -182,16 +182,15 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
   // Calculate stats per class
   const classStats = useMemo(() => {
     const stats: Record<number, { total: number; overLimit: boolean; overLimitBy: number }> = {};
-    selectedClassIds.forEach(classId => {
-      const reqs = localReqs.filter(r => r.class_id === classId);
+    if (selectedClassId) {
+      const reqs = localReqs.filter(r => r.class_id === selectedClassId);
       const total = reqs.reduce((sum, r) => sum + r.periods_per_week, 0);
       const overLimit = total > maxAllowedSlots;
       const overLimitBy = total - maxAllowedSlots;
-
-      stats[classId] = { total, overLimit, overLimitBy };
-    });
+      stats[selectedClassId] = { total, overLimit, overLimitBy };
+    }
     return stats;
-  }, [localReqs, selectedClassIds, maxAllowedSlots]);
+  }, [localReqs, selectedClassId, maxAllowedSlots]);
 
   // Overall check if Save & Continue can be clicked (Only block if total slots exceed maxAllowedSlots)
   const isFormValid = useMemo(() => {
@@ -204,17 +203,16 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
   }, [localReqs, getTeacherCapacity]);
 
   const handleSaveAndContinue = async () => {
-    // Double check blocking validations
-    for (const classId of selectedClassIds) {
-      const stat = classStats[classId];
-      const cls = getClassDetail(classId);
-      const className = cls ? `${cls.class_name}-${cls.division}` : `Class #${classId}`;
+    if (!selectedClassId) return;
 
-      if (stat.overLimit) {
-        toast.error(`Class ${className} is over the slot limit by ${stat.overLimitBy} periods!`);
-        document.getElementById(`class-card-${classId}`)?.scrollIntoView({ behavior: 'smooth' });
-        return;
-      }
+    const stat = classStats[selectedClassId];
+    const cls = getClassDetail(selectedClassId);
+    const className = cls ? `${cls.class_name}-${cls.division}` : `Class #${selectedClassId}`;
+
+    if (stat?.overLimit) {
+      toast.error(`Class ${className} is over the slot limit by ${stat.overLimitBy} periods!`);
+      document.getElementById(`class-card-${selectedClassId}`)?.scrollIntoView({ behavior: 'smooth' });
+      return;
     }
 
     // Warn if all requirements are suspiciously set to 1 but DB had higher values
@@ -319,6 +317,9 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
 
   return (
     <div className="space-y-6">
+      {/* Diagnostic Banner for Step 3 issues */}
+      <DiagnosticBanner issues={state.diagnosticIssues} stepNumber={3} />
+
       {/* Top Fixed Info Bar */}
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-150 rounded-2xl p-5 shadow-sm sticky top-16 z-20 backdrop-blur-md">
         <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
@@ -335,12 +336,12 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
 
       {/* Selected Classes Cards */}
       <div className="space-y-8">
-        {selectedClassIds.map(classId => {
-          const cls = getClassDetail(classId);
+        {selectedClassId && (() => {
+          const cls = getClassDetail(selectedClassId);
           if (!cls) return null;
 
-          const stats = classStats[classId] || { total: 0, overLimit: false, overLimitBy: 0 };
-          const classReqs = localReqs.filter(r => r.class_id === classId);
+          const stats = classStats[selectedClassId] || { total: 0, overLimit: false, overLimitBy: 0 };
+          const classReqs = localReqs.filter(r => r.class_id === selectedClassId);
           
           // Available subjects assigned to class that aren't configured yet
           const allClassSubjects = cls.subjects || [];
@@ -362,8 +363,8 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
 
           return (
             <div
-              key={classId}
-              id={`class-card-${classId}`}
+              key={selectedClassId}
+              id={`class-card-${selectedClassId}`}
               className={`bg-white rounded-2xl shadow-sm border transition-all duration-300 ${
                 stats.overLimit 
                   ? 'border-red-300 shadow-md ring-2 ring-red-100' 
@@ -508,7 +509,7 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
                                     <div className="inline-flex items-center gap-1.5">
                                       <button
                                         type="button"
-                                        onClick={() => updatePeriods(classId, req.subject_id, req.periods_per_week - 1)}
+                                        onClick={() => updatePeriods(selectedClassId, req.subject_id, req.periods_per_week - 1)}
                                         disabled={req.periods_per_week <= 1}
                                         className="w-7 h-7 bg-slate-100 hover:bg-slate-200 text-slate-600 font-extrabold rounded-lg flex items-center justify-center transition-colors outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                                       >
@@ -521,13 +522,13 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
                                         value={req.periods_per_week}
                                         onChange={(e) => {
                                           const val = e.target.value === '' ? 1 : parseInt(e.target.value);
-                                          updatePeriods(classId, req.subject_id, val);
+                                          updatePeriods(selectedClassId, req.subject_id, val);
                                         }}
                                         className="w-12 h-7 bg-slate-50 border border-slate-200 rounded-lg text-center font-bold text-xs outline-none focus:ring-2 focus:ring-blue-500"
                                       />
                                       <button
                                         type="button"
-                                        onClick={() => updatePeriods(classId, req.subject_id, req.periods_per_week + 1)}
+                                        onClick={() => updatePeriods(selectedClassId, req.subject_id, req.periods_per_week + 1)}
                                         disabled={req.periods_per_week >= maxVal}
                                         className="w-7 h-7 bg-slate-100 hover:bg-slate-200 text-slate-600 font-extrabold rounded-lg flex items-center justify-center transition-colors outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                                       >
@@ -572,7 +573,7 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
                                   <td className="px-4 py-3 text-right">
                                     <button
                                       type="button"
-                                      onClick={() => removeSubjectRequirement(classId, req.subject_id)}
+                                      onClick={() => removeSubjectRequirement(selectedClassId, req.subject_id)}
                                       className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
                                       title="Remove subject"
                                     >
@@ -599,7 +600,7 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
                       <select
                         onChange={(e) => {
                           if (e.target.value) {
-                            addSubjectRequirement(classId, Number(e.target.value));
+                            addSubjectRequirement(selectedClassId, Number(e.target.value));
                             e.target.value = ''; // Reset select
                           }
                         }}
@@ -622,7 +623,7 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
               )}
             </div>
           );
-        })}
+        })()}
       </div>
 
       {/* Save / Back Actions */}

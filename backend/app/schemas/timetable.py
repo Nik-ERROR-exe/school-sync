@@ -1,12 +1,12 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 
 class TeacherInput(BaseModel):
     id: int
     name: str
-    subject_expertise: List[int]  # List of subject IDs
+    subject_expertise: List[int]
     max_lectures_per_day: int = 4
-    availability: Optional[Dict[str, List[int]]] = None  # Day -> List of available period numbers
+    availability: Optional[Dict[str, List[int]]] = None
 
 class ClassInput(BaseModel):
     id: int
@@ -23,9 +23,10 @@ class TimetableGenerateRequest(BaseModel):
     classes: Optional[List[ClassInput]] = None
     weekly_requirements: Optional[List[WeeklyRequirementInput]] = None
     school_days: List[str] = Field(default=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
-    periods_per_day: int = Field(default=6, ge=1)
-    lunch_period: Optional[int] = Field(default=4)
+    periods_per_day: Optional[int] = Field(default=None, ge=1)
+    lunch_period: Optional[int] = Field(default=None)
     pt_subject_id: int
+    subject_teacher_assignments: Optional[Dict[str, int]] = None
 
 class TimetableSlotResponse(BaseModel):
     class_id: int
@@ -44,6 +45,7 @@ class TimetableResponse(BaseModel):
 
 class TimetableSaveRequest(BaseModel):
     slots: List[TimetableSlotResponse]
+    lunch_period: Optional[int] = None
 
 
 class TimetableSettingsSchema(BaseModel):
@@ -52,5 +54,4 @@ class TimetableSettingsSchema(BaseModel):
     saturday_periods: int = 4
     start_time: str = "08:00"
     period_duration: int = 40
-    lunch_period: Optional[int] = None
     pt_subject_id: Optional[int] = None

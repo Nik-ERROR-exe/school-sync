@@ -22,6 +22,8 @@ from app.models.teacher import Teacher
 from app.models.school_class import SchoolClass
 from app.models.weekly_requirement import WeeklyRequirement
 from app.models.teacher_class_subject import TeacherClassSubject
+from app.models.subject import Subject
+from app.core.date_utils import day_to_int, int_to_day, format_time, parse_time
 from app.core.exceptions import ValidationException
 
 router = APIRouter(
@@ -30,6 +32,21 @@ router = APIRouter(
     dependencies=[Depends(require_admin)]
 )
 
+
+def _resolve_periods_per_day(req: TimetableGenerateRequest, db: Session) -> int:
+    """Resolve periods_per_day: use request value if provided, otherwise calculate from settings."""
+    if req.periods_per_day is not None and req.periods_per_day > 0:
+        return req.periods_per_day
+
+    settings = db.execute(select(TimetableSettingsModel)).scalar_one_or_none()
+    if settings and settings.periods_per_day and settings.periods_per_day > 0:
+        return settings.periods_per_day
+
+    raise ValidationException(
+        "Periods per day is not configured. Please set it in Timetable Settings or provide it in the generation request."
+    )
+
+
 @router.post("/generate", response_model=TimetableResponse)
 def generate_timetable(
     req: TimetableGenerateRequest,
@@ -37,12 +54,8 @@ def generate_timetable(
 ):
     """
     Triggers the constraint satisfaction problem solver to generate a valid, complete school timetable.
-
-    If `teachers`, `classes`, or `weekly_requirements` are omitted from the request body,
-    the endpoint falls back to querying persisted data from the database. This allows
-    the frontend to simply POST `{ "pt_subject_id": 5 }` and have the solver use all
-    saved configuration.
     """
+    periods_per_day = _resolve_periods_per_day(req, db)
 
     # --- Resolve Teachers ---
     if req.teachers is not None:
@@ -56,7 +69,6 @@ def generate_timetable(
             ) for t in req.teachers
         ]
     else:
-        # Load from DB with eager-loaded subject expertise
         db_teachers = db.execute(
             select(Teacher)
             .options(joinedload(Teacher.subjects_expertise))
@@ -70,9 +82,9 @@ def generate_timetable(
             SolverTeacher(
                 id=t.id,
                 name=t.name,
-                subject_expertise=[s.id for s in t.subjects_expertise],
+                subject_expertise=list(dict.fromkeys(s.id for s in t.subjects_expertise)),
                 max_lectures_per_day=t.max_lectures_per_day,
-                availability=None   # availability column doesn't exist on Teacher model yet
+                availability=None
             )
             for t in db_teachers
         ]
@@ -96,19 +108,15 @@ def generate_timetable(
             for c in db_classes
         ]
 
-    # Get the list of class IDs we are generating for (used for filtering requirements)
     generating_class_ids = [c.id for c in solver_classes]
 
     # --- Resolve Weekly Requirements ---
-    # If the request provides requirements and the list is non‑empty, use them as minimums.
-    # Otherwise, try to load from the WeeklyRequirement table.
     if req.weekly_requirements is not None and len(req.weekly_requirements) > 0:
         solver_reqs = [
             SolverRequirement(class_id=r.class_id, subject_id=r.subject_id, periods_per_week=r.periods_per_week)
             for r in req.weekly_requirements
         ]
     else:
-        # First, try to fetch from the WeeklyRequirement table (existing)
         stmt = select(WeeklyRequirement).where(WeeklyRequirement.class_id.in_(generating_class_ids))
         result = db.execute(stmt)
         db_reqs = result.scalars().all()
@@ -121,11 +129,10 @@ def generate_timetable(
         else:
             raise ValidationException(
                 f"No weekly requirements found for classes {generating_class_ids}. "
-                "Please configure weekly requirements in the timetable wizard (Step 3) "
-                "before generating."
+                "Please configure weekly requirements before generating."
             )
 
-    # Load existing slots for other classes (to preserve manually edited slots)
+    # Load existing slots for other classes (to preserve manually edited slots & prevent teacher clashes)
     existing_slots_db = db.execute(
         select(TimetableSlot).where(TimetableSlot.class_id.notin_(generating_class_ids))
     ).scalars().all()
@@ -133,7 +140,7 @@ def generate_timetable(
     solver_existing_slots = [
         SolverSlot(
             class_id=s.class_id,
-            day_of_week=s.day_of_week,
+            day_of_week=int_to_day(s.day_of_week),
             period_number=s.period_number,
             subject_id=s.subject_id,
             teacher_id=s.teacher_id
@@ -150,16 +157,39 @@ def generate_timetable(
             class_subject_teachers[key] = []
         class_subject_teachers[key].append(row.teacher_id)
 
+    # Apply admin teacher overrides (issue #5: popup selection for multi-teacher subjects)
+    if req.subject_teacher_assignments:
+        for key_str, teacher_id in req.subject_teacher_assignments.items():
+            # Keys come as "class_id_subject_id" strings from JSON
+            parts = key_str.split('_')
+            if len(parts) == 2:
+                class_id = int(parts[0])
+                subject_id = int(parts[1])
+                key = (class_id, subject_id)
+                if key in class_subject_teachers:
+                    class_subject_teachers[key] = [
+                        t for t in class_subject_teachers[key] if t == teacher_id
+                    ]
+                else:
+                    class_subject_teachers[key] = [teacher_id]
+
+    # Subject display names for human-readable diagnostics
+    subject_names = {
+        s.id: s.subject_name
+        for s in db.execute(select(Subject)).scalars().all()
+    }
+
     solver_input = SolverInput(
         teachers=solver_teachers,
         classes=solver_classes,
         weekly_requirements=solver_reqs,
         school_days=req.school_days,
-        periods_per_day=req.periods_per_day,
+        periods_per_day=periods_per_day,
         lunch_period=req.lunch_period,
         pt_subject_id=req.pt_subject_id,
         existing_slots=solver_existing_slots,
-        class_subject_teachers=class_subject_teachers
+        class_subject_teachers=class_subject_teachers,
+        subject_names=subject_names
     )
 
     solver = TimetableSolver(solver_input)
@@ -171,19 +201,13 @@ def generate_timetable(
         "message": "Timetable generated successfully."
     }
 
+
 @router.put("/", response_model=TimetableResponse)
 def save_timetable(
     req: TimetableSaveRequest,
     pt_subject_id: int = Query(..., description="ID representing Physical Training (PT)"),
     db: Session = Depends(get_db)
 ):
-    """
-    Validates a manually adjusted timetable and commits it to the database,
-    replacing the current master schedule.
-
-    This operation is ATOMIC: if validation passes but the DB insert fails
-    (e.g. unique constraint violation), the old timetable is preserved via rollback.
-    """
     # 1. Fetch all teachers for daily limit checks
     teachers_res = db.execute(select(Teacher))
     teachers_list = list(teachers_res.scalars().all())
@@ -191,11 +215,11 @@ def save_timetable(
     # 2. Run application-level validations BEFORE touching the database
     validate_timetable_slots(req.slots, teachers_list, pt_subject_id)
 
-    # 3. Build the new slot objects (only non-free periods)
+    # 3. Build the new slot objects
     new_slots = [
         TimetableSlot(
             class_id=s.class_id,
-            day_of_week=s.day_of_week,
+            day_of_week=day_to_int(s.day_of_week),
             period_number=s.period_number,
             subject_id=s.subject_id,
             teacher_id=s.teacher_id
@@ -204,12 +228,26 @@ def save_timetable(
         if s.subject_id > 0 and s.teacher_id > 0
     ]
 
-    # 4. Atomic replace: delete old → insert new → flush to catch DB constraint errors
-    #    If anything fails, the entire transaction rolls back and old data is preserved.
+    # Also save lunch period marker (subject_id=0) so each timetable remembers its own lunch
+    if req.lunch_period is not None:
+        for s in req.slots:
+            if s.period_number == req.lunch_period and s.subject_id == 0:
+                new_slots.append(
+                    TimetableSlot(
+                        class_id=s.class_id,
+                        day_of_week=day_to_int(s.day_of_week),
+                        period_number=s.period_number,
+                        subject_id=0,
+                        teacher_id=0
+                    )
+                )
+
+    # 4. Atomic replace: delete old for these classes only → insert new
+    class_ids = list(set(s.class_id for s in req.slots))
     try:
-        db.execute(delete(TimetableSlot))
+        db.execute(delete(TimetableSlot).where(TimetableSlot.class_id.in_(class_ids)))
         db.add_all(new_slots)
-        db.flush()  # Forces DB to check unique constraints NOW, before commit
+        db.flush()
         db.commit()
     except Exception as e:
         db.rollback()
@@ -223,13 +261,14 @@ def save_timetable(
         "message": "Timetable saved successfully."
     }
 
+
 @router.get("/", response_model=TimetableResponse)
 def get_saved_timetable(db: Session = Depends(get_db)):
     slots = db.execute(select(TimetableSlot)).scalars().all()
     schedule = [
         {
             "class_id": s.class_id,
-            "day_of_week": s.day_of_week,
+            "day_of_week": int_to_day(s.day_of_week),
             "period_number": s.period_number,
             "subject_id": s.subject_id,
             "teacher_id": s.teacher_id,
@@ -237,6 +276,7 @@ def get_saved_timetable(db: Session = Depends(get_db)):
         for s in slots
     ]
     return {"schedule": schedule, "success": True, "message": "Timetable loaded."}
+
 
 @router.post("/settings")
 def save_timetable_settings(
@@ -248,9 +288,8 @@ def save_timetable_settings(
         existing.school_days = json.dumps(body.school_days)
         existing.periods_per_day = body.periods_per_day
         existing.saturday_periods = body.saturday_periods
-        existing.start_time = body.start_time
+        existing.start_time = parse_time(body.start_time)
         existing.period_duration = body.period_duration
-        existing.lunch_period = body.lunch_period
         existing.pt_subject_id = body.pt_subject_id
         existing.updated_at = datetime.utcnow()
     else:
@@ -258,32 +297,31 @@ def save_timetable_settings(
             school_days=json.dumps(body.school_days),
             periods_per_day=body.periods_per_day,
             saturday_periods=body.saturday_periods,
-            start_time=body.start_time,
+            start_time=parse_time(body.start_time),
             period_duration=body.period_duration,
-            lunch_period=body.lunch_period,
             pt_subject_id=body.pt_subject_id,
         )
         db.add(new_settings)
     db.commit()
     return {"success": True, "message": "Settings saved."}
 
+
 @router.get("/settings")
 def get_timetable_settings(db: Session = Depends(get_db)):
     existing = db.execute(select(TimetableSettingsModel)).scalar_one_or_none()
     if not existing:
         return {"success": False, "message": "No settings saved yet"}
-    
+
     try:
         school_days_list = json.loads(existing.school_days)
     except Exception:
         school_days_list = []
-        
+
     return {
         "school_days": school_days_list,
         "periods_per_day": existing.periods_per_day,
         "saturday_periods": existing.saturday_periods,
-        "start_time": existing.start_time,
+        "start_time": format_time(existing.start_time),
         "period_duration": existing.period_duration,
-        "lunch_period": existing.lunch_period,
         "pt_subject_id": existing.pt_subject_id,
     }

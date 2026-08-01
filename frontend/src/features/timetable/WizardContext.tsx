@@ -1,4 +1,17 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
+
+export interface DiagnosticIssue {
+  step: number;
+  field: string;
+  message: string;
+  severity: string;
+  suggestion: string;
+  redirect_step?: number;
+  highlight_field?: string;
+  class_id?: number;
+  subject_id?: number;
+  teacher_id?: number;
+}
 
 export interface WeeklyReqEntry {
   id?: number;
@@ -11,7 +24,6 @@ export interface WeeklyReqEntry {
 }
 
 export interface WizardState {
-  // From Step 1 (School Settings)
   schoolDays: string[];
   periodsPerDay: number;
   saturdayPeriods: number;
@@ -20,18 +32,29 @@ export interface WizardState {
   periodDuration: number;
   lunchPeriod: number | null;
 
-  // From Step 2 (Select Teachers)
   selectedTeacherIds: number[];
-
-  // For generation
   ptSubjectId: number | null;
-  selectedClassId: number | null; // null means 'All Classes'
-  selectedClassIds: number[];
+  selectedClassId: number | null;
   weeklyRequirements: WeeklyReqEntry[];
 
-  // Cached data fetched in Step 2 (shared with Step 3 Review)
+  diagnosticIssues: DiagnosticIssue[];
+
   _teachersCache: ApiTeacher[];
   _subjectsCache: ApiSubject[];
+}
+
+export function computePeriodsPerDay(
+  startTime: string,
+  endTime: string,
+  periodDuration: number
+): number {
+  const toMinutes = (t: string) => {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  };
+  const total = toMinutes(endTime) - toMinutes(startTime);
+  if (total <= 0 || periodDuration <= 0) return 8;
+  return Math.max(1, Math.floor(total / periodDuration));
 }
 
 export function computeMaxRequirements(
@@ -41,10 +64,9 @@ export function computeMaxRequirements(
 ): number {
   const totalSlots = schoolDays.length * periodsPerDay;
   const lunchSlots = lunchPeriod !== null ? schoolDays.length : 0;
-  return totalSlots - lunchSlots - 1; // -1 reserves 1 free period
+  return totalSlots - lunchSlots - 1;
 }
 
-/** Shape of a teacher returned by GET /admin/teachers/ */
 export interface ApiTeacher {
   id: number;
   teacher_id: string | null;
@@ -57,7 +79,6 @@ export interface ApiTeacher {
   subjects?: ApiSubject[];
 }
 
-/** Shape of a subject returned by GET /admin/subjects/ */
 export interface ApiSubject {
   id: number;
   subject_name: string;
@@ -75,8 +96,8 @@ const defaultState: WizardState = {
   selectedTeacherIds: [],
   ptSubjectId: null,
   selectedClassId: null,
-  selectedClassIds: [],
   weeklyRequirements: [],
+  diagnosticIssues: [],
   _teachersCache: [],
   _subjectsCache: [],
 };
@@ -92,7 +113,13 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [state, setState] = useState<WizardState>(defaultState);
 
   const updateState = useCallback((partial: Partial<WizardState>) => {
-    setState(prev => ({ ...prev, ...partial }));
+    setState(prev => {
+      const next = { ...prev, ...partial };
+      if (partial.startTime || partial.endTime || partial.periodDuration) {
+        next.periodsPerDay = computePeriodsPerDay(next.startTime, next.endTime, next.periodDuration);
+      }
+      return next;
+    });
   }, []);
 
   return (

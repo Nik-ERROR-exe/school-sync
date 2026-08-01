@@ -4,11 +4,10 @@ from sqlalchemy import select
 from typing import List
 from app.database import get_db
 from app.api.deps import require_admin
-from app.schemas.teacher import TeacherCreate, TeacherUpdate, TeacherResponse, SubjectResponse, TeacherSubjectsUpdate
+from app.schemas.teacher import TeacherCreate, TeacherUpdate, TeacherResponse
 from app.schemas.teacher_class_subject import TeacherClassSubjectBatchCreate, TeacherClassSubjectResponse
 from app.models.teacher import Teacher
 from app.models.subject import Subject
-from app.models.teacher_subjects import teacher_subjects
 from app.models.teacher_class_subject import TeacherClassSubject
 from app.models.school_class import SchoolClass
 from app.core.security import get_password_hash
@@ -150,55 +149,7 @@ def delete_teacher(id: int, db: Session = Depends(get_db)):
     db.commit()
     return None
 
-@router.get("/{teacher_id}/subjects", response_model=List[SubjectResponse])
-def get_teacher_subjects(teacher_id: int, db: Session = Depends(get_db)):
-    teacher = db.query(Teacher).filter(Teacher.id == teacher_id).first()
-    if not teacher:
-        raise ResourceNotFoundException("Teacher", str(teacher_id))
-
-    subjects = (
-        db.query(Subject)
-        .join(teacher_subjects, teacher_subjects.c.subject_id == Subject.id)
-        .filter(teacher_subjects.c.teacher_id == teacher_id)
-        .all()
-    )
-    return subjects
-
-@router.post("/{teacher_id}/subjects", response_model=TeacherResponse)
-def update_teacher_subjects(
-    teacher_id: int,
-    body: TeacherSubjectsUpdate,
-    db: Session = Depends(get_db),
-):
-    db_teacher = db.query(Teacher).filter(Teacher.id == teacher_id).first()
-    if not db_teacher:
-        raise ResourceNotFoundException("Teacher", str(teacher_id))
-
-    if body.subject_ids:
-        subjects = db.query(Subject).filter(Subject.id.in_(body.subject_ids)).all()
-        if len(subjects) != len(body.subject_ids):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="One or more subject IDs not found",
-            )
-
-    db.execute(
-        teacher_subjects.delete().where(
-            teacher_subjects.c.teacher_id == teacher_id
-        )
-    )
-    for subject_id in body.subject_ids:
-        db.execute(
-            teacher_subjects.insert().values(
-                teacher_id=teacher_id, subject_id=subject_id
-            )
-        )
-    db.commit()
-
-    db.refresh(db_teacher)
-    return db_teacher
-
-# ---------- Three‑Way Class‑Subject Management (replaces old two‑way) ----------
+# ---------- Three‑Way Class‑Subject Management (replaces the dropped teacher_subjects) ----------
 @router.get("/{teacher_id}/class-subjects", response_model=List[TeacherClassSubjectResponse])
 def get_teacher_class_subjects(teacher_id: int, db: Session = Depends(get_db)):
     teacher = db.query(Teacher).filter(Teacher.id == teacher_id).first()

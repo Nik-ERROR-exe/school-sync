@@ -8,6 +8,7 @@ from app.api.deps import get_current_user
 from app.models.teacher import Teacher
 from app.models.timetable import TimetableSlot
 from app.models.substitute_assignment import SubstituteAssignment
+from app.core.date_utils import int_to_day
 from app.schemas.timetable import TimetableSlotResponse
 from app.schemas.substitute import SubstituteAssignmentResponse
 
@@ -28,7 +29,17 @@ def get_master_timetable(
         TimetableSlot.teacher_id == current_user.id
     )
     res = db.execute(stmt)
-    return list(res.scalars().all())
+    slots = res.scalars().all()
+    return [
+        TimetableSlotResponse(
+            class_id=s.class_id,
+            day_of_week=int_to_day(s.day_of_week),
+            period_number=s.period_number,
+            subject_id=s.subject_id,
+            teacher_id=s.teacher_id
+        )
+        for s in slots
+    ]
 
 @router.get("/substitutions", response_model=List[SubstituteAssignmentResponse])
 def get_substitute_assignments(
@@ -59,7 +70,7 @@ def get_substitute_assignments(
             SubstituteAssignmentResponse(
                 id=a.id,
                 date=a.date,
-                day_of_week=a.day_of_week,
+                day_of_week=int_to_day(a.day_of_week),
                 period_number=a.period_number,
                 class_id=a.class_id,
                 subject_id=a.subject_id,

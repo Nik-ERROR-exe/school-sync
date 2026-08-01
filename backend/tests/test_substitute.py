@@ -44,6 +44,7 @@ def test_assign_substitute_conflict():
             date=date(2026, 6, 17),
             period_number=1,
             class_id=1,
+            subject_id=2,
             original_teacher_id=10,
             substitute_teacher_id=20
         )

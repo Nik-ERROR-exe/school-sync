@@ -162,8 +162,6 @@ const Substitute: React.FC = () => {
       // Remove this period from affected list
       setAffectedPeriods(prev => prev.filter(p => p.period_number !== periodNumber));
       setExpandedPeriods(prev => ({ ...prev, [periodNumber]: false }));
-
-      window.dispatchEvent(new CustomEvent('reload-notifications'));
     } catch (err: any) {
       toast.dismiss(loadingToast);
       const msg = err?.response?.data?.detail || 'Assignment failed';

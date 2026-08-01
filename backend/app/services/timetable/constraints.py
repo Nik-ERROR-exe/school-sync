@@ -40,7 +40,7 @@ def check_teacher_daily_limit(
         if d == day and t_id == teacher_id:
             count += 1
             
-    return count < max_lectures
+    return count <= max_lectures
 
 def check_pt_capacity(
     pt_subject_id: int,
@@ -131,5 +131,5 @@ def check_subject_daily_limit(
         if cid == class_id and d == day and sid == subject_id
     )
     
-    return count < max_per_day
+    return count <= max_per_day
 

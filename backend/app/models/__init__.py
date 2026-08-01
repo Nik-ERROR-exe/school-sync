@@ -5,10 +5,8 @@ from app.models.subject import Subject
 from app.models.exam_type import ExamType
 from app.models.timetable import TimetableSlot
 from app.models.result import Result
-from app.models.notification import Notification
 from app.models.substitute_assignment import SubstituteAssignment
 from app.models.weekly_requirement import WeeklyRequirement
-from app.models.teacher_subjects import teacher_subjects
 from app.models.teacher_class_subject import TeacherClassSubject
 from app.models.timetable_settings import TimetableSettings
 
@@ -21,10 +19,8 @@ __all__ = [
     "ExamType",
     "TimetableSlot",
     "Result",
-    "Notification",
     "SubstituteAssignment",
     "WeeklyRequirement",
-    "teacher_subjects",
     "TeacherClassSubject",
     "TimetableSettings",
 ]

@@ -234,8 +234,6 @@ const SubstituteManagement: React.FC = () => {
       toast.dismiss(loadingToast);
       toast.success('Substitutions confirmed successfully!');
       setSubmitted(true);
-
-      window.dispatchEvent(new CustomEvent('reload-notifications'));
     } catch (err) {
       toast.dismiss(loadingToast);
       const msg = err?.response?.data?.detail || String(err) || 'Failed to save substitutions';
