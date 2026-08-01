@@ -3,6 +3,10 @@ import { toast } from 'react-hot-toast';
 import api from '../api';
 import { Download } from 'lucide-react';
 
+// Marks range rule: entered marks must be between 35 and 100.
+const MIN_MARKS = 35;
+const MAX_MARKS = 100;
+
 interface Class {
   id: number;
   class_name: string;
@@ -34,10 +38,10 @@ interface StudentResult {
 }
 
 interface EditableMarkInputProps {
-  resultId: number;
+  resultId: number | null;
   initialValue: number | null;
   totalMarks: number;
-  onSave: (resultId: number, newMarks: number, totalMarks: number) => void;
+  onSave: (resultId: number | null, newMarks: number, totalMarks: number) => void;
 }
 
 const EditableMarkInput: React.FC<EditableMarkInputProps> = ({
@@ -58,14 +62,18 @@ const EditableMarkInput: React.FC<EditableMarkInputProps> = ({
       return;
     }
     const num = parseFloat(val);
-    if (!isNaN(num)) {
-      const clamped = Math.max(0, Math.min(totalMarks, num));
-      setVal(String(clamped));
-      if (clamped !== initialValue) {
-        onSave(resultId, clamped, totalMarks);
-      }
-    } else {
+    if (isNaN(num)) {
       setVal(initialValue !== null ? String(initialValue) : '');
+      return;
+    }
+    const maxAllowed = Math.min(totalMarks, MAX_MARKS);
+    if (num < MIN_MARKS || num > maxAllowed) {
+      toast.error(`Marks must be between ${MIN_MARKS} and ${maxAllowed}.`);
+      setVal(initialValue !== null ? String(initialValue) : '');
+      return;
+    }
+    if (num !== initialValue) {
+      onSave(resultId, num, totalMarks);
     }
   };
 
@@ -83,8 +91,8 @@ const EditableMarkInput: React.FC<EditableMarkInputProps> = ({
       onBlur={handleBlur}
       onKeyDown={handleKeyDown}
       className="w-16 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-      min="0"
-      max={totalMarks}
+      min={MIN_MARKS}
+      max={Math.min(totalMarks, MAX_MARKS)}
     />
   );
 };
@@ -98,6 +106,7 @@ const Results: React.FC = () => {
   const [downloading, setDownloading] = useState(false);
   const [selectedClass, setSelectedClass] = useState<number | ''>('');
   const [selectedExam, setSelectedExam] = useState<number | ''>('');
+  const [totalMarks, setTotalMarks] = useState<number>(100);
 
   // Load classes (admin endpoint with trailing slash)
   useEffect(() => {
@@ -150,32 +159,62 @@ const Results: React.FC = () => {
     fetchResults();
   }, [selectedClass, selectedExam]);
 
-  const handleMarkChange = async (resultId: number, newMarks: number, totalMarks: number) => {
-    if (!resultId) return;
+  const handleMarkChange = async (
+    studentId: number,
+    subjectId: number,
+    resultId: number | null,
+    newMarks: number,
+    total: number
+  ) => {
     try {
-      await api.put(`/admin/results/${resultId}`, {
-        marks_obtained: newMarks,
-        total_marks: totalMarks
-      });
+      let savedResultId: number | null = resultId;
 
-      const updatedStudents = studentResults.map(student => ({
-        ...student,
-        subjects: student.subjects.map(subject =>
-          subject.result_id === resultId
-            ? {
-                ...subject,
-                marks_obtained: newMarks,
-                total_marks: totalMarks,
-                percentage: (newMarks / totalMarks) * 100,
-                grade: calculateGrade((newMarks / totalMarks) * 100)
-              }
-            : subject
-        )
+      if (resultId) {
+        // Update an existing result
+        await api.put(`/admin/results/${resultId}`, {
+          marks_obtained: newMarks,
+          total_marks: total
+        });
+      } else {
+        // No result exists yet - create one directly as admin
+        const response = await api.post('/admin/results/', {
+          results: [{
+            student_id: studentId,
+            subject_id: subjectId,
+            exam_type_id: selectedExam,
+            marks_obtained: newMarks,
+            total_marks: total
+          }]
+        });
+        const created = response.data?.[0];
+        if (created) {
+          savedResultId = created.id;
+        }
+      }
+
+      // Functional update: only touch this cell so overlapping saves for other
+      // cells (rapid entry across subjects) don't get clobbered by a stale snapshot.
+      setStudentResults(prev => prev.map(student => {
+        if (student.student_id !== studentId) return student;
+        return {
+          ...student,
+          subjects: student.subjects.map(subject =>
+            subject.subject_id === subjectId
+              ? {
+                  ...subject,
+                  result_id: savedResultId,
+                  marks_obtained: newMarks,
+                  total_marks: total,
+                  percentage: (newMarks / total) * 100,
+                  grade: calculateGrade((newMarks / total) * 100),
+                  status: 'submitted'
+                }
+              : subject
+          )
+        };
       }));
-      setStudentResults(updatedStudents);
-      toast.success('Marks updated automatically!');
-    } catch (error) {
-      toast.error('Failed to update marks');
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail?.message || 'Failed to save marks');
     }
   };
 
@@ -275,7 +314,7 @@ const Results: React.FC = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Class</label>
           <select
@@ -306,6 +345,19 @@ const Results: React.FC = () => {
               </option>
             ))}
           </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Total Marks</label>
+          <input
+            type="number"
+            value={totalMarks}
+            onChange={(e) => setTotalMarks(Math.max(MIN_MARKS, Math.min(MAX_MARKS, Number(e.target.value))))}
+            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            min={MIN_MARKS}
+            max={MAX_MARKS}
+          />
+          <p className="text-xs text-gray-500 mt-1">Marks must be between {MIN_MARKS} and {MAX_MARKS}</p>
         </div>
       </div>
 
@@ -343,19 +395,17 @@ const Results: React.FC = () => {
                         <td className="px-4 py-3 font-medium sticky left-16 bg-white">{student.name}</td>
                         {subjects.map((subject) => {
                           const subjectData = student.subjects.find(s => s.subject_id === subject.id);
-                          const hasResult = subjectData && subjectData.result_id !== null;
+                          const resultId = subjectData ? subjectData.result_id : null;
                           return (
                             <td key={subject.id} className="px-4 py-3">
-                              {hasResult ? (
-                                <EditableMarkInput
-                                  resultId={subjectData.result_id!}
-                                  initialValue={subjectData.marks_obtained}
-                                  totalMarks={subjectData.total_marks || 100}
-                                  onSave={handleMarkChange}
-                                />
-                              ) : (
-                                <span className="text-gray-400 text-sm">-</span>
-                              )}
+                              <EditableMarkInput
+                                resultId={resultId}
+                                initialValue={subjectData ? subjectData.marks_obtained : null}
+                                totalMarks={(subjectData && subjectData.total_marks) || totalMarks}
+                                onSave={(rid, marks, total) =>
+                                  handleMarkChange(student.student_id, subject.id, rid, marks, total)
+                                }
+                              />
                             </td>
                           );
                         })}
