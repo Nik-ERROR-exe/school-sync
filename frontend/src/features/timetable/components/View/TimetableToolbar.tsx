@@ -7,16 +7,18 @@ interface TimetableToolbarProps {
   onRegenerate: () => void;
   isSaving: boolean;
   onBack?: () => void;
+  onDownload: (format: 'pdf' | 'excel') => void;
 }
 
-export default function TimetableToolbar({ 
-  onSave, 
-  onRegenerate, 
+export default function TimetableToolbar({
+  onSave,
+  onRegenerate,
   isSaving,
   onBack,
+  onDownload,
 }: TimetableToolbarProps) {
-  const handleDownload = (type: string) => {
-    toast.success(`Downloading ${type}...`);
+  const handleDownload = (format: 'pdf' | 'excel') => {
+    onDownload(format);
   };
 
   const handleShare = () => {
@@ -60,14 +62,14 @@ export default function TimetableToolbar({
 
       <div className="flex items-center gap-2">
         <button 
-          onClick={() => handleDownload('PDF')}
+          onClick={() => handleDownload('pdf')}
           className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold shadow-sm transition-all"
         >
           <FileText size={14} className="text-red-500" />
           <span>PDF</span>
         </button>
         <button 
-          onClick={() => handleDownload('Excel')}
+          onClick={() => handleDownload('excel')}
           className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold shadow-sm transition-all"
         >
           <LayoutGrid size={14} className="text-emerald-500" />
