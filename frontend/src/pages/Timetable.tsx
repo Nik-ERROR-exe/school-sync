@@ -401,6 +401,49 @@ function AdminTimetableFlow() {
     setSchedule([]);
   };
 
+  const handleDownload = async (format: 'pdf' | 'excel') => {
+    const ext = format === 'pdf' ? 'pdf' : 'xlsx';
+    try {
+      const response = await api.get('/admin/timetable/export', {
+        params: { format },
+        responseType: 'blob',
+      });
+      const contentDisposition = response.headers['content-disposition'];
+      let filename = `master_timetable.${ext}`;
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (match) filename = match[1];
+      }
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success(`Timetable downloaded: ${filename}`);
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      console.error('Timetable download error:', err);
+      // responseType: 'blob' hides JSON errors, so read the blob body for the detail
+      let message = 'Failed to download timetable';
+      try {
+        const blob = err.response?.data;
+        if (blob && blob instanceof Blob) {
+          const parsed = JSON.parse(await blob.text());
+          if (typeof parsed?.detail === 'string') {
+            message = parsed.detail;
+          } else if (Array.isArray(parsed?.detail) && parsed.detail.length > 0) {
+            message = parsed.detail.map((d: any) => d?.msg ?? 'Invalid field').join('; '); // eslint-disable-line @typescript-eslint/no-explicit-any
+          }
+        }
+      } catch {
+        // not JSON — keep fallback message
+      }
+      toast.error(message);
+    }
+  };
+
   const handleSaveSlotEdit = (updatedSchedule: ApiSlot[]) => {
     setSchedule(updatedSchedule);
   };
@@ -467,11 +510,12 @@ function AdminTimetableFlow() {
   // ── Grid Mode ──
   return (
     <div className="flex flex-col h-[calc(100vh-theme(spacing.24))]">
-      <TimetableToolbar 
+      <TimetableToolbar
         onSave={handleSave}
         onRegenerate={handleRegenerate}
         isSaving={isSaving}
         onBack={() => setMode('landing')}
+        onDownload={handleDownload}
       />
 
       <div className="flex flex-1 overflow-hidden">
