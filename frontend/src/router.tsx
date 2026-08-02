@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { useAuth } from './context/AuthContext';
 import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
+import { useKeepAlive } from './hooks/useKeepAlive';
 import Login from './pages/Login';
 import DashboardHome from './pages/DashboardHome';
 import Results from './pages/Results';
@@ -61,6 +62,8 @@ const registerRoute = createRoute({
 
 // Dashboard Layout wrapper
 const DashboardLayout = () => {
+  useKeepAlive(); // ping backend every 14 min to keep it awake while the app is open
+
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       {/* Sidebar */}

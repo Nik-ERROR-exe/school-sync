@@ -28,7 +28,8 @@ from app.api.teacher_students import router as teacher_students_router
 from app.api.teacher_exam_types import router as teacher_exam_types_router
 from app.api.public_timetable import router as public_timetable_router
 from app.api.teacher_subject_list import router as teacher_subject_list_router
-from app.api.admin_promotion import router as admin_promotion_router  
+from app.api.admin_promotion import router as admin_promotion_router
+from app.api.ping import router as ping_router  
 
 
 
@@ -73,6 +74,7 @@ app.include_router(teacher_exam_types_router, prefix=API_PREFIX)
 app.include_router(public_timetable_router, prefix=API_PREFIX)
 app.include_router(teacher_subject_list_router, prefix=API_PREFIX)
 app.include_router(admin_promotion_router, prefix=API_PREFIX)
+app.include_router(ping_router, prefix=API_PREFIX)
 
 
 # Serve uploaded files (profile images) from local disk.
