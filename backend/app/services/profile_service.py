@@ -54,7 +54,6 @@ def build_me_response(db: Session, teacher: Teacher) -> Dict:
         "email": teacher.email,
         "role": teacher.role,
         "status": teacher.status,
-        "profile_image_url": teacher.profile_image_url,
         "classes_teaching": None,
         "stats": None,
     }

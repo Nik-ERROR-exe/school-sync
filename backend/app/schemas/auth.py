@@ -39,7 +39,6 @@ class CurrentUserResponse(BaseModel):
     email: EmailStr
     role: str
     status: str
-    profile_image_url: Optional[str] = None
     classes_teaching: Optional[List[ClassTeachingInfo]] = None
     stats: Optional[SchoolStats] = None
 

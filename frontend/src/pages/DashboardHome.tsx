@@ -2,7 +2,6 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { Link } from '@tanstack/react-router';
-import ProfilePhotoUpload from '../components/ProfilePhotoUpload';
 import {
   ArrowRight,
   Calendar,
@@ -180,7 +179,9 @@ const DashboardHome: React.FC = () => {
           </div>
 
           <div className="shrink-0">
-            <ProfilePhotoUpload name={user?.name} photoUrl={user?.profile_image_url} />
+            <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-white/30 bg-accent/20 font-heading text-xl font-bold text-white">
+              {(user?.name || '?').charAt(0).toUpperCase()}
+            </div>
           </div>
         </div>
       </div>

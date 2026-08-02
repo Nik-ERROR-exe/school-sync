@@ -25,7 +25,6 @@ export interface UserInfo {
   email: string;
   role: 'ADMIN' | 'TEACHER';
   status: 'ACTIVE' | 'INACTIVE' | 'PENDING';
-  profile_image_url?: string | null;
   classes_teaching?: ClassTeachingInfo[] | null;
   stats?: SchoolStats | null;
 }
