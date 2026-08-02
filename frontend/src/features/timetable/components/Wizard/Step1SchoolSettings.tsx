@@ -1,10 +1,8 @@
-import React, { useMemo, useEffect, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useWizard, computePeriodsPerDay, DiagnosticIssue } from '../../WizardContext';
-import api from '../../../../api';
-import { ApiClass } from '../../types';
+import { useWizard, computePeriodsPerDay } from '../../WizardContext';
 import DiagnosticBanner from './DiagnosticBanner';
 
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
@@ -17,31 +15,17 @@ const schema = z.object({
   saturdayHalfDay: z.boolean(),
   saturdayPeriodCount: z.number().optional(),
   lunchPeriod: z.number().nullable(),
-  selectedClassId: z.number().nullable(),
 });
 
 type FormData = z.infer<typeof schema>;
 
 export default function Step1SchoolSettings({ onNext }: { onNext: () => void }) {
   const { state, updateState } = useWizard();
-  const [classes, setClasses] = useState<ApiClass[]>([]);
 
   const computedPeriodsPerDay = useMemo(
     () => computePeriodsPerDay(state.startTime, state.endTime, state.periodDuration),
     [state.startTime, state.endTime, state.periodDuration]
   );
-
-  useEffect(() => {
-    const fetchClasses = async () => {
-      try {
-        const res = await api.get('/admin/classes/');
-        setClasses(res.data);
-      } catch (err) {
-        console.error('Failed to fetch classes', err);
-      }
-    };
-    fetchClasses();
-  }, []);
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -53,7 +37,6 @@ export default function Step1SchoolSettings({ onNext }: { onNext: () => void }) 
       saturdayHalfDay: state.schoolDays.includes('Saturday'),
       saturdayPeriodCount: state.saturdayPeriods,
       lunchPeriod: state.lunchPeriod,
-      selectedClassId: state.selectedClassId,
     }
   });
 
@@ -84,7 +67,6 @@ export default function Step1SchoolSettings({ onNext }: { onNext: () => void }) 
       endTime: data.schoolEndTime,
       periodDuration: data.periodDuration,
       lunchPeriod: data.lunchPeriod,
-      selectedClassId: data.selectedClassId,
     });
     onNext();
   };
@@ -102,28 +84,6 @@ export default function Step1SchoolSettings({ onNext }: { onNext: () => void }) 
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="p-8 space-y-8">
-        {/* Target Class Selection */}
-        <div className="space-y-2">
-          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">Target Class for Timetable</label>
-          <select
-            value={watch('selectedClassId') ?? ''}
-            onChange={(e) => {
-              const val = e.target.value === '' ? null : Number(e.target.value);
-              setValue('selectedClassId', val);
-            }}
-            className="w-full md:w-64 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-          >
-            <option value="">-- Select a Class --</option>
-            {classes.map(cls => (
-              <option key={cls.id} value={cls.id}>
-                Class {cls.class_name} - Division {cls.division}
-              </option>
-            ))}
-          </select>
-          {errors.selectedClassId && <p className="text-xs text-red-500 mt-1">{errors.selectedClassId.message}</p>}
-          <p className="text-xs text-slate-400">Select exactly one class to generate its timetable.</p>
-        </div>
-
         {/* Working Days */}
         <div className="space-y-2">
           <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Working Days</label>
