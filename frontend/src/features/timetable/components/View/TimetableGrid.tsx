@@ -14,6 +14,7 @@ interface TimetableGridProps {
   periodDuration: number;
   lunchPeriod: number | null;
   onSave: (updatedSchedule: ApiSlot[]) => void;
+  onClassChange?: (id: number | null) => void;
 }
 
 const getPeriodTimeStr = (periodNum: number, startTime: string, duration: number) => {
@@ -42,6 +43,7 @@ export default function TimetableGrid({
   periodDuration,
   lunchPeriod,
   onSave,
+  onClassChange,
 }: TimetableGridProps) {
   const [selectedClassId, setSelectedClassId] = useState<number | null>(
     classes.length > 0 ? classes[0].id : null
@@ -54,6 +56,11 @@ export default function TimetableGrid({
       setSelectedClassId(classes[0].id);
     }
   }, [classes, selectedClassId]);
+
+  // Notify the parent of the currently viewed class (for download scoping)
+  useEffect(() => {
+    onClassChange?.(selectedClassId);
+  }, [selectedClassId, onClassChange]);
 
   const handleCellClick = (day: string, periodNum: number) => {
     if (!selectedClassId) return;

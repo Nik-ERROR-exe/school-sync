@@ -268,6 +268,7 @@ function AdminTimetableFlow() {
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [viewClassId, setViewClassId] = useState<number | null>(null);
 
   // Fetch classes, subjects, teachers, and saved timetable on mount
   const fetchAllData = useCallback(async () => {
@@ -367,6 +368,7 @@ function AdminTimetableFlow() {
       start_time: wizardState.startTime,
       period_duration: wizardState.periodDuration,
       pt_subject_id: wizardState.ptSubjectId,
+      lunch_period: wizardState.lunchPeriod,
     }).catch(err => console.error('Failed to save timetable settings:', err));
   };
 
@@ -405,7 +407,10 @@ function AdminTimetableFlow() {
     const ext = format === 'pdf' ? 'pdf' : 'xlsx';
     try {
       const response = await api.get('/admin/timetable/export', {
-        params: { format },
+        params: {
+          format,
+          class_id: viewClassId ?? wizardSettings?.selectedClassId ?? undefined,
+        },
         responseType: 'blob',
       });
       const contentDisposition = response.headers['content-disposition'];
@@ -532,6 +537,7 @@ function AdminTimetableFlow() {
             periodDuration={wizardSettings?.periodDuration ?? 40}
             lunchPeriod={wizardSettings?.lunchPeriod ?? null}
             onSave={handleSaveSlotEdit}
+            onClassChange={setViewClassId}
           />
         </div>
       </div>
