@@ -1,6 +1,8 @@
 import json
 from datetime import datetime
+from typing import Optional
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy import delete
 from sqlalchemy.future import select
 from sqlalchemy.orm import Session, joinedload
@@ -25,6 +27,11 @@ from app.models.teacher_class_subject import TeacherClassSubject
 from app.models.subject import Subject
 from app.core.date_utils import day_to_int, int_to_day, format_time, parse_time
 from app.core.exceptions import ValidationException
+from app.services.timetable_report_service import (
+    build_timetable_grids,
+    generate_timetable_pdf,
+    generate_timetable_excel,
+)
 
 router = APIRouter(
     prefix="/admin/timetable",
@@ -276,6 +283,57 @@ def get_saved_timetable(db: Session = Depends(get_db)):
         for s in slots
     ]
     return {"schedule": schedule, "success": True, "message": "Timetable loaded."}
+
+
+@router.get("/export")
+def export_timetable(
+    format: str = Query("excel", description="Export format: 'pdf' or 'excel'"),
+    class_id: Optional[int] = Query(None, description="Single class to export; omit for all classes"),
+    school_name: str = Query("SchoolSync Academy", description="School name header shown on the exported file"),
+    db: Session = Depends(get_db),
+):
+    """Download the saved master timetable as a PDF or Excel file."""
+    stmt = (
+        select(TimetableSlot)
+        .options(
+            joinedload(TimetableSlot.school_class),
+            joinedload(TimetableSlot.subject),
+            joinedload(TimetableSlot.teacher),
+        )
+        .order_by(TimetableSlot.class_id, TimetableSlot.day_of_week, TimetableSlot.period_number)
+    )
+    if class_id is not None:
+        stmt = stmt.where(TimetableSlot.class_id == class_id)
+
+    slots = db.execute(stmt).scalars().all()
+    if not slots:
+        raise ValidationException(
+            "No saved timetable found. Generate and save a timetable before downloading."
+        )
+
+    settings = db.execute(select(TimetableSettingsModel)).scalar_one_or_none()
+    grids = build_timetable_grids(slots, settings)
+
+    fmt = format.lower()
+    base_filename = f"timetable_class_{class_id}" if class_id is not None else "master_timetable"
+
+    if fmt == "pdf":
+        pdf_buffer = generate_timetable_pdf(grids, settings, school_name)
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{base_filename}.pdf"'},
+        )
+
+    if fmt == "excel":
+        excel_buffer = generate_timetable_excel(grids, settings, school_name)
+        return StreamingResponse(
+            excel_buffer,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{base_filename}.xlsx"'},
+        )
+
+    raise ValidationException("Unsupported export format. Please choose 'pdf' or 'excel'.")
 
 
 @router.post("/settings")
