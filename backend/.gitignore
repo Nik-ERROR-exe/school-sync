@@ -17,6 +17,9 @@ htmlcov/
 *.sqlite3
 *.db
 
+# Uploaded files (profile images)
+uploads/
+
 # OS files
 .DS_Store
 Thumbs.db

@@ -23,6 +23,7 @@ class Teacher(Base):
     role: Mapped[str] = mapped_column(String(20), default="TEACHER", nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="PENDING", nullable=False)
     max_lectures_per_day: Mapped[int] = mapped_column(Integer, default=4, nullable=False)
+    profile_image_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     # availability: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     # --- classes_managed: no longer requires SchoolClass to have "class_teacher" ---

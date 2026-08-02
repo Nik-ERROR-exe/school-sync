@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import os
 import time
 from app.config import settings
 from app.database import SessionLocal
@@ -70,7 +72,12 @@ app.include_router(teacher_students_router, prefix=API_PREFIX)
 app.include_router(teacher_exam_types_router, prefix=API_PREFIX)
 app.include_router(public_timetable_router, prefix=API_PREFIX)
 app.include_router(teacher_subject_list_router, prefix=API_PREFIX)
-app.include_router(admin_promotion_router, prefix=API_PREFIX)  
+app.include_router(admin_promotion_router, prefix=API_PREFIX)
+
+
+# Serve uploaded files (profile images) from local disk.
+os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 
 @app.on_event("startup")
