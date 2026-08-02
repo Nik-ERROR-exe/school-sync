@@ -2,6 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { Link } from '@tanstack/react-router';
+import ProfilePhotoUpload from '../components/ProfilePhotoUpload';
 import {
   ArrowRight,
   Calendar,
@@ -108,7 +109,7 @@ const DashboardHome: React.FC = () => {
 
   return (
     <div className="space-y-8 font-body">
-      {/* Welcome Banner — gradient hero band */}
+      {/* Profile Hero — user info + photo */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 px-6 py-8 text-white shadow-premium border border-slate-800 sm:px-12 sm:py-10">
         {/* Dot grid texture */}
         <div
@@ -121,28 +122,65 @@ const DashboardHome: React.FC = () => {
         <div className="absolute right-0 top-0 -mr-4 -mt-4 h-32 w-32 rounded-full bg-accent/20 blur-2xl" />
         <div className="absolute bottom-0 right-1/4 -mb-8 h-40 w-40 rounded-full bg-blue-500/10 blur-3xl" />
 
-        <div className="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-2">
+        <div className="relative flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0 space-y-3">
             <div className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-800 px-2.5 py-0.5 text-xs font-bold text-accent">
               <Sparkles className="h-3.5 w-3.5 text-accent" />
               <span>Amarkor Vidyalaya, Bhandup West</span>
             </div>
-            <h2 className="font-heading text-2xl font-extrabold tracking-tight md:text-3xl">
-              {t('common.welcome')}, {user?.name}!
-            </h2>
-            <p className="max-w-xl text-sm leading-relaxed text-slate-300">
-              Welcome back to your school ERP dashboard. Check schedules, enter academic results, or
-              arrange class substitutions instantly.
-            </p>
+            <div className="space-y-1">
+              <h2 className="font-heading text-2xl font-extrabold tracking-tight md:text-3xl">
+                {t('common.welcome')}, {user?.name}!
+              </h2>
+              <p className="text-sm text-slate-300">{user?.email}</p>
+            </div>
+
+            {user?.role === 'TEACHER' && (
+              <div className="pt-1">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Classes I Teach
+                </p>
+                {user.classes_teaching && user.classes_teaching.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {user.classes_teaching.map((c) => (
+                      <span
+                        key={`${c.class_name}-${c.division}`}
+                        className="rounded-lg border border-slate-700/60 bg-slate-800/40 px-2.5 py-1.5 text-xs font-semibold text-slate-100"
+                      >
+                        {c.class_name} {c.division} —{' '}
+                        {c.subjects.map((s) => s.subject_name).join(', ')}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-400">No classes assigned yet.</p>
+                )}
+              </div>
+            )}
+
+            {user?.role === 'ADMIN' && user.stats && (
+              <div className="grid max-w-md grid-cols-3 gap-3 pt-1">
+                {[
+                  { label: 'Teachers', value: user.stats.teachers_count },
+                  { label: 'Classes', value: user.stats.classes_count },
+                  { label: 'Students', value: user.stats.students_count },
+                ].map((s) => (
+                  <div
+                    key={s.label}
+                    className="rounded-xl border border-slate-700/60 bg-slate-800/40 px-4 py-3"
+                  >
+                    <p className="font-heading text-2xl font-extrabold">{s.value}</p>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                      {s.label}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="shrink-0 flex gap-3">
-            <Link
-              to="/admin/results"
-              className="flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-slate-900 shadow-sm transition hover:bg-slate-50"
-            >
-              <span>{t('common.results')}</span>
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
+
+          <div className="shrink-0">
+            <ProfilePhotoUpload name={user?.name} photoUrl={user?.profile_image_url} />
           </div>
         </div>
       </div>

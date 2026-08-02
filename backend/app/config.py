@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     # Format: YYYY-MM-DD (start of the current academic term).
     ACADEMIC_TERM_START: str = "2026-04-01"
 
+    # Local-disk storage for uploaded profile images (served via StaticFiles at /uploads).
+    UPLOAD_DIR: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+
     # Pydantic Settings Configuration
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"),
