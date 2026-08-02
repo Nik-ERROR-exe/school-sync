@@ -349,6 +349,7 @@ def save_timetable_settings(
         existing.start_time = parse_time(body.start_time)
         existing.period_duration = body.period_duration
         existing.pt_subject_id = body.pt_subject_id
+        existing.lunch_period = body.lunch_period
         existing.updated_at = datetime.utcnow()
     else:
         new_settings = TimetableSettingsModel(
@@ -358,6 +359,7 @@ def save_timetable_settings(
             start_time=parse_time(body.start_time),
             period_duration=body.period_duration,
             pt_subject_id=body.pt_subject_id,
+            lunch_period=body.lunch_period,
         )
         db.add(new_settings)
     db.commit()
@@ -382,4 +384,5 @@ def get_timetable_settings(db: Session = Depends(get_db)):
         "start_time": format_time(existing.start_time),
         "period_duration": existing.period_duration,
         "pt_subject_id": existing.pt_subject_id,
+        "lunch_period": existing.lunch_period,
     }

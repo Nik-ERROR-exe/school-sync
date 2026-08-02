@@ -76,11 +76,16 @@ def build_timetable_grids(
             if day not in days:
                 continue
             if s.subject_id == 0:
-                rows[s.period_number][day] = "LUNCH"
+                rows[s.period_number][day] = "Lunch Break"
                 continue
             subject = s.subject.subject_name if s.subject else f"Subject #{s.subject_id}"
             teacher = s.teacher.name if (s.teacher and s.teacher_id) else ""
             rows[s.period_number][day] = subject + (f"\n{teacher}" if teacher else "")
+
+        # Reserve the configured lunch period across all school days.
+        if settings and settings.lunch_period and settings.lunch_period in rows:
+            for day in days:
+                rows[settings.lunch_period][day] = "Lunch Break"
 
         grids.append({
             "class_id": class_id,

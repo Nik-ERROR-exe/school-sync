@@ -55,3 +55,4 @@ class TimetableSettingsSchema(BaseModel):
     start_time: str = "08:00"
     period_duration: int = 40
     pt_subject_id: Optional[int] = None
+    lunch_period: Optional[int] = None
