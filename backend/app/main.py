@@ -48,7 +48,11 @@ app = FastAPI(
 _app_origins = [o.strip() for o in settings.FRONTEND_ORIGIN.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_app_origins,
+    allow_origins=[
+        
+        "https://school-sync-fj5p.vercel.app",  # remove once you delete the duplicate
+        "http://localhost:5173",  # your local dev frontend, adjust port
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
