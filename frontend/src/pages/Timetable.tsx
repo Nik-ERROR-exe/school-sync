@@ -254,6 +254,7 @@ function AdminTimetableFlow() {
         ptSubjectId: savedPt ? Number(savedPt) : null,
         selectedClassId: savedClassId ? Number(savedClassId) : null,
         weeklyRequirements: [],
+        diagnosticIssues: [],
         _teachersCache: [],
         _subjectsCache: [],
       };
@@ -304,6 +305,7 @@ function AdminTimetableFlow() {
           selectedTeacherIds: prev?.selectedTeacherIds ?? [],
           selectedClassId: prev?.selectedClassId ?? null,
           weeklyRequirements: prev?.weeklyRequirements ?? [],
+          diagnosticIssues: prev?.diagnosticIssues ?? [],
           endTime: prev?.endTime ?? '14:30',
           _teachersCache: prev?._teachersCache ?? [],
           _subjectsCache: prev?._subjectsCache ?? [],
@@ -350,6 +352,7 @@ function AdminTimetableFlow() {
           _teachersCache: prev?._teachersCache ?? [],
           _subjectsCache: prev?._subjectsCache ?? [],
           weeklyRequirements: prev?.weeklyRequirements ?? [],
+          diagnosticIssues: prev?.diagnosticIssues ?? [],
         }));
       }
     }

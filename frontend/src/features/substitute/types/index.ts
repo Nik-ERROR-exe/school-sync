@@ -22,7 +22,6 @@ export interface AffectedPeriod {
   subject_id: number;
   subject_name: string | null;
   period_number: number;
-  day_of_week: string;
 }
 
 export interface AvailableTeacher {

@@ -23,7 +23,7 @@ export const PromotionService = {
       }));
     } catch (error) {
       console.error('Failed to get promotion preview from backend, using fallback:', error);
-      return this.getPromotionPreviewFallback();
+      return PromotionService.getPromotionPreviewFallback();
     }
   },
 
@@ -99,7 +99,7 @@ export const PromotionService = {
       return true;
     } catch (error) {
       console.error('Failed to promote students via backend, using fallback:', error);
-      return this.promoteStudentsFallback(previews);
+      return PromotionService.promoteStudentsFallback(previews);
     }
   },
 
@@ -135,7 +135,7 @@ export const PromotionService = {
       return student;
     } catch (error) {
       console.error('Failed to admit student via backend, using fallback:', error);
-      return this.admitFirstStandardStudentsFallback(name, rollNo, division);
+      return PromotionService.admitFirstStandardStudentsFallback(name, rollNo, division);
     }
   },
 

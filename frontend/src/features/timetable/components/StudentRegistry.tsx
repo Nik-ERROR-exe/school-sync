@@ -30,7 +30,7 @@ const StudentRegistry = () => {
   fetchData();
 }, []);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     console.log('📤 Submitting form:', formData);
     
@@ -52,7 +52,7 @@ const StudentRegistry = () => {
       // Refresh students
       const refreshResponse = await api.get('/admin/students');
       setStudents(refreshResponse.data.students || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error:', error);
       alert('Error: ' + (error.response?.data?.detail || error.message));
     }

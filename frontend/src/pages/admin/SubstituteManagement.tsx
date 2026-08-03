@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { SubstituteService } from '../../features/substitute/services';
+import { AvailableTeacher } from '../../features/substitute/types';
 import { teacherApi } from '../../api/teacher';
 import { toast } from 'react-hot-toast';
 import {
@@ -47,7 +48,7 @@ interface FutureAssignment {
   substitute_teacher_id: number | null;
   class_info?: ClassInfo;
   subject_info?: SubjectBasic;
-  available_teachers: Teacher[];
+  available_teachers: AvailableTeacher[];
   loading: boolean;
 }
 
@@ -81,7 +82,7 @@ const SubstituteManagement: React.FC = () => {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [teacherData, classData, subjectData] = await Promise.all([
+        const [teacherData] = await Promise.all([
           teacherApi.getTeachers().then((res: any) => res.data || res),
         ]);
 
@@ -130,14 +131,14 @@ const SubstituteManagement: React.FC = () => {
           subject_id: p.subject_id,
           day_of_week: p.day_of_week,
           substitute_teacher_id: null,
-          class_info: { class_name: p.class_name, division: p.division },
-          subject_info: { id: p.subject_id, subject_name: p.subject_name || '' },
+          class_info: { id: p.class_id, class_name: p.class_name, division: p.division },
+          subject_info: { id: p.subject_id, subject_name: p.subject_name || '', code: '' },
           available_teachers: [],
           loading: false,
         });
       });
       setAssignments(initialAssignments);
-    } catch (err) {
+    } catch (err: any) {
       const msg = err?.response?.data?.detail || String(err) || 'Failed to fetch affected periods';
       toast.error(msg);
     } finally {
@@ -165,7 +166,7 @@ const SubstituteManagement: React.FC = () => {
   );
 
   const handleSelectSubstitute = useCallback(
-    async (key: string, substituteTeacherId: number) => {
+    async (key: string, substituteTeacherId: number | null) => {
       setAssignments((prev) => {
         const updated = new Map(prev);
         const existing = updated.get(key);
@@ -234,7 +235,7 @@ const SubstituteManagement: React.FC = () => {
       toast.dismiss(loadingToast);
       toast.success('Substitutions confirmed successfully!');
       setSubmitted(true);
-    } catch (err) {
+    } catch (err: any) {
       toast.dismiss(loadingToast);
       const msg = err?.response?.data?.detail || String(err) || 'Failed to save substitutions';
       toast.error(msg);

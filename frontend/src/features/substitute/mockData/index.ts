@@ -4,6 +4,7 @@ export const initialSubstituteAssignments: SubstituteAssignment[] = [
   {
     id: 1,
     date: '2026-06-18',
+    day_of_week: 'Thursday',
     class_id: 15, // 8A
     period_number: 3,
     original_teacher_id: 3, // Priya Madam

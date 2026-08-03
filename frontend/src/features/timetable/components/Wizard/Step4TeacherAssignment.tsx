@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../../../../api';
-import { useWizard, WizardState, DiagnosticIssue } from '../../WizardContext';
+import { useWizard, WizardState, DiagnosticIssue, ApiTeacher } from '../../WizardContext';
 import { Sparkles, Loader2, AlertCircle, X, ChevronRight, ArrowRight, AlertTriangle } from 'lucide-react';
-import { ApiSlot, ApiTeacher } from '../../types';
+import { ApiSlot } from '../../types';
 
 interface Step4Props {
   onPrev: () => void;
