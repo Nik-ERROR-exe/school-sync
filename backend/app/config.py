@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     INITIAL_ADMIN_NAME: str = "System Administrator"
 
     # Frontend CORS origin(s). Comma-separated list, e.g.
-    # FRONTEND_ORIGIN=https://school-sync.vercel.app,https://school-sync-git-preview.vercel.app
+    # FRONTEND_ORIGIN=https://school-sync-fj5p.vercel.app
     FRONTEND_ORIGIN: str = ""
 
     # Data archival: substitute assignments dated before this day are purged.
