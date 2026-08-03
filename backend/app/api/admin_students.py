@@ -26,6 +26,7 @@ from app.services.student_import_service import (
 router = APIRouter(prefix="/admin/students", tags=["Admin - Students"])
 
 MAX_UPLOAD_ROWS = 5000
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB hard cap before parsing (zip-bomb / DoS guard)
 
 
 def _clean_cell(v) -> str:
@@ -88,7 +89,14 @@ def bulk_upload_students(
     current_admin: Teacher = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    content = file.file.read()
+    # Read with a hard byte cap so an oversized / decompression-bomb file is
+    # rejected BEFORE it is parsed into memory.
+    content = file.file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Uploaded file exceeds the 5 MB limit.",
+        )
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 

@@ -79,7 +79,7 @@ def create_or_update_results(
     Allows the admin to enter marks for any student/subject even when no
     teacher submission exists yet. Upserts on (student_id, subject_id, exam_type_id).
     """
-    results = create_result_batch(db, req.results, admin.id)
+    results = create_result_batch(db, req.results, admin.id, is_admin=True)
     return [
         ResultResponse(
             id=r.id,

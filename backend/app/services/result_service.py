@@ -5,8 +5,10 @@ from app.models.student import Student
 from app.models.school_class import SchoolClass
 from app.models.subject import Subject
 from app.models.exam_type import ExamType
+from app.models.teacher_class_subject import TeacherClassSubject
+from app.models.timetable import TimetableSlot
 from app.schemas.result import ResultCreate, MIN_MARKS, MAX_MARKS
-from app.core.exceptions import ResourceNotFoundException, ValidationException
+from app.core.exceptions import ResourceNotFoundException, ValidationException, ForbiddenException
 from typing import List, Optional
 from datetime import datetime
 
@@ -43,12 +45,62 @@ def calculate_grade_and_percentage(marks_obtained: float, total_marks: float) ->
         
     return percentage, grade
 
+
+def _check_teacher_authorized(
+    db: Session,
+    results_data: List[ResultCreate],
+    student_ids: set,
+    teacher_id: int,
+) -> None:
+    """Raise ForbiddenException unless the teacher teaches every (class, subject)
+    referenced by the batch. Authority comes from the explicit
+    teacher_class_subjects mapping and/or the generated timetable slots."""
+    authorized_pairs = set(
+        db.execute(
+            select(TeacherClassSubject.class_id, TeacherClassSubject.subject_id).where(
+                TeacherClassSubject.teacher_id == teacher_id
+            )
+        ).all()
+    )
+    authorized_pairs.update(
+        db.execute(
+            select(TimetableSlot.class_id, TimetableSlot.subject_id).where(
+                TimetableSlot.teacher_id == teacher_id
+            )
+        ).all()
+    )
+
+    student_class_map = dict(
+        db.execute(
+            select(Student.id, Student.class_id).where(Student.id.in_(student_ids))
+        ).all()
+    )
+
+    unauthorized = []
+    for data in results_data:
+        student_class_id = student_class_map.get(data.student_id)
+        if (student_class_id, data.subject_id) not in authorized_pairs:
+            unauthorized.append((data.student_id, data.subject_id))
+    if unauthorized:
+        raise ForbiddenException(
+            "You are not assigned to teach one or more of the requested "
+            f"student/subject pairs: {unauthorized}. You may only enter marks "
+            "for subjects you teach in your own classes."
+        )
+
+
 def create_result_batch(
-    db: Session, 
-    results_data: List[ResultCreate], 
-    teacher_id: int
+    db: Session,
+    results_data: List[ResultCreate],
+    teacher_id: int,
+    is_admin: bool = False
 ) -> List[Result]:
-    """Create or update a batch of student results and set status to 'submitted'."""
+    """Create or update a batch of student results and set status to 'submitted'.
+
+    When called by a teacher (is_admin=False) the teacher is only allowed to
+    record results for subjects they actually teach in the student's class, and
+    cannot overwrite results an admin has already approved. Admins bypass both
+    checks (they can enter marks for any student/subject)."""
     if not results_data:
         return []
 
@@ -72,6 +124,13 @@ def create_result_batch(
     if missing_exam_types:
         raise ResourceNotFoundException("ExamType", str(next(iter(missing_exam_types))))
 
+    # 1b. Authorization: the submitting teacher may only record results for
+    # students in classes where they actually teach the subject. Authority comes
+    # from the explicit teacher_class_subjects mapping and/or the generated
+    # timetable slots. Without this, any teacher could edit any student's marks.
+    if not is_admin:
+        _check_teacher_authorized(db, results_data, student_ids, teacher_id)
+
     # 2. Bulk fetch existing results matching the batch criteria
     existing_results = db.scalars(
         select(Result).where(
@@ -91,6 +150,12 @@ def create_result_batch(
         existing = existing_map.get(key)
         
         if existing:
+            if not is_admin and existing.status == "approved":
+                raise ForbiddenException(
+                    "Cannot overwrite an already approved result (student "
+                    f"{data.student_id}, subject {data.subject_id}). Contact the "
+                    "administrator to amend it."
+                )
             existing.marks_obtained = data.marks_obtained
             existing.total_marks = data.total_marks
             existing.percentage = percentage

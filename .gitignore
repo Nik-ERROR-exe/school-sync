@@ -27,3 +27,5 @@ backend.zip
 # Kilocode worktrees/cache
 .kilo/
 .kilocode/
+
+.claude/
