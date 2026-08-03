@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { normalizeApiBaseUrl } from '../api';
 
 const KEEP_ALIVE_INTERVAL = 14 * 60 * 1000; // 14 minutes
 
@@ -10,7 +11,7 @@ const KEEP_ALIVE_INTERVAL = 14 * 60 * 1000; // 14 minutes
 export function useKeepAlive() {
   useEffect(() => {
     const ping = () => {
-      const base = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+      const base = normalizeApiBaseUrl(import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1');
       fetch(`${base}/ping`, { method: 'GET' }).catch(() => {
         /* silently ignore if backend is already sleeping */
       });
