@@ -1,5 +1,4 @@
 import json
-from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
@@ -19,13 +18,18 @@ from app.services.timetable import (
     TimetableSolver,
     validate_timetable_slots
 )
+from app.services.timetable.period_schedule import (
+    PERIODS_PER_DAY,
+    LUNCH_PERIOD,
+    PERIOD_SCHEDULE,
+)
 from app.models.timetable import TimetableSlot
 from app.models.teacher import Teacher
 from app.models.school_class import SchoolClass
 from app.models.weekly_requirement import WeeklyRequirement
 from app.models.teacher_class_subject import TeacherClassSubject
 from app.models.subject import Subject
-from app.core.date_utils import day_to_int, int_to_day, format_time, parse_time
+from app.core.date_utils import day_to_int, int_to_day
 from app.core.exceptions import ValidationException
 from app.services.timetable_report_service import (
     build_timetable_grids,
@@ -40,20 +44,6 @@ router = APIRouter(
 )
 
 
-def _resolve_periods_per_day(req: TimetableGenerateRequest, db: Session) -> int:
-    """Resolve periods_per_day: use request value if provided, otherwise calculate from settings."""
-    if req.periods_per_day is not None and req.periods_per_day > 0:
-        return req.periods_per_day
-
-    settings = db.execute(select(TimetableSettingsModel)).scalar_one_or_none()
-    if settings and settings.periods_per_day and settings.periods_per_day > 0:
-        return settings.periods_per_day
-
-    raise ValidationException(
-        "Periods per day is not configured. Please set it in Timetable Settings or provide it in the generation request."
-    )
-
-
 @router.post("/generate", response_model=TimetableResponse)
 def generate_timetable(
     req: TimetableGenerateRequest,
@@ -62,7 +52,8 @@ def generate_timetable(
     """
     Triggers the constraint satisfaction problem solver to generate a valid, complete school timetable.
     """
-    periods_per_day = _resolve_periods_per_day(req, db)
+    periods_per_day = PERIODS_PER_DAY
+    lunch_period = LUNCH_PERIOD
 
     # --- Resolve Teachers ---
     if req.teachers is not None:
@@ -192,7 +183,7 @@ def generate_timetable(
         weekly_requirements=solver_reqs,
         school_days=req.school_days,
         periods_per_day=periods_per_day,
-        lunch_period=req.lunch_period,
+        lunch_period=lunch_period,
         pt_subject_id=req.pt_subject_id,
         existing_slots=solver_existing_slots,
         class_subject_teachers=class_subject_teachers,
@@ -236,18 +227,17 @@ def save_timetable(
     ]
 
     # Also save lunch period marker (subject_id=0) so each timetable remembers its own lunch
-    if req.lunch_period is not None:
-        for s in req.slots:
-            if s.period_number == req.lunch_period and s.subject_id == 0:
-                new_slots.append(
-                    TimetableSlot(
-                        class_id=s.class_id,
-                        day_of_week=day_to_int(s.day_of_week),
-                        period_number=s.period_number,
-                        subject_id=0,
-                        teacher_id=0
-                    )
+    for s in req.slots:
+        if s.period_number == LUNCH_PERIOD and s.subject_id == 0:
+            new_slots.append(
+                TimetableSlot(
+                    class_id=s.class_id,
+                    day_of_week=day_to_int(s.day_of_week),
+                    period_number=s.period_number,
+                    subject_id=0,
+                    teacher_id=0
                 )
+            )
 
     # 4. Atomic replace: delete old for these classes only → insert new
     class_ids = list(set(s.class_id for s in req.slots))
@@ -344,22 +334,13 @@ def save_timetable_settings(
     existing = db.execute(select(TimetableSettingsModel)).scalar_one_or_none()
     if existing:
         existing.school_days = json.dumps(body.school_days)
-        existing.periods_per_day = body.periods_per_day
         existing.saturday_periods = body.saturday_periods
-        existing.start_time = parse_time(body.start_time)
-        existing.period_duration = body.period_duration
         existing.pt_subject_id = body.pt_subject_id
-        existing.lunch_period = body.lunch_period
-        existing.updated_at = datetime.utcnow()
     else:
         new_settings = TimetableSettingsModel(
             school_days=json.dumps(body.school_days),
-            periods_per_day=body.periods_per_day,
             saturday_periods=body.saturday_periods,
-            start_time=parse_time(body.start_time),
-            period_duration=body.period_duration,
             pt_subject_id=body.pt_subject_id,
-            lunch_period=body.lunch_period,
         )
         db.add(new_settings)
     db.commit()
@@ -379,10 +360,9 @@ def get_timetable_settings(db: Session = Depends(get_db)):
 
     return {
         "school_days": school_days_list,
-        "periods_per_day": existing.periods_per_day,
+        "periods_per_day": PERIODS_PER_DAY,
         "saturday_periods": existing.saturday_periods,
-        "start_time": format_time(existing.start_time),
-        "period_duration": existing.period_duration,
         "pt_subject_id": existing.pt_subject_id,
-        "lunch_period": existing.lunch_period,
+        "lunch_period": LUNCH_PERIOD,
+        "periods": PERIOD_SCHEDULE,
     }
