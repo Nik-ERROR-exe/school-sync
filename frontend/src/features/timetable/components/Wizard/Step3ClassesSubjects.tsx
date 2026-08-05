@@ -73,8 +73,7 @@ export default function Step3ClassesSubjects({ onNext, onPrev }: { onNext: () =>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <SummaryCard label="Working Days" value={state.schoolDays.map(d => d.substring(0, 3)).join(', ')} />
             <SummaryCard label="Periods/Day" value={String(state.periodsPerDay)} />
-            <SummaryCard label="School Hours" value={`${state.startTime} – ${state.endTime}`} />
-            <SummaryCard label="Period Duration" value={`${state.periodDuration} min`} />
+            <SummaryCard label="School Hours" value="07:10 – 12:35" />
             <SummaryCard label="Lunch Period" value={state.lunchPeriod ? `Period ${state.lunchPeriod}` : 'None'} />
             {state.schoolDays.includes('Saturday') && (
               <SummaryCard label="Saturday Periods" value={String(state.saturdayPeriods)} />

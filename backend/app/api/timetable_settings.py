@@ -6,7 +6,11 @@ from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.teacher import Teacher
 from app.models.timetable_settings import TimetableSettings as TimetableSettingsModel
-from app.core.date_utils import format_time
+from app.services.timetable.period_schedule import (
+    PERIODS_PER_DAY,
+    LUNCH_PERIOD,
+    PERIOD_SCHEDULE,
+)
 
 router = APIRouter(
     prefix="/timetable",
@@ -34,10 +38,9 @@ def get_timetable_settings_public(
 
     return {
         "school_days": school_days_list,
-        "periods_per_day": existing.periods_per_day,
+        "periods_per_day": PERIODS_PER_DAY,
         "saturday_periods": existing.saturday_periods,
-        "start_time": format_time(existing.start_time),
-        "period_duration": existing.period_duration,
-        "lunch_period": existing.lunch_period,
+        "lunch_period": LUNCH_PERIOD,
         "pt_subject_id": existing.pt_subject_id,
+        "periods": PERIOD_SCHEDULE,
     }

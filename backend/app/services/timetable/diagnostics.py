@@ -50,6 +50,7 @@ class TimetableDiagnostics:
         self._check_existing_slot_load()
         self._check_pt_capacity()
         self._check_teacher_availability()
+        self._check_teacher_back_to_back_feasibility()
         self._check_subject_weekly_limits()
         return self.issues
 
@@ -75,11 +76,12 @@ class TimetableDiagnostics:
                         f"You need {shortfall} more slots."
                     ),
                     suggestion=(
-                        f"Increase the school end time to add more periods per day, "
-                        f"or remove the lunch break, or go to Step 3 and reduce weekly subject hours for class {cn}."
+                        f"The school schedule is fixed at {self.input.periods_per_day} periods/day "
+                        f"with lunch in period {self.input.lunch_period}. Go to Step 3 and reduce "
+                        f"weekly subject hours for class {cn}."
                     ),
-                    redirect_step=1,
-                    highlight_field="end_time",
+                    redirect_step=3,
+                    highlight_field="periods_per_week",
                     severity="error",
                     class_id=class_id,
                 ))
@@ -296,6 +298,61 @@ class TimetableDiagnostics:
                             subject_id=subject_id,
                             teacher_id=teacher.id,
                         ))
+
+    @staticmethod
+    def _max_lectures_without_back_to_back(periods_per_day: int, lunch_period: Optional[int]) -> int:
+        """
+        Largest number of lectures a teacher can fit in one day without any two
+        being consecutive. The lunch period breaks adjacency, so compute the max
+        independent set across each consecutive run: sum(ceil(run_length / 2)).
+        """
+        periods = [p for p in range(1, periods_per_day + 1) if p != lunch_period]
+        if not periods:
+            return 0
+        total = 0
+        run = 1
+        for a, b in zip(periods, periods[1:]):
+            if b == a + 1:
+                run += 1
+            else:
+                total += math.ceil(run / 2)
+                run = 1
+        total += math.ceil(run / 2)
+        return total
+
+    def _check_teacher_back_to_back_feasibility(self):
+        """
+        With the no-back-to-back rule, a teacher can teach at most
+        `_max_lectures_without_back_to_back` lectures on a day without any two being
+        consecutive. Warn if their configured daily limit exceeds that — the solver
+        will be unable to fill the day.
+        """
+        max_non_consecutive = self._max_lectures_without_back_to_back(
+            self.input.periods_per_day, self.input.lunch_period
+        )
+        if max_non_consecutive <= 0:
+            return
+
+        for teacher in self.input.teachers:
+            if teacher.max_lectures_per_day <= max_non_consecutive:
+                continue
+            self.issues.append(DiagnosticIssue(
+                step=2,
+                field="teachers",
+                message=(
+                    f"Teacher {teacher.name} has a daily limit of {teacher.max_lectures_per_day} "
+                    f"lectures, but with no back-to-back lectures allowed the most that can be "
+                    f"scheduled in one day is {max_non_consecutive}."
+                ),
+                suggestion=(
+                    f"Reduce {teacher.name}'s max lectures/day to {max_non_consecutive} or fewer "
+                    f"in their teacher profile."
+                ),
+                redirect_step=2,
+                highlight_field="teachers",
+                severity="warning",
+                teacher_id=teacher.id,
+            ))
 
     def _check_subject_weekly_limits(self):
         days = len(self.input.school_days)

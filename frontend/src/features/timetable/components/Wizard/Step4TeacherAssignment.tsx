@@ -139,8 +139,6 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
 
       const body: any = {
         school_days: state.schoolDays,
-        periods_per_day: state.periodsPerDay,
-        lunch_period: state.lunchPeriod,
         pt_subject_id: state.ptSubjectId,
         classes: targetClasses,
       };
@@ -157,11 +155,7 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
       const response = await api.post('/admin/timetable/generate', body, { timeout: 25000 });
 
       localStorage.setItem('school_days', JSON.stringify(state.schoolDays));
-      localStorage.setItem('periods_per_day', String(state.periodsPerDay));
       localStorage.setItem('saturday_periods', String(state.saturdayPeriods));
-      localStorage.setItem('start_time', state.startTime);
-      localStorage.setItem('period_duration', String(state.periodDuration));
-      localStorage.setItem('lunch_period', state.lunchPeriod !== null ? String(state.lunchPeriod) : '');
       localStorage.setItem('pt_subject_id', state.ptSubjectId !== null ? String(state.ptSubjectId) : '');
       localStorage.setItem('selected_class_id', state.selectedClassId ? String(state.selectedClassId) : '');
 
