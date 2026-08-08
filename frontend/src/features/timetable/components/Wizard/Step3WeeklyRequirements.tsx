@@ -317,9 +317,6 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
 
   return (
     <div className="space-y-6">
-      {/* Diagnostic Banner for Step 3 issues */}
-      <DiagnosticBanner issues={state.diagnosticIssues} stepNumber={3} />
-
       {/* Top Fixed Info Bar */}
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-150 rounded-2xl p-5 shadow-sm sticky top-16 z-20 backdrop-blur-md">
         <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
@@ -333,6 +330,9 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
           Maximum configurable periods: <span className="font-extrabold text-blue-700">{maxAllowedSlots} periods per class</span> (with 1 free slot reserved for scheduling algorithm flexibility).
         </p>
       </div>
+
+      {/* Diagnostic Banner for Step 3 issues */}
+      <DiagnosticBanner issues={state.diagnosticIssues} stepNumber={3} />
 
       {/* Selected Classes Cards */}
       <div className="space-y-8">
