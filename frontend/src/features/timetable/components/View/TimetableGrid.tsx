@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ApiSlot, ApiClass, ApiSubject, ApiTeacher } from '../../types';
 import EditCellModal from './EditCellModal';
+import { getScheduleConflicts } from '../../utils/conflictChecker';
+import { AlertTriangle } from 'lucide-react';
 
 interface TimetableGridProps {
   schedule: ApiSlot[];
@@ -13,6 +15,7 @@ interface TimetableGridProps {
   startTime: string;
   periodDuration: number;
   lunchPeriod: number | null;
+  ptSubjectId?: number | null;
   onSave: (updatedSchedule: ApiSlot[]) => void;
   onClassChange?: (id: number | null) => void;
 }
@@ -42,6 +45,7 @@ export default function TimetableGrid({
   startTime,
   periodDuration,
   lunchPeriod,
+  ptSubjectId = null,
   onSave,
   onClassChange,
 }: TimetableGridProps) {
@@ -49,6 +53,11 @@ export default function TimetableGrid({
     classes.length > 0 ? classes[0].id : null
   );
   const [editingSlot, setEditingSlot] = useState<ApiSlot | null>(null);
+
+  // Compute master schedule conflicts
+  const conflictMap = useMemo(() => {
+    return getScheduleConflicts(schedule, teachers, classes, subjects, ptSubjectId);
+  }, [schedule, teachers, classes, subjects, ptSubjectId]);
 
   // Set default class if not set yet
   useEffect(() => {
@@ -221,20 +230,42 @@ export default function TimetableGrid({
                       const teacher = slot ? teachers.find(t => t.id === slot.teacher_id) : null;
                       const isFree = !slot || slot.subject_id === 0;
 
+                      const slotKey = `${selectedClassId}_${day}_${periodNum}`;
+                      const slotConflicts = conflictMap[slotKey] || [];
+                      const hasConflict = slotConflicts.length > 0;
+
                       return (
                         <td
                           key={`${day}-${periodNum}`}
                           onClick={() => handleCellClick(day, periodNum)}
-                          className="px-4 py-4 border border-slate-200 text-center cursor-pointer hover:bg-blue-50/30 hover:border-blue-300 transition-colors group relative"
+                          className={`px-4 py-4 border text-center cursor-pointer transition-colors group relative ${
+                            hasConflict
+                              ? 'bg-amber-50/70 border-amber-300 hover:bg-amber-100/70'
+                              : 'border-slate-200 hover:bg-blue-50/30 hover:border-blue-300'
+                          }`}
                         >
+                          {/* Warning badge for slot conflicts */}
+                          {hasConflict && (
+                            <div 
+                              className="absolute top-1.5 right-1.5 bg-amber-500 text-white rounded-full p-0.5 shadow-sm"
+                              title={slotConflicts.map(c => c.message).join('\n')}
+                            >
+                              <AlertTriangle size={12} />
+                            </div>
+                          )}
+
                           {isFree ? (
                             <span className="text-xs text-slate-400 italic font-medium">Free Period</span>
                           ) : (
                             <div className="space-y-0.5">
-                              <div className="font-bold text-slate-800 group-hover:text-blue-700 transition-colors text-xs sm:text-sm">
+                              <div className={`font-bold text-xs sm:text-sm transition-colors ${
+                                hasConflict ? 'text-amber-950 font-extrabold' : 'text-slate-800 group-hover:text-blue-700'
+                              }`}>
                                 {subject ? subject.subject_name : `Sub #${slot.subject_id}`}
                               </div>
-                              <div className="text-[10px] sm:text-xs text-slate-500 font-medium">
+                              <div className={`text-[10px] sm:text-xs font-medium ${
+                                hasConflict ? 'text-amber-800' : 'text-slate-500'
+                              }`}>
                                 {teacher ? teacher.name : `Teacher #${slot.teacher_id}`}
                               </div>
                             </div>
@@ -259,6 +290,9 @@ export default function TimetableGrid({
           slot={editingSlot}
           subjects={subjects}
           teachers={teachers}
+          schedule={schedule}
+          classes={classes}
+          ptSubjectId={ptSubjectId}
           onClose={() => setEditingSlot(null)}
           onSave={handleSaveCell}
           onDelete={handleDeleteCell}
@@ -267,3 +301,4 @@ export default function TimetableGrid({
     </div>
   );
 }
+

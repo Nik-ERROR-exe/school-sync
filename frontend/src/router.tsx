@@ -65,7 +65,7 @@ const DashboardLayout = () => {
   useKeepAlive(); // ping backend every 14 min to keep it awake while the app is open
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
+    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden transition-colors duration-300">
       {/* Sidebar */}
       <Sidebar />
 

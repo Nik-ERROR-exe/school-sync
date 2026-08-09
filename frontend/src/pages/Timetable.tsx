@@ -539,6 +539,7 @@ function AdminTimetableFlow() {
             startTime={wizardSettings?.startTime ?? '08:00'}
             periodDuration={wizardSettings?.periodDuration ?? 40}
             lunchPeriod={wizardSettings?.lunchPeriod ?? null}
+            ptSubjectId={wizardSettings?.ptSubjectId ?? null}
             onSave={handleSaveSlotEdit}
             onClassChange={setViewClassId}
           />
