@@ -6,7 +6,6 @@ from app.models.school_class import SchoolClass
 from app.models.subject import Subject
 from app.models.exam_type import ExamType
 from app.models.teacher_class_subject import TeacherClassSubject
-from app.models.timetable import TimetableSlot
 from app.schemas.result import ResultCreate, MIN_MARKS, MAX_MARKS
 from app.core.exceptions import ResourceNotFoundException, ValidationException, ForbiddenException
 from typing import List, Optional
@@ -54,18 +53,11 @@ def _check_teacher_authorized(
 ) -> None:
     """Raise ForbiddenException unless the teacher teaches every (class, subject)
     referenced by the batch. Authority comes from the explicit
-    teacher_class_subjects mapping and/or the generated timetable slots."""
+    teacher_class_subjects mapping."""
     authorized_pairs = set(
         db.execute(
             select(TeacherClassSubject.class_id, TeacherClassSubject.subject_id).where(
                 TeacherClassSubject.teacher_id == teacher_id
-            )
-        ).all()
-    )
-    authorized_pairs.update(
-        db.execute(
-            select(TimetableSlot.class_id, TimetableSlot.subject_id).where(
-                TimetableSlot.teacher_id == teacher_id
             )
         ).all()
     )
@@ -126,8 +118,8 @@ def create_result_batch(
 
     # 1b. Authorization: the submitting teacher may only record results for
     # students in classes where they actually teach the subject. Authority comes
-    # from the explicit teacher_class_subjects mapping and/or the generated
-    # timetable slots. Without this, any teacher could edit any student's marks.
+    # from the explicit teacher_class_subjects mapping. Without this, any teacher
+    # could edit any student's marks."""
     if not is_admin:
         _check_teacher_authorized(db, results_data, student_ids, teacher_id)
 

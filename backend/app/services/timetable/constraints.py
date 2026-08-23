@@ -29,18 +29,38 @@ def check_teacher_back_to_back(
     assignments: Dict[Tuple[int, str, int], Tuple[int, int]]
 ) -> bool:
     """
-    Constraint: A teacher cannot teach two consecutive periods on the same day,
-    even in different classes.
-    Returns True if valid (no back-to-back lectures), False otherwise.
+    Constraint: A teacher may teach up to 4 consecutive periods in a day;
+    no more than 4 consecutive periods are allowed.
+    Returns True if valid (<= 4 consecutive), False otherwise.
     """
     if not teacher_id:  # Empty / free period
         return True
 
-    for (c_id, d, p), (s_id, t_id) in assignments.items():
-        if t_id == teacher_id and d == day and p in (period - 1, period + 1):
-            return False
-
-    return True
+    # Get all periods for this teacher on this day, including proposed one
+    assigned_periods = [p for (c_id, d, p), (s_id, t_id) in assignments.items() 
+                        if t_id == teacher_id and d == day]
+    assigned_periods.append(period)
+    
+    # Sort unique periods
+    assigned_periods = sorted(list(set(assigned_periods)))
+    
+    if not assigned_periods:
+        return True
+        
+    # Check for consecutive run > 4
+    max_consecutive = 1
+    current_consecutive = 1
+    
+    for i in range(1, len(assigned_periods)):
+        if assigned_periods[i] == assigned_periods[i-1] + 1:
+            current_consecutive += 1
+        else:
+            max_consecutive = max(max_consecutive, current_consecutive)
+            current_consecutive = 1
+            
+    max_consecutive = max(max_consecutive, current_consecutive)
+    
+    return max_consecutive <= 4
 
 def check_teacher_daily_limit(
     teacher_id: int,
