@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+from typing import List, Optional
 
 class LoginRequest(BaseModel):
     email: str = Field(..., description="Email address or Teacher ID")
@@ -15,6 +15,23 @@ class TokenResponse(BaseModel):
     teacher_id: Optional[str] = None
     status: str
 
+class SubjectRef(BaseModel):
+    subject_name: str
+    code: str
+
+
+class ClassTeachingInfo(BaseModel):
+    class_name: str
+    division: str
+    subjects: List[SubjectRef]
+
+
+class SchoolStats(BaseModel):
+    teachers_count: int
+    classes_count: int
+    students_count: int
+
+
 class CurrentUserResponse(BaseModel):
     id: int
     teacher_id: Optional[str] = None
@@ -22,6 +39,8 @@ class CurrentUserResponse(BaseModel):
     email: EmailStr
     role: str
     status: str
+    classes_teaching: Optional[List[ClassTeachingInfo]] = None
+    stats: Optional[SchoolStats] = None
 
     class Config:
         from_attributes = True

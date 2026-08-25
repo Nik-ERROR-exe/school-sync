@@ -3,17 +3,23 @@ import React, { useEffect } from 'react';
 import { useAuth } from './context/AuthContext';
 import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
+import { useKeepAlive } from './hooks/useKeepAlive';
 import Login from './pages/Login';
 import DashboardHome from './pages/DashboardHome';
 import Results from './pages/Results';
 import Timetable from './pages/Timetable';
 import Substitute from './pages/Substitute';
-import Promotion from './pages/admin/Promotion';
+import SubstituteManagement from './pages/admin/SubstituteManagement';
+import Students from './pages/admin/Students';
+import Promotion from './pages/Promotion';
 import Settings from './pages/Settings';
 import Register from './pages/Register';
 import PendingTeachers from './pages/admin/PendingTeachers';
 import AllTeachers from './pages/admin/AllTeachers';
+import ClassManagement from './pages/admin/ClassManagement';
+import ClassSubjectMapping from './pages/admin/ClassSubjectMapping';
 import Profile from './pages/teacher/Profile';
+import ResultsEntry from './pages/teacher/ResultsEntry'; // Teacher's result entry page
 
 // Root Route
 const Root = () => {
@@ -56,8 +62,10 @@ const registerRoute = createRoute({
 
 // Dashboard Layout wrapper
 const DashboardLayout = () => {
+  useKeepAlive(); // ping backend every 14 min to keep it awake while the app is open
+
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
+    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden transition-colors duration-300">
       {/* Sidebar */}
       <Sidebar />
 
@@ -97,10 +105,18 @@ const dashboardHomeRoute = createRoute({
   component: DashboardHome,
 });
 
+// ADMIN: Results Review (uses the existing Results component - rename later if needed)
 const resultsRoute = createRoute({
   getParentRoute: () => dashboardLayoutRoute,
-  path: '/results',
-  component: Results,
+  path: '/admin/results',
+  component: Results, // This should be the Admin Results Review page
+});
+
+// TEACHER: Results Entry
+const resultsEntryRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/teacher/results-entry',
+  component: ResultsEntry, // Teacher's result entry page
 });
 
 const timetableRoute = createRoute({
@@ -113,6 +129,25 @@ const substituteRoute = createRoute({
   getParentRoute: () => dashboardLayoutRoute,
   path: '/substitute',
   component: Substitute,
+});
+
+const substituteManagementRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/admin/substitute',
+  component: SubstituteManagement,
+});
+
+// Teacher-only substitute route
+const teacherSubstituteRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/teacher/substitute',
+  component: Substitute,
+});
+
+const studentsRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/admin/students',
+  component: Students,
 });
 
 const promotionRoute = createRoute({
@@ -139,10 +174,22 @@ const allTeachersRoute = createRoute({
   component: AllTeachers,
 });
 
+const classManagementRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/admin/class-management',
+  component: ClassManagement,
+});
+
 const teacherProfileRoute = createRoute({
   getParentRoute: () => dashboardLayoutRoute,
   path: '/teacher/profile',
   component: Profile,
+});
+
+const classSubjectMappingRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/admin/class-subject-mapping',
+  component: ClassSubjectMapping,
 });
 
 // Build route tree
@@ -152,14 +199,20 @@ const routeTree = rootRoute.addChildren([
   registerRoute,
   dashboardLayoutRoute.addChildren([
     dashboardHomeRoute,
-    resultsRoute,
+    resultsRoute,          // Admin: /admin/results
+    resultsEntryRoute,     // Teacher: /teacher/results-entry
     timetableRoute,
     substituteRoute,
+    substituteManagementRoute,
+    teacherSubstituteRoute,
+    studentsRoute,
     promotionRoute,
     settingsRoute,
     pendingTeachersRoute,
     allTeachersRoute,
+    classManagementRoute,
     teacherProfileRoute,
+    classSubjectMappingRoute, 
   ]),
 ]);
 

@@ -1,7 +1,18 @@
 import axios from 'axios';
 
+/**
+ * Normalize the API base URL so it always ends with `/api/v1` — the prefix the
+ * backend mounts every route under. VITE_API_URL is often set to just the host
+ * (e.g. "https://host.onrender.com"); this appends the missing suffix so the
+ * frontend never calls a path like "/auth/login" that doesn't exist.
+ */
+export function normalizeApiBaseUrl(url: string): string {
+  const base = url.trim().replace(/\/+$/, '');
+  return base.endsWith('/api/v1') ? base : `${base}/api/v1`;
+}
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1',
+  baseURL: normalizeApiBaseUrl(import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'),
   headers: {
     'Content-Type': 'application/json',
   },

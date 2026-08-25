@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, String, ForeignKey
+from sqlalchemy import Integer, SmallInteger, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import Optional
 from app.database import Base
@@ -10,9 +10,10 @@ class TimetableSlot(Base):
     class_id: Mapped[int] = mapped_column(Integer, ForeignKey("classes.id"))
     subject_id: Mapped[int] = mapped_column(Integer, ForeignKey("subjects.id"))
     teacher_id: Mapped[int] = mapped_column(Integer, ForeignKey("teachers.id"))
-    day: Mapped[str] = mapped_column(String(20))
-    period: Mapped[int] = mapped_column(Integer)
+    day_of_week: Mapped[int] = mapped_column(SmallInteger)  # 1=Monday .. 7=Sunday
+    period_number: Mapped[int] = mapped_column(Integer)
 
-    # --- DISABLE ALL RELATIONSHIPS (comment out) ---
-    # teacher: Mapped["Teacher"] = relationship()
-    # school_class: Mapped["SchoolClass"] = relationship()
+    # Relationships
+    school_class: Mapped["SchoolClass"] = relationship()
+    teacher: Mapped["Teacher"] = relationship()
+    subject: Mapped["Subject"] = relationship()

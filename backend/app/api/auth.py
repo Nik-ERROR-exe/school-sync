@@ -1,17 +1,21 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, Request
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas.auth import LoginRequest, CurrentUserResponse, MessageResponse, TokenResponse, RegisterRequest
 from app.services.auth_service import authenticate_user
+from app.services.profile_service import build_me_response
 from app.core.security import create_access_token, get_password_hash
 from app.core.exceptions import CredentialsException, ConflictException
 from app.api.deps import get_current_user
+from app.core.ratelimit import limiter
 from app.models.teacher import Teacher
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.post("/login", response_model=TokenResponse)
+@limiter.limit("10/minute")
 def login(
+    request: Request,
     login_data: LoginRequest,
     db: Session = Depends(get_db)
 ):
@@ -45,11 +49,16 @@ def logout():
     return {"message": "Logged out successfully"}
 
 @router.get("/me", response_model=CurrentUserResponse)
-def get_me(current_user: Teacher = Depends(get_current_user)):
+def get_me(
+    current_user: Teacher = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
-    Returns the profile details of the currently authenticated user.
+    Returns the profile details of the currently authenticated user,
+    including classes taught (teachers) or school stats (admins).
     """
-    return current_user
+    return build_me_response(db, current_user)
+
 
 @router.post("/register", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
 def register(

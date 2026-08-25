@@ -1,78 +1,214 @@
 import React from 'react';
-import { mockSubjects, mockClasses } from '../../mock';
-import { TimetableData } from '../../types';
+import { Coffee } from 'lucide-react';
+import { ApiSlot, ApiClass, ApiSubject } from '../../types';
 
 interface TeacherTimetableGridProps {
-  data: TimetableData;
-  teacherId: string;
+  schedule: ApiSlot[];
+  classes: ApiClass[];
+  subjects: ApiSubject[];
+  teacherName: string;
+  schoolDays: string[];
+  periodsPerDay: number;
+  saturdayPeriods: number;
+  startTime?: string;
+  periodDuration?: number;
+  lunchPeriod?: number | null;
 }
 
-const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
+const getPeriodTimeStr = (periodNum: number, startTime: string, duration: number) => {
+  const [startHour, startMin] = startTime.split(':').map(Number);
+  const totalStartMinutes = startHour * 60 + startMin + (periodNum - 1) * duration;
+  const totalEndMinutes = totalStartMinutes + duration;
 
-export default function TeacherTimetableGrid({ data, teacherId }: TeacherTimetableGridProps) {
-  const getSubject = (id: string) => mockSubjects.find(s => s.id === id);
-  const getClassInfo = (id: string) => mockClasses.find(c => c.id === id);
-
-  const getSlot = (day: string, period: number) => {
-    return data.slots.find(s => s.teacherId === teacherId && s.day === day && s.period === period);
+  const formatTime = (totalMinutes: number) => {
+    const hr = Math.floor(totalMinutes / 60) % 24;
+    const min = totalMinutes % 60;
+    return `${String(hr).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
   };
 
+  return `${formatTime(totalStartMinutes)} – ${formatTime(totalEndMinutes)}`;
+};
+
+interface DayRow {
+  day: string;
+  lectures: { period: number; subject?: ApiSubject; classInfo?: ApiClass }[];
+  freeCount: number;
+  totalPeriods: number;
+}
+
+export default function TeacherTimetableGrid({
+  schedule,
+  classes,
+  subjects,
+  teacherName,
+  schoolDays,
+  periodsPerDay,
+  saturdayPeriods,
+  startTime,
+  periodDuration,
+  lunchPeriod,
+}: TeacherTimetableGridProps) {
+  const getSubject = (id: number) => subjects.find(s => s.id === id);
+  const getClassInfo = (id: number) => classes.find(c => c.id === id);
+
+  const getSlot = (day: string, periodNum: number) =>
+    schedule.find(s => s.day_of_week === day && s.period_number === periodNum);
+
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+  const hasTimeInfo = startTime && periodDuration;
+  const lunchNum = lunchPeriod ?? null;
+
+  // Pre-compute each day's lectures + free-period count once.
+  const days: DayRow[] = schoolDays.map(day => {
+    const isSat = day === 'Saturday';
+    const pCount = isSat ? saturdayPeriods : periodsPerDay;
+    const lectures: DayRow['lectures'] = [];
+    let freeCount = 0;
+
+    for (let i = 0; i < pCount; i++) {
+      const period = i + 1;
+      if (lunchNum !== null && period === lunchNum) continue; // lunch isn't a lecture
+      const slot = getSlot(day, period);
+      if (slot && slot.subject_id !== 0) {
+        lectures.push({
+          period,
+          subject: getSubject(slot.subject_id),
+          classInfo: getClassInfo(slot.class_id),
+        });
+      } else {
+        freeCount++;
+      }
+    }
+
+    return { day, lectures, freeCount, totalPeriods: pCount };
+  });
+
+  const totalLectures = days.reduce((sum, d) => sum + d.lectures.length, 0);
+  const lunchTimeLabel =
+    hasTimeInfo && lunchNum !== null
+      ? getPeriodTimeStr(lunchNum, startTime!, periodDuration!)
+      : null;
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col flex-1 h-full overflow-hidden">
-      <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-        <h2 className="text-lg font-bold text-slate-900">My Timetable</h2>
-        <div className="text-xs font-semibold text-slate-500 bg-white px-3 py-1 rounded-full border border-slate-200 shadow-sm">
-          Generated: {new Date(data.generatedAt).toLocaleDateString()}
+    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+      {/* Header */}
+      <div className="flex flex-col gap-3 border-b border-slate-100 px-6 py-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-accent">Your schedule</p>
+          <h2 className="mt-0.5 font-heading text-lg font-extrabold tracking-tight text-slate-900">
+            Timetable for {teacherName}
+          </h2>
+          <p className="mt-0.5 text-xs text-slate-500">Personal weekly teaching schedule.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700">
+            {totalLectures} lectures / week
+          </span>
+          {lunchNum !== null && (
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-100 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">
+              <Coffee className="h-3 w-3" />
+              {lunchTimeLabel ? `Lunch ${lunchTimeLabel}` : `Lunch · Period ${lunchNum}`}
+            </span>
+          )}
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto custom-scrollbar p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {days.map(day => {
+      {/* Body — one clean column of day rows */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+        <div className="mx-auto max-w-3xl space-y-3">
+          {days.map(({ day, lectures, freeCount, totalPeriods }) => {
             const isToday = day === today;
-            const pCount = day === 'Saturday' ? 4 : 8;
+            const hasLunch = lunchNum !== null && lunchNum <= totalPeriods;
 
             return (
-              <div 
-                key={day} 
-                className={`rounded-2xl border overflow-hidden ${
-                  isToday 
-                    ? 'border-blue-300 shadow-md ring-4 ring-blue-50/50' 
-                    : 'border-slate-200 shadow-sm'
+              <div
+                key={day}
+                className={`overflow-hidden rounded-xl border transition ${
+                  isToday
+                    ? 'border-blue-300 bg-white shadow-md ring-2 ring-blue-100'
+                    : 'border-slate-200 bg-white shadow-sm'
                 }`}
               >
-                <div className={`px-4 py-3 font-bold text-sm ${
-                  isToday ? 'bg-blue-600 text-white' : 'bg-slate-50 text-slate-900 border-b border-slate-100'
-                }`}>
-                  {day} {isToday && <span className="ml-2 text-[10px] uppercase bg-white/20 px-2 py-0.5 rounded-full">Today</span>}
+                {/* Day header */}
+                <div
+                  className={`flex items-center justify-between px-4 py-2.5 ${
+                    isToday
+                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white'
+                      : 'bg-slate-50/80 text-slate-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-heading text-sm font-bold">{day}</span>
+                    {isToday && (
+                      <span className="rounded-full bg-white/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider">
+                        Today
+                      </span>
+                    )}
+                  </div>
+                  <span
+                    className={`text-[11px] font-bold ${
+                      isToday ? 'text-blue-50' : 'text-slate-500'
+                    }`}
+                  >
+                    {lectures.length} lecture{lectures.length === 1 ? '' : 's'}
+                    {freeCount > 0 && ` · ${freeCount} free`}
+                  </span>
                 </div>
-                
-                <div className="divide-y divide-slate-100">
-                  {Array.from({ length: pCount }).map((_, i) => {
-                    const period = i + 1;
-                    const slot = getSlot(day, period);
-                    const subject = slot ? getSubject(slot.subjectId) : null;
-                    const classInfo = slot ? getClassInfo(slot.classId) : null;
 
-                    return (
-                      <div key={period} className="flex items-center px-4 py-3 bg-white hover:bg-slate-50 transition-colors">
-                        <div className="w-12 text-xs font-extrabold text-slate-400">P{period}</div>
-                        <div className="flex-1 pl-4 border-l border-slate-100">
-                          {slot ? (
-                            <div>
-                              <div className="text-sm font-bold text-slate-900">{subject?.name}</div>
-                              <div className="text-xs font-semibold text-blue-600 mt-0.5">Class {classInfo?.name}</div>
-                              {slot.roomId && <div className="text-[10px] text-slate-500 mt-0.5">Room: {slot.roomId}</div>}
+                {/* Lectures or empty state */}
+                <div className="px-4 py-3">
+                  {lectures.length === 0 ? (
+                    <p className="py-2 text-center text-xs font-semibold text-slate-400">
+                      No lectures scheduled
+                      {freeCount > 0 && ` · ${freeCount} free period${freeCount === 1 ? '' : 's'}`}
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {lectures.map(({ period, subject, classInfo }) => {
+                        const time = hasTimeInfo
+                          ? getPeriodTimeStr(period, startTime!, periodDuration!)
+                          : null;
+                        return (
+                          <div
+                            key={period}
+                            className="group flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50/40 px-3 py-2.5 transition hover:border-slate-200 hover:bg-white"
+                          >
+                            {/* Period number + time chip */}
+                            <div className="flex w-16 shrink-0 flex-col items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 px-1.5 py-1.5 text-white shadow-sm">
+                              <span className="font-heading text-xs font-extrabold leading-none">
+                                P{period}
+                              </span>
+                              {time && (
+                                <span className="mt-1 text-[9px] font-mono leading-none opacity-90">
+                                  {time.split(' – ')[0]}
+                                </span>
+                              )}
                             </div>
-                          ) : (
-                            <div className="text-sm font-medium text-slate-300 italic">Free Period</div>
-                          )}
+
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-bold text-slate-900">
+                                {subject ? subject.subject_name : `Subject #${period}`}
+                              </p>
+                              <p className="mt-0.5 truncate text-xs font-semibold text-blue-600">
+                                Class {classInfo ? `${classInfo.class_name}-${classInfo.division}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Single inline lunch note for the day, only where it falls */}
+                      {hasLunch && (
+                        <div className="flex items-center gap-2 rounded-lg border border-dashed border-amber-200 bg-amber-50/60 px-3 py-1.5 text-[11px] font-bold text-amber-700">
+                          <Coffee className="h-3 w-3" />
+                          <span>
+                            Lunch break · period {lunchNum}
+                            {lunchTimeLabel ? ` · ${lunchTimeLabel}` : ''}
+                          </span>
                         </div>
-                      </div>
-                    );
-                  })}
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             );

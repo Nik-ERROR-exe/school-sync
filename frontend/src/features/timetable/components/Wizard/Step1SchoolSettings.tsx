@@ -1,45 +1,73 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { DayOfWeek } from '../../types';
+import { useWizard, computePeriodsPerDay } from '../../WizardContext';
+import DiagnosticBanner from './DiagnosticBanner';
 
-const days: DayOfWeek[] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
 const schema = z.object({
-  academicYear: z.string().min(1, 'Academic Year is required'),
   workingDays: z.array(z.string()).min(1, 'Select at least one working day'),
   schoolStartTime: z.string(),
   schoolEndTime: z.string(),
-  periodsPerDay: z.number().min(1),
-  periodDuration: z.number().min(1),
-  breakDuration: z.number().min(0),
+  periodDuration: z.number().min(1, 'Duration must be at least 1 minute'),
   saturdayHalfDay: z.boolean(),
   saturdayPeriodCount: z.number().optional(),
+  lunchPeriod: z.number().nullable(),
 });
 
 type FormData = z.infer<typeof schema>;
 
 export default function Step1SchoolSettings({ onNext }: { onNext: () => void }) {
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<FormData>({
+  const { state, updateState } = useWizard();
+
+  const computedPeriodsPerDay = useMemo(
+    () => computePeriodsPerDay(state.startTime, state.endTime, state.periodDuration),
+    [state.startTime, state.endTime, state.periodDuration]
+  );
+
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      academicYear: '2024-2025',
-      workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
-      schoolStartTime: '08:00',
-      schoolEndTime: '14:30',
-      periodsPerDay: 8,
-      periodDuration: 40,
-      breakDuration: 30,
-      saturdayHalfDay: true,
-      saturdayPeriodCount: 4,
+      workingDays: state.schoolDays,
+      schoolStartTime: state.startTime,
+      schoolEndTime: state.endTime,
+      periodDuration: state.periodDuration,
+      saturdayHalfDay: state.schoolDays.includes('Saturday'),
+      saturdayPeriodCount: state.saturdayPeriods,
+      lunchPeriod: state.lunchPeriod,
     }
   });
 
   const watchSatHalfDay = watch('saturdayHalfDay');
+  const watchStartTime = watch('schoolStartTime');
+  const watchEndTime = watch('schoolEndTime');
+  const watchPeriodDuration = watch('periodDuration');
+
+  const formComputedPeriodsPerDay = useMemo(
+    () => computePeriodsPerDay(watchStartTime, watchEndTime, watchPeriodDuration),
+    [watchStartTime, watchEndTime, watchPeriodDuration]
+  );
+
+  const lunchOptions = useMemo(() => {
+    const opts: { value: number | null; label: string }[] = [{ value: null, label: 'None' }];
+    for (let i = 1; i <= formComputedPeriodsPerDay; i++) {
+      opts.push({ value: i, label: `Period ${i}` });
+    }
+    return opts;
+  }, [formComputedPeriodsPerDay]);
 
   const onSubmit = (data: FormData) => {
-    console.log(data);
+    updateState({
+      schoolDays: data.workingDays,
+      periodsPerDay: formComputedPeriodsPerDay,
+      saturdayPeriods: data.saturdayHalfDay ? (data.saturdayPeriodCount ?? 4) : formComputedPeriodsPerDay,
+      startTime: data.schoolStartTime,
+      endTime: data.schoolEndTime,
+      periodDuration: data.periodDuration,
+      lunchPeriod: data.lunchPeriod,
+    });
     onNext();
   };
 
@@ -50,32 +78,27 @@ export default function Step1SchoolSettings({ onNext }: { onNext: () => void }) 
         <p className="text-sm text-slate-500 mt-1">Configure global parameters for the timetable generation.</p>
       </div>
 
+      {/* Diagnostic Banner for Step 1 issues */}
+      <div className="px-8 pt-4">
+        <DiagnosticBanner issues={state.diagnosticIssues} stepNumber={1} />
+      </div>
+
       <form onSubmit={handleSubmit(onSubmit)} className="p-8 space-y-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Academic Year</label>
-            <input 
-              {...register('academicYear')} 
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow outline-none"
-              placeholder="e.g. 2024-2025"
-            />
-            {errors.academicYear && <p className="text-xs text-red-500 mt-1">{errors.academicYear.message}</p>}
+        {/* Working Days */}
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Working Days</label>
+          <div className="flex flex-wrap gap-2">
+            {days.map(day => (
+              <label key={day} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 cursor-pointer hover:bg-slate-100 transition-colors">
+                <input type="checkbox" value={day} {...register('workingDays')} className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500" />
+                <span className="text-sm font-medium text-slate-700">{day.substring(0, 3)}</span>
+              </label>
+            ))}
           </div>
-          
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Working Days</label>
-            <div className="flex flex-wrap gap-2">
-              {days.map(day => (
-                <label key={day} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 cursor-pointer hover:bg-slate-100 transition-colors">
-                  <input type="checkbox" value={day} {...register('workingDays')} className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500" />
-                  <span className="text-sm font-medium text-slate-700">{day.substring(0, 3)}</span>
-                </label>
-              ))}
-            </div>
-            {errors.workingDays && <p className="text-xs text-red-500 mt-1">{errors.workingDays.message}</p>}
-          </div>
+          {errors.workingDays && <p className="text-xs text-red-500 mt-1">{errors.workingDays.message}</p>}
         </div>
 
+        {/* Time & Period Settings */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div className="space-y-2">
             <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Start Time</label>
@@ -86,21 +109,43 @@ export default function Step1SchoolSettings({ onNext }: { onNext: () => void }) 
             <input type="time" {...register('schoolEndTime')} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Periods/Day</label>
-            <input type="number" {...register('periodsPerDay', { valueAsNumber: true })} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Period Duration (min)</label>
+            <input type="number" {...register('periodDuration', { valueAsNumber: true })} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Duration (min)</label>
-            <input type="number" {...register('periodDuration', { valueAsNumber: true })} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Periods/Day (auto)</label>
+            <div className="w-full bg-slate-100 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-bold text-slate-600 text-center">
+              {formComputedPeriodsPerDay}
+            </div>
+            <p className="text-[10px] text-slate-400">Calculated from start/end time and duration</p>
           </div>
         </div>
 
+        {/* Lunch Period Selector */}
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Lunch Period</label>
+          <select
+            value={watch('lunchPeriod') ?? ''}
+            onChange={(e) => {
+              const val = e.target.value === '' ? null : Number(e.target.value);
+              setValue('lunchPeriod', val);
+            }}
+            className="w-full md:w-64 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          >
+            {lunchOptions.map(opt => (
+              <option key={opt.label} value={opt.value ?? ''}>{opt.label}</option>
+            ))}
+          </select>
+          <p className="text-xs text-slate-400">Select which period is the lunch break. This period will be marked as free for all classes.</p>
+        </div>
+
+        {/* Saturday Half Day */}
         <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-5 space-y-4">
           <label className="flex items-center gap-3 cursor-pointer">
             <input type="checkbox" {...register('saturdayHalfDay')} className="w-5 h-5 text-blue-600 rounded border-blue-300 focus:ring-blue-500" />
             <span className="text-sm font-bold text-blue-900">Enable Saturday Half Day</span>
           </label>
-          
+
           {watchSatHalfDay && (
             <div className="pl-8 animate-in fade-in slide-in-from-top-2 duration-300">
               <label className="text-xs font-bold text-blue-800 uppercase tracking-wider block mb-2">Saturday Period Count</label>

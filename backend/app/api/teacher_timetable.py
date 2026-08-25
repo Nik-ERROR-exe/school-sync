@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.future import select
-from sqlalchemy.orm import joinedload
 from datetime import date as pydate
 from typing import List, Optional
 from app.database import get_db
@@ -9,6 +8,7 @@ from app.api.deps import get_current_user
 from app.models.teacher import Teacher
 from app.models.timetable import TimetableSlot
 from app.models.substitute_assignment import SubstituteAssignment
+from app.core.date_utils import int_to_day
 from app.schemas.timetable import TimetableSlotResponse
 from app.schemas.substitute import SubstituteAssignmentResponse
 
@@ -18,9 +18,9 @@ router = APIRouter(
 )
 
 @router.get("/master", response_model=List[TimetableSlotResponse])
-async def get_master_timetable(
+def get_master_timetable(
     current_user: Teacher = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     Returns the master recurring schedule slots assigned to the logged-in teacher.
@@ -28,14 +28,24 @@ async def get_master_timetable(
     stmt = select(TimetableSlot).where(
         TimetableSlot.teacher_id == current_user.id
     )
-    res = await db.execute(stmt)
-    return list(res.scalars().all())
+    res = db.execute(stmt)
+    slots = res.scalars().all()
+    return [
+        TimetableSlotResponse(
+            class_id=s.class_id,
+            day_of_week=int_to_day(s.day_of_week),
+            period_number=s.period_number,
+            subject_id=s.subject_id,
+            teacher_id=s.teacher_id
+        )
+        for s in slots
+    ]
 
 @router.get("/substitutions", response_model=List[SubstituteAssignmentResponse])
-async def get_substitute_assignments(
+def get_substitute_assignments(
     date: Optional[pydate] = Query(None, description="Optional date filter"),
     current_user: Teacher = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     Retrieves all substitution covering assignments assigned to the logged-in teacher.
@@ -51,7 +61,7 @@ async def get_substitute_assignments(
     if date:
         stmt = stmt.where(SubstituteAssignment.date == date)
         
-    res = await db.execute(stmt)
+    res = db.execute(stmt)
     assignments = res.scalars().all()
     
     response_data = []
@@ -60,10 +70,13 @@ async def get_substitute_assignments(
             SubstituteAssignmentResponse(
                 id=a.id,
                 date=a.date,
+                day_of_week=int_to_day(a.day_of_week),
                 period_number=a.period_number,
                 class_id=a.class_id,
+                subject_id=a.subject_id,
                 class_name=a.school_class.class_name,
                 division=a.school_class.division,
+                subject_name=a.subject.subject_name if a.subject else None,
                 original_teacher_id=a.original_teacher_id,
                 original_teacher_name=a.original_teacher.name,
                 substitute_teacher_id=a.substitute_teacher_id,

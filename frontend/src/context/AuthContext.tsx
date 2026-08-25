@@ -1,6 +1,23 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../api';
 
+export interface SubjectTeachingInfo {
+  subject_name: string;
+  code: string;
+}
+
+export interface ClassTeachingInfo {
+  class_name: string;
+  division: string;
+  subjects: SubjectTeachingInfo[];
+}
+
+export interface SchoolStats {
+  teachers_count: number;
+  classes_count: number;
+  students_count: number;
+}
+
 export interface UserInfo {
   id: number;
   teacher_id: string | null;
@@ -8,6 +25,8 @@ export interface UserInfo {
   email: string;
   role: 'ADMIN' | 'TEACHER';
   status: 'ACTIVE' | 'INACTIVE' | 'PENDING';
+  classes_teaching?: ClassTeachingInfo[] | null;
+  stats?: SchoolStats | null;
 }
 
 interface AuthContextType {

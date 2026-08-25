@@ -1,18 +1,27 @@
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.future import select
-from sqlalchemy.orm import joinedload
 from app.models.result import Result
 from app.models.student import Student
+from app.models.school_class import SchoolClass
 from app.models.subject import Subject
 from app.models.exam_type import ExamType
-from app.schemas.result import ResultCreate, ResultUpdate
-from app.core.exceptions import ResourceNotFoundException, ValidationException
+from app.models.teacher_class_subject import TeacherClassSubject
+from app.models.timetable import TimetableSlot
+from app.schemas.result import ResultCreate, MIN_MARKS, MAX_MARKS
+from app.core.exceptions import ResourceNotFoundException, ValidationException, ForbiddenException
 from typing import List, Optional
+from datetime import datetime
 
 def calculate_grade_and_percentage(marks_obtained: float, total_marks: float) -> tuple[float, str]:
     """Helper function to calculate percentage and assign grades based on marks."""
-    if total_marks <= 0:
-        raise ValidationException("Total marks must be greater than zero.")
+    if total_marks < MIN_MARKS:
+        raise ValidationException(f"Total marks must be at least {MIN_MARKS}.")
+    if total_marks > MAX_MARKS:
+        raise ValidationException(f"Total marks cannot exceed {MAX_MARKS}.")
+    if marks_obtained < MIN_MARKS:
+        raise ValidationException(f"Marks obtained must be at least {MIN_MARKS}.")
+    if marks_obtained > MAX_MARKS:
+        raise ValidationException(f"Marks obtained cannot exceed {MAX_MARKS}.")
     if marks_obtained > total_marks:
         raise ValidationException("Marks obtained cannot exceed total marks.")
         
@@ -36,45 +45,125 @@ def calculate_grade_and_percentage(marks_obtained: float, total_marks: float) ->
         
     return percentage, grade
 
-async def create_result_batch(
-    db: AsyncSession, 
-    results_data: List[ResultCreate], 
-    teacher_id: int
-) -> List[Result]:
-    """Create or update a batch of student results and set status to 'submitted'."""
-    results = []
-    for data in results_data:
-        # Validate that student, subject and exam type exist
-        student = await db.get(Student, data.student_id)
-        if not student:
-            raise ResourceNotFoundException("Student", str(data.student_id))
-            
-        subject = await db.get(Subject, data.subject_id)
-        if not subject:
-            raise ResourceNotFoundException("Subject", str(data.subject_id))
-            
-        exam_type = await db.get(ExamType, data.exam_type_id)
-        if not exam_type:
-            raise ResourceNotFoundException("ExamType", str(data.exam_type_id))
 
-        percentage, grade = calculate_grade_and_percentage(data.marks_obtained, data.total_marks)
-        
-        # Check if result already exists for student, subject and exam type to update it
-        stmt = select(Result).where(
-            Result.student_id == data.student_id,
-            Result.subject_id == data.subject_id,
-            Result.exam_type_id == data.exam_type_id
+def _check_teacher_authorized(
+    db: Session,
+    results_data: List[ResultCreate],
+    student_ids: set,
+    teacher_id: int,
+) -> None:
+    """Raise ForbiddenException unless the teacher teaches every (class, subject)
+    referenced by the batch. Authority comes from the explicit
+    teacher_class_subjects mapping and/or the generated timetable slots."""
+    authorized_pairs = set(
+        db.execute(
+            select(TeacherClassSubject.class_id, TeacherClassSubject.subject_id).where(
+                TeacherClassSubject.teacher_id == teacher_id
+            )
+        ).all()
+    )
+    authorized_pairs.update(
+        db.execute(
+            select(TimetableSlot.class_id, TimetableSlot.subject_id).where(
+                TimetableSlot.teacher_id == teacher_id
+            )
+        ).all()
+    )
+
+    student_class_map = dict(
+        db.execute(
+            select(Student.id, Student.class_id).where(Student.id.in_(student_ids))
+        ).all()
+    )
+
+    unauthorized = []
+    for data in results_data:
+        student_class_id = student_class_map.get(data.student_id)
+        if (student_class_id, data.subject_id) not in authorized_pairs:
+            unauthorized.append((data.student_id, data.subject_id))
+    if unauthorized:
+        raise ForbiddenException(
+            "You are not assigned to teach one or more of the requested "
+            f"student/subject pairs: {unauthorized}. You may only enter marks "
+            "for subjects you teach in your own classes."
         )
-        existing_result = (await db.execute(stmt)).scalar_one_or_none()
+
+
+def create_result_batch(
+    db: Session,
+    results_data: List[ResultCreate],
+    teacher_id: int,
+    is_admin: bool = False
+) -> List[Result]:
+    """Create or update a batch of student results and set status to 'submitted'.
+
+    When called by a teacher (is_admin=False) the teacher is only allowed to
+    record results for subjects they actually teach in the student's class, and
+    cannot overwrite results an admin has already approved. Admins bypass both
+    checks (they can enter marks for any student/subject)."""
+    if not results_data:
+        return []
+
+    # 1. Bulk validate existence of Students, Subjects, and ExamTypes
+    student_ids = {data.student_id for data in results_data}
+    subject_ids = {data.subject_id for data in results_data}
+    exam_type_ids = {data.exam_type_id for data in results_data}
+
+    found_student_ids = set(db.scalars(select(Student.id).where(Student.id.in_(student_ids))).all())
+    missing_students = student_ids - found_student_ids
+    if missing_students:
+        raise ResourceNotFoundException("Student", str(next(iter(missing_students))))
+
+    found_subject_ids = set(db.scalars(select(Subject.id).where(Subject.id.in_(subject_ids))).all())
+    missing_subjects = subject_ids - found_subject_ids
+    if missing_subjects:
+        raise ResourceNotFoundException("Subject", str(next(iter(missing_subjects))))
+
+    found_exam_type_ids = set(db.scalars(select(ExamType.id).where(ExamType.id.in_(exam_type_ids))).all())
+    missing_exam_types = exam_type_ids - found_exam_type_ids
+    if missing_exam_types:
+        raise ResourceNotFoundException("ExamType", str(next(iter(missing_exam_types))))
+
+    # 1b. Authorization: the submitting teacher may only record results for
+    # students in classes where they actually teach the subject. Authority comes
+    # from the explicit teacher_class_subjects mapping and/or the generated
+    # timetable slots. Without this, any teacher could edit any student's marks.
+    if not is_admin:
+        _check_teacher_authorized(db, results_data, student_ids, teacher_id)
+
+    # 2. Bulk fetch existing results matching the batch criteria
+    existing_results = db.scalars(
+        select(Result).where(
+            Result.student_id.in_(student_ids),
+            Result.subject_id.in_(subject_ids),
+            Result.exam_type_id.in_(exam_type_ids)
+        )
+    ).all()
+    existing_map = {(r.student_id, r.subject_id, r.exam_type_id): r for r in existing_results}
+
+    # 3. Create or update result records in memory
+    results = []
+    now = datetime.utcnow()
+    for data in results_data:
+        percentage, grade = calculate_grade_and_percentage(data.marks_obtained, data.total_marks)
+        key = (data.student_id, data.subject_id, data.exam_type_id)
+        existing = existing_map.get(key)
         
-        if existing_result:
-            existing_result.marks_obtained = data.marks_obtained
-            existing_result.total_marks = data.total_marks
-            existing_result.percentage = percentage
-            existing_result.grade = grade
-            existing_result.status = "submitted"
-            existing_result.submitted_by_id = teacher_id
-            results.append(existing_result)
+        if existing:
+            if not is_admin and existing.status == "approved":
+                raise ForbiddenException(
+                    "Cannot overwrite an already approved result (student "
+                    f"{data.student_id}, subject {data.subject_id}). Contact the "
+                    "administrator to amend it."
+                )
+            existing.marks_obtained = data.marks_obtained
+            existing.total_marks = data.total_marks
+            existing.percentage = percentage
+            existing.grade = grade
+            existing.status = "submitted"
+            existing.submitted_by_id = teacher_id
+            existing.submitted_at = now
+            results.append(existing)
         else:
             db_result = Result(
                 student_id=data.student_id,
@@ -85,27 +174,27 @@ async def create_result_batch(
                 percentage=percentage,
                 grade=grade,
                 status="submitted",
-                submitted_by_id=teacher_id
+                submitted_by_id=teacher_id,
+                submitted_at=now
             )
             db.add(db_result)
             results.append(db_result)
-            
-    await db.commit()
-    
-    # Reload with relationships
-    final_results = []
-    for r in results:
-        stmt = select(Result).options(
+
+    db.commit()
+
+    # 4. Fetch all refreshed results with joined relationships in a single bulk query
+    result_ids = [r.id for r in results]
+    final_results = db.scalars(
+        select(Result).options(
             joinedload(Result.student).joinedload(Student.school_class),
             joinedload(Result.subject),
             joinedload(Result.exam_type)
-        ).where(Result.id == r.id)
-        res = (await db.execute(stmt)).scalar()
-        final_results.append(res)
-        
-    return final_results
+        ).where(Result.id.in_(result_ids))
+    ).unique().all()
 
-async def get_results_by_status(db: AsyncSession, status: Optional[str] = None) -> List[Result]:
+    return list(final_results)
+
+def get_results_by_status(db: Session, status: Optional[str] = None) -> List[Result]:
     """Retrieve all results filtered by status, including nested relationships."""
     stmt = select(Result).options(
         joinedload(Result.student).joinedload(Student.school_class),
@@ -115,10 +204,10 @@ async def get_results_by_status(db: AsyncSession, status: Optional[str] = None) 
     if status:
         stmt = stmt.where(Result.status == status)
         
-    result = await db.execute(stmt)
+    result = db.execute(stmt)
     return list(result.scalars().all())
 
-async def approve_result(db: AsyncSession, result_id: int, admin_id: int, approved: bool) -> Result:
+def approve_result(db: Session, result_id: int, admin_id: int, approved: bool) -> Result:
     """Approve or reject a submitted result."""
     stmt = select(Result).options(
         joinedload(Result.student).joinedload(Student.school_class),
@@ -126,16 +215,55 @@ async def approve_result(db: AsyncSession, result_id: int, admin_id: int, approv
         joinedload(Result.exam_type)
     ).where(Result.id == result_id)
     
-    db_result = (await db.execute(stmt)).scalar_one_or_none()
+    db_result = db.execute(stmt).scalar_one_or_none()
     if not db_result:
         raise ResourceNotFoundException("Result", str(result_id))
         
     if approved:
         db_result.status = "approved"
     else:
-        db_result.status = "pending"  # sent back to pending
+        db_result.status = "rejected"
         
     db_result.approved_by_id = admin_id
-    await db.commit()
-    await db.refresh(db_result)
+    db_result.approved_at = datetime.utcnow()
+    db.commit()
+    db.refresh(db_result)
+    return db_result
+
+def update_result(db: Session, result_id: int, data: dict) -> Result:
+    """Update an existing result (admin override)."""
+    stmt = select(Result).options(
+        joinedload(Result.student).joinedload(Student.school_class),
+        joinedload(Result.subject),
+        joinedload(Result.exam_type)
+    ).where(Result.id == result_id)
+    
+    db_result = db.execute(stmt).scalar_one_or_none()
+    if not db_result:
+        raise ResourceNotFoundException("Result", str(result_id))
+    
+    # Update fields
+    if 'marks_obtained' in data:
+        db_result.marks_obtained = data['marks_obtained']
+        percentage, grade = calculate_grade_and_percentage(
+            db_result.marks_obtained, 
+            db_result.total_marks
+        )
+        db_result.percentage = percentage
+        db_result.grade = grade
+    
+    if 'total_marks' in data:
+        db_result.total_marks = data['total_marks']
+        percentage, grade = calculate_grade_and_percentage(
+            db_result.marks_obtained, 
+            db_result.total_marks
+        )
+        db_result.percentage = percentage
+        db_result.grade = grade
+    
+    if 'status' in data:
+        db_result.status = data['status']
+    
+    db.commit()
+    db.refresh(db_result)
     return db_result

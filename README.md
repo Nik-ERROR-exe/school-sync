@@ -1,1 +1,2 @@
 # school-sync
+helping schools
