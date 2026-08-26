@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
 import api from '../../api';
+import { resultApi } from '../../api/results';
 
-// Marks range rule: entered marks must be between 35 and 100.
-const MIN_MARKS = 35;
-const MAX_MARKS = 100;
+// Marks range rule: entered marks must be non-negative and within subject total marks.
+const MIN_MARKS = 0;
+const MAX_MARKS = 1000;
 
 interface Class {
   id: number;
@@ -82,10 +83,13 @@ const ResultsEntry: React.FC = () => {
     const fetchClassData = async () => {
       setLoadingClassData(true);
       try {
-        const response = await api.get(`/teacher/students/by-class/${selectedClass}`);
-        const data = response.data;
+        const [studentsRes, subjectsData] = await Promise.all([
+          api.get(`/teacher/classes/students/by-class/${selectedClass}`),
+          resultApi.getSubjectsByClass(selectedClass)
+        ]);
+        const data = studentsRes.data;
         setStudents(data.students || []);
-        setSubjects(data.subjects || []);
+        setSubjects(subjectsData || []);
         setMarks({});
       } catch (error) {
         toast.error('Failed to load class data');
@@ -143,15 +147,14 @@ const ResultsEntry: React.FC = () => {
       return;
     }
 
-    const maxAllowed = Math.min(totalMarks, MAX_MARKS);
     const resultsData: any[] = [];
     for (const student of students) {
       for (const subject of subjects) {
         const rawMark = getMark(student.id, subject.id);
         if (rawMark === '') continue;
         const mark = parseFloat(rawMark);
-        if (isNaN(mark) || mark < MIN_MARKS || mark > maxAllowed) {
-          toast.error(`Marks for ${student.name} (${subject.subject_name}) must be between ${MIN_MARKS} and ${maxAllowed}.`);
+        if (isNaN(mark) || mark < MIN_MARKS || mark > totalMarks) {
+          toast.error(`Marks for ${student.name} (${subject.subject_name}) must be between ${MIN_MARKS} and ${totalMarks}.`);
           return;
         }
         resultsData.push({
@@ -163,6 +166,25 @@ const ResultsEntry: React.FC = () => {
         });
       }
     }
+
+    if (resultsData.length === 0) {
+      toast.error('Please enter marks for at least one student and subject');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await api.post('/teacher/results/', { results: resultsData });
+      toast.success('Results submitted successfully!');
+      setMarks({});
+    } catch (error: any) {
+      console.error('❌ Submit error:', error);
+      toast.error(error.response?.data?.detail?.message || error.response?.data?.detail || 'Failed to submit results');
+    } finally {
+      setLoading(false);
+    }
+  };
+
 
     if (resultsData.length === 0) {
       toast.error('Please enter marks for at least one student and subject');
