@@ -11,38 +11,170 @@ from app.core.exceptions import ResourceNotFoundException, ValidationException, 
 from typing import List, Optional
 from datetime import datetime
 
+import re
+
 def calculate_grade_and_percentage(marks_obtained: float, total_marks: float) -> tuple[float, str]:
-    """Helper function to calculate percentage and assign grades based on marks."""
-    if total_marks < MIN_MARKS:
-        raise ValidationException(f"Total marks must be at least {MIN_MARKS}.")
-    if total_marks > MAX_MARKS:
-        raise ValidationException(f"Total marks cannot exceed {MAX_MARKS}.")
-    if marks_obtained < MIN_MARKS:
-        raise ValidationException(f"Marks obtained must be at least {MIN_MARKS}.")
-    if marks_obtained > MAX_MARKS:
-        raise ValidationException(f"Marks obtained cannot exceed {MAX_MARKS}.")
+    """Helper function to calculate percentage based on marks."""
+    if total_marks <= 0:
+        raise ValidationException("Total marks must be greater than 0.")
+    if marks_obtained < 0:
+        raise ValidationException("Marks obtained cannot be negative.")
     if marks_obtained > total_marks:
         raise ValidationException("Marks obtained cannot exceed total marks.")
         
     percentage = (marks_obtained / total_marks) * 100
     percentage = round(percentage, 2)
+    return percentage, ""
+
+
+def get_grading_scale_group(class_name: str) -> str:
+    """Extract standard number from class_name string (e.g., '1', '1 A', 'Std 9', '10 B').
+    Returns 'STD_1_8' for Std 1-8, 'STD_9_10' for Std 9-10.
+    """
+    if not class_name:
+        return "STD_1_8"
+    match = re.search(r'\b(10|[1-9])\b', class_name)
+    if match:
+        std_num = int(match.group(1))
+        if std_num in (9, 10):
+            return "STD_9_10"
+    return "STD_1_8"
+
+
+def calculate_overall_grade(percentage: float, scale_group: str) -> str:
+    """Calculate overall student grade based on overall percentage and class scale group.
     
-    if percentage >= 90:
-        grade = "A+"
-    elif percentage >= 80:
-        grade = "A"
-    elif percentage >= 70:
-        grade = "B"
-    elif percentage >= 60:
-        grade = "C"
-    elif percentage >= 50:
-        grade = "D"
-    elif percentage >= 40:
-        grade = "E"
-    else:
-        grade = "F"
-        
-    return percentage, grade
+    Std 1-8 (8-tier scale):
+    P >= 91 -> 'A 1'
+    P >= 81 -> 'A 2'
+    P >= 71 -> 'ba 1'
+    P >= 61 -> 'ba 2'
+    P >= 51 -> 'k  1' (two spaces)
+    P >= 41 -> 'k  2' (two spaces)
+    P <= 40 -> 'D'
+    P <= 20 -> '[ 1' (unreachable per official Excel formula ordering, preserved per spec)
+    
+    Std 9-10 (5-tier scale):
+    P >= 75 -> 'A ' (trailing space)
+    P >= 60 -> 'ba'
+    P >= 49 -> 'k'
+    P >= 35 -> 'D'
+    P < 35  -> '['
+    """
+    if scale_group == "STD_9_10":
+        if percentage >= 75:
+            return "A "
+        elif percentage >= 60:
+            return "ba"
+        elif percentage >= 49:
+            return "k"
+        elif percentage >= 35:
+            return "D"
+        else:
+            return "["
+    else:  # STD_1_8
+        if percentage >= 91:
+            return "A 1"
+        elif percentage >= 81:
+            return "A 2"
+        elif percentage >= 71:
+            return "ba 1"
+        elif percentage >= 61:
+            return "ba 2"
+        elif percentage >= 51:
+            return "k  1"
+        elif percentage >= 41:
+            return "k  2"
+        elif percentage <= 40:
+            return "D"
+        elif percentage <= 20:
+            return "[ 1"
+        else:
+            return "D"
+
+
+def calculate_class_overall_results(db: Session, class_id: int, exam_type_id: int) -> dict:
+    """Compute overall totals, percentage, grade, and rank for every student in a class for a given exam type.
+    
+    Returns a dictionary mapping student_id to:
+    {
+        "total_obtained": float,
+        "total_max": float,
+        "percentage": float,
+        "grade": str,
+        "rank": int | None
+    }
+    """
+    school_class = db.scalars(select(SchoolClass).where(SchoolClass.id == class_id)).first()
+    class_name = school_class.class_name if school_class else ""
+    scale_group = get_grading_scale_group(class_name)
+
+    students = db.scalars(
+        select(Student)
+        .where(Student.class_id == class_id)
+        .order_by(Student.roll_no, Student.id)
+    ).all()
+
+    if not students:
+        return {}
+
+    student_ids = [s.id for s in students]
+
+    results = db.scalars(
+        select(Result)
+        .where(
+            Result.student_id.in_(student_ids),
+            Result.exam_type_id == exam_type_id
+        )
+    ).all()
+
+    student_results = {}
+    for r in results:
+        student_results.setdefault(r.student_id, []).append(r)
+
+    overall_summary = {}
+    for student in students:
+        res_list = student_results.get(student.id, [])
+        if not res_list:
+            overall_summary[student.id] = {
+                "total_obtained": 0.0,
+                "total_max": 0.0,
+                "percentage": 0.0,
+                "grade": calculate_overall_grade(0.0, scale_group),
+                "rank": None,
+                "has_results": False
+            }
+            continue
+
+        tot_obtained = sum(float(r.marks_obtained) for r in res_list)
+        tot_max = sum(float(r.total_marks) for r in res_list)
+        pct = round((tot_obtained * 100.0) / tot_max, 2) if tot_max > 0 else 0.0
+        grd = calculate_overall_grade(pct, scale_group)
+
+        overall_summary[student.id] = {
+            "total_obtained": round(tot_obtained, 2),
+            "total_max": round(tot_max, 2),
+            "percentage": pct,
+            "grade": grd,
+            "rank": None,
+            "has_results": True
+        }
+
+    ranked_students = [
+        (s_id, data["total_obtained"])
+        for s_id, data in overall_summary.items()
+        if data["has_results"]
+    ]
+    ranked_students.sort(key=lambda x: x[1], reverse=True)
+
+    current_rank = 1
+    for i, (s_id, score) in enumerate(ranked_students):
+        if i > 0 and score < ranked_students[i - 1][1]:
+            current_rank = i + 1
+        overall_summary[s_id]["rank"] = current_rank
+
+    return overall_summary
+
 
 
 def _check_teacher_authorized(
