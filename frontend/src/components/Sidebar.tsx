@@ -125,6 +125,15 @@ const Sidebar: React.FC = () => {
       roles: ['ADMIN'],
       badge: null,
     },
+    // Admin Only: Subject Max Marks Config
+    {
+      to: '/admin/subject-max-marks',
+      label: 'Max Marks Config',
+      icon: Settings,
+      roles: ['ADMIN'],
+      badge: null,
+    },
+
     {
       to: '/admin/teachers/pending',
       label: 'Pending Approvals',
