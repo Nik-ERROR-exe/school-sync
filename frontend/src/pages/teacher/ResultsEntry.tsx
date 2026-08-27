@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { toast } from 'react-hot-toast';
 import api from '../../api';
 import { resultApi, Subject } from '../../api/results';
@@ -168,25 +168,27 @@ const ResultsEntry: React.FC = () => {
     return marks[key] !== undefined ? marks[key] : '';
   };
 
-  const calculateStudentTotal = (studentId: number): number => {
-    let total = 0;
-    subjects.forEach(subject => {
-      const val = parseFloat(getMark(studentId, subject.id));
-      if (!isNaN(val)) total += val;
+  // Memoized per-student calculations - only recalculates when marks or subjects change
+  const studentCalculations = useMemo(() => {
+    const result: { [studentId: number]: { total: number; percentage: number; grade: string } } = {};
+    students.forEach(student => {
+      let total = 0;
+      let validMaxTotal = 0;
+      subjects.forEach(subject => {
+        const val = parseFloat(getMark(student.id, subject.id));
+        if (!isNaN(val)) {
+          total += val;
+          if (subject.max_marks) {
+            validMaxTotal += subject.max_marks;
+          }
+        }
+      });
+      const percentage = validMaxTotal > 0 ? (total / validMaxTotal) * 100 : 0;
+      const grade = total > 0 ? calculateGrade(percentage) : '-';
+      result[student.id] = { total, percentage, grade };
     });
-    return total;
-  };
-
-  const calculateStudentPercentage = (studentId: number): number => {
-    const total = calculateStudentTotal(studentId);
-    let validMaxTotal = 0;
-    subjects.forEach(subject => {
-      if (getMark(studentId, subject.id) !== '' && subject.max_marks) {
-        validMaxTotal += subject.max_marks;
-      }
-    });
-    return validMaxTotal > 0 ? (total / validMaxTotal) * 100 : 0;
-  };
+    return result;
+  }, [students, subjects, marks]);
 
   const handleSubmit = async () => {
     if (!selectedClass || !selectedExam) {
@@ -355,9 +357,8 @@ const ResultsEntry: React.FC = () => {
                 </thead>
                 <tbody className="divide-y">
                   {students.map(student => {
-                    const total = calculateStudentTotal(student.id);
-                    const percentage = calculateStudentPercentage(student.id);
-                    const grade = total > 0 ? calculateGrade(percentage) : '-';
+                    const calc = studentCalculations[student.id] || { total: 0, percentage: 0, grade: '-' };
+                    const { total, percentage, grade } = calc;
 
                     return (
                       <tr key={student.id} className="hover:bg-gray-50">
