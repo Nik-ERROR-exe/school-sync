@@ -18,8 +18,10 @@ import PendingTeachers from './pages/admin/PendingTeachers';
 import AllTeachers from './pages/admin/AllTeachers';
 import ClassManagement from './pages/admin/ClassManagement';
 import ClassSubjectMapping from './pages/admin/ClassSubjectMapping';
+import SubjectMaxMarksConfig from './pages/admin/SubjectMaxMarks';
 import Profile from './pages/teacher/Profile';
 import ResultsEntry from './pages/teacher/ResultsEntry'; // Teacher's result entry page
+
 
 // Root Route
 const Root = () => {
@@ -192,6 +194,12 @@ const classSubjectMappingRoute = createRoute({
   component: ClassSubjectMapping,
 });
 
+const subjectMaxMarksRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/admin/subject-max-marks',
+  component: SubjectMaxMarksConfig,
+});
+
 // Build route tree
 const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -212,9 +220,11 @@ const routeTree = rootRoute.addChildren([
     allTeachersRoute,
     classManagementRoute,
     teacherProfileRoute,
-    classSubjectMappingRoute, 
+    classSubjectMappingRoute,
+    subjectMaxMarksRoute,
   ]),
 ]);
+
 
 export const router = createRouter({
   routeTree,
