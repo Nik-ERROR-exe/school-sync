@@ -227,34 +227,16 @@ def update_result(
     data: ResultUpdate,
     db: Session = Depends(get_db)
 ):
-    """Update marks for a single result record."""
-    stmt = (
-        select(Result)
-        .options(
-            joinedload(Result.student).joinedload(Student.school_class),
-            joinedload(Result.subject),
-            joinedload(Result.exam_type),
-        )
-        .where(Result.id == result_id)
-    )
-    result = db.execute(stmt).scalar_one_or_none()
-    if not result:
-        raise HTTPException(status_code=404, detail="Result not found")
+    """Update marks for a single result record (admin override)."""
+    from app.services.result_service import update_result as service_update_result
 
-    if data.marks_obtained is not None:
-        result.marks_obtained = data.marks_obtained
-    if data.total_marks is not None:
-        result.total_marks = data.total_marks
+    # Convert Pydantic model to dict, excluding None values
+    update_data = data.model_dump(exclude_unset=True)
 
-    # Recalculate percentage and grade
-    if result.total_marks > 0:
-        percentage, grade = calculate_grade_and_percentage(
-            result.marks_obtained, result.total_marks
-        )
-        result.percentage = percentage
-        result.grade = grade
-
-    db.commit()
+    try:
+        result = service_update_result(db, result_id, update_data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     return ResultResponse(
         id=result.id,
