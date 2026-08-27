@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { toast } from 'react-hot-toast';
 import api from '../../api';
-import { resultApi, Subject } from '../../api/results';
+import { resultApi, Subject, StudentResultResponse } from '../../api/results';
 
 interface Class {
   id: number;
@@ -20,23 +20,6 @@ interface Student {
   roll_no: string;
   name: string;
   class_id: number;
-}
-
-// Interface for the nested API response (student with subjects)
-interface StudentResultResponse {
-  student_id: number;
-  roll_no: string;
-  name: string;
-  subjects: {
-    subject_id: number;
-    subject_name: string;
-    marks_obtained: number | null;
-    total_marks: number | null;
-    percentage: number | null;
-    grade: string | null;
-    status: string | null;
-    result_id: number | null;
-  }[];
 }
 
 const ResultsEntry: React.FC = () => {

@@ -111,7 +111,7 @@ const SubjectMaxMarksConfig: React.FC = () => {
   // Handle Save All: batch update only dirty items
   const handleSaveAll = async () => {
     if (dirtyItems.size === 0) {
-      toast.info('No changes to save');
+      toast('No changes to save');
       return;
     }
 

@@ -52,6 +52,22 @@ export interface SubjectMaxMarks {
   max_marks: number;
 }
 
+export interface StudentResultResponse {
+  student_id: number;
+  roll_no: string;
+  name: string;
+  subjects: {
+    subject_id: number;
+    subject_name: string;
+    marks_obtained: number | null;
+    total_marks: number | null;
+    percentage: number | null;
+    grade: string | null;
+    status: string | null;
+    result_id: number | null;
+  }[];
+}
+
 export const subjectMaxMarksApi = {
   list: async (class_name?: string, exam_type_id?: number): Promise<SubjectMaxMarks[]> => {
     const params = new URLSearchParams();
@@ -116,12 +132,12 @@ export const resultApi = {
   },
   
   // Get results by class and exam (teacher - for loading existing marks)
-  getResultsByClassAndExam: async (classId: number, examTypeId: number): Promise<{ [key: number]: number }> => {
+  getResultsByClassAndExam: async (classId: number, examTypeId: number): Promise<{ students: StudentResultResponse[] }> => {
     try {
       const response = await api.get(`/teacher/results/class/${classId}/exam/${examTypeId}`);
       return response.data;
     } catch {
-      return {};
+      return { students: [] };
     }
   },
   
