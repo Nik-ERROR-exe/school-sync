@@ -2,10 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
 import api from '../api';
 import { Download } from 'lucide-react';
-
-// Marks range rule: entered marks must be between 35 and 100.
-const MIN_MARKS = 35;
-const MAX_MARKS = 100;
+import { subjectMaxMarksApi } from '../api/results';
 
 interface Class {
   id: number;
@@ -40,14 +37,16 @@ interface StudentResult {
 interface EditableMarkInputProps {
   resultId: number | null;
   initialValue: number | null;
-  totalMarks: number;
-  onSave: (resultId: number | null, newMarks: number, totalMarks: number) => void;
+  subjectId: number;
+  subjectMaxMarks: number;
+  onSave: (resultId: number | null, newMarks: number, subjectId: number) => void;
 }
 
 const EditableMarkInput: React.FC<EditableMarkInputProps> = ({
   resultId,
   initialValue,
-  totalMarks,
+  subjectId,
+  subjectMaxMarks,
   onSave,
 }) => {
   const [val, setVal] = useState<string>(initialValue !== null ? String(initialValue) : '');
@@ -66,14 +65,14 @@ const EditableMarkInput: React.FC<EditableMarkInputProps> = ({
       setVal(initialValue !== null ? String(initialValue) : '');
       return;
     }
-    const maxAllowed = Math.min(totalMarks, MAX_MARKS);
-    if (num < MIN_MARKS || num > maxAllowed) {
-      toast.error(`Marks must be between ${MIN_MARKS} and ${maxAllowed}.`);
+    const maxAllowed = subjectMaxMarks;
+    if (num < 1 || num > maxAllowed) {
+      toast.error(`Marks must be between 1 and ${maxAllowed}.`);
       setVal(initialValue !== null ? String(initialValue) : '');
       return;
     }
     if (num !== initialValue) {
-      onSave(resultId, num, totalMarks);
+      onSave(resultId, num, subjectId);
     }
   };
 
@@ -91,8 +90,8 @@ const EditableMarkInput: React.FC<EditableMarkInputProps> = ({
       onBlur={handleBlur}
       onKeyDown={handleKeyDown}
       className="w-16 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-      min={MIN_MARKS}
-      max={Math.min(totalMarks, MAX_MARKS)}
+      min={1}
+      max={subjectMaxMarks}
     />
   );
 };
@@ -102,11 +101,11 @@ const Results: React.FC = () => {
   const [examTypes, setExamTypes] = useState<ExamType[]>([]);
   const [studentResults, setStudentResults] = useState<StudentResult[]>([]);
   const [subjects, setSubjects] = useState<{id: number, name: string}[]>([]);
+  const [subjectMaxMarksMap, setSubjectMaxMarksMap] = useState<{ [key: number]: number }>({});
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [selectedClass, setSelectedClass] = useState<number | ''>('');
   const [selectedExam, setSelectedExam] = useState<number | ''>('');
-  const [totalMarks, setTotalMarks] = useState<number>(100);
 
   // Load classes (admin endpoint with trailing slash)
   useEffect(() => {
@@ -133,6 +132,32 @@ const Results: React.FC = () => {
     };
     fetchExamTypes();
   }, []);
+
+  // Load subject max marks map when class and exam are selected
+  useEffect(() => {
+    if (!selectedClass || !selectedExam) {
+      setSubjectMaxMarksMap({});
+      return;
+    }
+
+    const fetchMaxMarks = async () => {
+      try {
+        const classObj = classes.find(c => c.id === selectedClass);
+        if (!classObj) return;
+
+        const maxMarksList = await subjectMaxMarksApi.list(classObj.class_name, Number(selectedExam));
+        const map: { [key: number]: number } = {};
+        maxMarksList.forEach(item => {
+          map[item.subject_id] = item.max_marks;
+        });
+        setSubjectMaxMarksMap(map);
+      } catch (error) {
+        toast.error('Failed to load subject max marks configuration');
+      }
+    };
+
+    fetchMaxMarks();
+  }, [selectedClass, selectedExam, classes]);
 
   // Load results when class and exam are selected
   useEffect(() => {
@@ -163,17 +188,16 @@ const Results: React.FC = () => {
     studentId: number,
     subjectId: number,
     resultId: number | null,
-    newMarks: number,
-    total: number
+    newMarks: number
   ) => {
     try {
       let savedResultId: number | null = resultId;
+      const subjectMaxMarks = subjectMaxMarksMap[subjectId];
 
       if (resultId) {
-        // Update an existing result
+        // Update an existing result - total_marks now comes from config, not client
         await api.put(`/admin/results/${resultId}`, {
-          marks_obtained: newMarks,
-          total_marks: total
+          marks_obtained: newMarks
         });
       } else {
         // No result exists yet - create one directly as admin
@@ -182,8 +206,7 @@ const Results: React.FC = () => {
             student_id: studentId,
             subject_id: subjectId,
             exam_type_id: selectedExam,
-            marks_obtained: newMarks,
-            total_marks: total
+            marks_obtained: newMarks
           }]
         });
         const created = response.data?.[0];
@@ -204,9 +227,9 @@ const Results: React.FC = () => {
                   ...subject,
                   result_id: savedResultId,
                   marks_obtained: newMarks,
-                  total_marks: total,
-                  percentage: (newMarks / total) * 100,
-                  grade: calculateGrade((newMarks / total) * 100),
+                  total_marks: subjectMaxMarks,
+                  percentage: subjectMaxMarks > 0 ? (newMarks / subjectMaxMarks) * 100 : 0,
+                  grade: calculateGrade(subjectMaxMarks > 0 ? (newMarks / subjectMaxMarks) * 100 : 0),
                   status: 'submitted'
                 }
               : subject
@@ -330,7 +353,7 @@ const Results: React.FC = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Class</label>
           <select
@@ -362,19 +385,6 @@ const Results: React.FC = () => {
             ))}
           </select>
         </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Total Marks</label>
-          <input
-            type="number"
-            value={totalMarks}
-            onChange={(e) => setTotalMarks(Math.max(MIN_MARKS, Math.min(MAX_MARKS, Number(e.target.value))))}
-            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            min={MIN_MARKS}
-            max={MAX_MARKS}
-          />
-          <p className="text-xs text-gray-500 mt-1">Marks must be between {MIN_MARKS} and {MAX_MARKS}</p>
-        </div>
       </div>
 
       {selectedClass && selectedExam && (
@@ -392,11 +402,17 @@ const Results: React.FC = () => {
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50">Roll No</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase sticky left-16 bg-gray-50">Student</th>
-                    {subjects.map((subject) => (
-                      <th key={subject.id} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        {subject.name}
-                      </th>
-                    ))}
+                    {subjects.map((subject) => {
+                      const maxMarks = subjectMaxMarksMap[subject.id];
+                      return (
+                        <th key={subject.id} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          {subject.name}
+                          {maxMarks && (
+                            <div className="font-normal normal-case text-gray-500 text-xs">/{maxMarks}</div>
+                          )}
+                        </th>
+                      );
+                    })}
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">%</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Grade</th>
@@ -412,16 +428,22 @@ const Results: React.FC = () => {
                         {subjects.map((subject) => {
                           const subjectData = student.subjects.find(s => s.subject_id === subject.id);
                           const resultId = subjectData ? subjectData.result_id : null;
+                          const subjectMaxMarks = subjectMaxMarksMap[subject.id] || 0;
                           return (
                             <td key={subject.id} className="px-4 py-3">
-                              <EditableMarkInput
-                                resultId={resultId}
-                                initialValue={subjectData ? subjectData.marks_obtained : null}
-                                totalMarks={(subjectData && subjectData.total_marks) || totalMarks}
-                                onSave={(rid, marks, total) =>
-                                  handleMarkChange(student.student_id, subject.id, rid, marks, total)
-                                }
-                              />
+                              {subjectMaxMarks > 0 ? (
+                                <EditableMarkInput
+                                  resultId={resultId}
+                                  initialValue={subjectData ? subjectData.marks_obtained : null}
+                                  subjectId={subject.id}
+                                  subjectMaxMarks={subjectMaxMarks}
+                                  onSave={(rid, marks, sid) =>
+                                    handleMarkChange(student.student_id, sid, rid, marks)
+                                  }
+                                />
+                              ) : (
+                                <span className="text-red-500 text-sm">Max marks not set</span>
+                              )}
                             </td>
                           );
                         })}
