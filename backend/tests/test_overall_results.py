@@ -99,6 +99,14 @@ def test_calculate_class_overall_results_and_ranks(db):
     db.add(exam)
     db.flush()
 
+    from app.models.subject_max_marks import SubjectMaxMarks
+    smm1 = SubjectMaxMarks(class_name=klass.class_name, subject_id=s1.id, exam_type_id=exam.id, max_marks=10.0)
+    smm2 = SubjectMaxMarks(class_name=klass.class_name, subject_id=s2.id, exam_type_id=exam.id, max_marks=10.0)
+    smm3 = SubjectMaxMarks(class_name=klass.class_name, subject_id=s3.id, exam_type_id=exam.id, max_marks=10.0)
+    db.add_all([smm1, smm2, smm3])
+    db.flush()
+
+
     st1 = Student(roll_no="1", name="Student One", class_id=klass.id)
     st2 = Student(roll_no="2", name="Student Two", class_id=klass.id)
     st3 = Student(roll_no="3", name="Student Three", class_id=klass.id)
