@@ -6,7 +6,9 @@ from app.models.school_class import SchoolClass
 from app.models.subject import Subject
 from app.models.exam_type import ExamType
 from app.models.teacher_class_subject import TeacherClassSubject
+from app.models.subject_max_marks import SubjectMaxMarks
 from app.schemas.result import ResultCreate, MIN_MARKS, MAX_MARKS
+
 from app.core.exceptions import ResourceNotFoundException, ValidationException, ForbiddenException
 from typing import List, Optional
 from datetime import datetime
@@ -17,8 +19,8 @@ def calculate_grade_and_percentage(marks_obtained: float, total_marks: float) ->
     """Helper function to calculate percentage based on marks."""
     if total_marks <= 0:
         raise ValidationException("Total marks must be greater than 0.")
-    if marks_obtained < 0:
-        raise ValidationException("Marks obtained cannot be negative.")
+    if marks_obtained < 1:
+        raise ValidationException("Marks obtained must be at least 1.")
     if marks_obtained > total_marks:
         raise ValidationException("Marks obtained cannot exceed total marks.")
         
@@ -255,6 +257,36 @@ def create_result_batch(
     if not is_admin:
         _check_teacher_authorized(db, results_data, student_ids, teacher_id)
 
+    # 1c. Fetch students with school_class to determine class_name for max_marks lookup
+    students = db.scalars(
+        select(Student)
+        .options(joinedload(Student.school_class))
+        .where(Student.id.in_(student_ids))
+    ).all()
+    student_class_name_map = {
+        s.id: s.school_class.class_name for s in students if s.school_class
+    }
+
+    required_configs = set()
+    for data in results_data:
+        c_name = student_class_name_map.get(data.student_id)
+        if c_name:
+            required_configs.add((c_name, data.subject_id, data.exam_type_id))
+
+    class_names = {c[0] for c in required_configs}
+    max_marks_records = db.scalars(
+        select(SubjectMaxMarks).where(
+            SubjectMaxMarks.class_name.in_(class_names),
+            SubjectMaxMarks.subject_id.in_(subject_ids),
+            SubjectMaxMarks.exam_type_id.in_(exam_type_ids)
+        )
+    ).all() if class_names else []
+
+    max_marks_lookup = {
+        (r.class_name, r.subject_id, r.exam_type_id): float(r.max_marks)
+        for r in max_marks_records
+    }
+
     # 2. Bulk fetch existing results matching the batch criteria
     existing_results = db.scalars(
         select(Result).where(
@@ -269,7 +301,22 @@ def create_result_batch(
     results = []
     now = datetime.utcnow()
     for data in results_data:
-        percentage, grade = calculate_grade_and_percentage(data.marks_obtained, data.total_marks)
+        c_name = student_class_name_map.get(data.student_id)
+        config_key = (c_name, data.subject_id, data.exam_type_id)
+        configured_max = max_marks_lookup.get(config_key)
+
+        if configured_max is None:
+            raise ValidationException(
+                f"Subject (ID {data.subject_id}) max marks is not configured for Standard '{c_name}' and exam type (ID {data.exam_type_id}). Contact administrator."
+            )
+
+        if data.marks_obtained > configured_max:
+            raise ValidationException(
+                f"Marks obtained ({data.marks_obtained}) cannot exceed configured maximum marks ({configured_max}) for subject ID {data.subject_id}."
+            )
+
+        total_marks = configured_max
+        percentage, grade = calculate_grade_and_percentage(data.marks_obtained, total_marks)
         key = (data.student_id, data.subject_id, data.exam_type_id)
         existing = existing_map.get(key)
         
@@ -281,7 +328,7 @@ def create_result_batch(
                     "administrator to amend it."
                 )
             existing.marks_obtained = data.marks_obtained
-            existing.total_marks = data.total_marks
+            existing.total_marks = total_marks
             existing.percentage = percentage
             existing.grade = grade
             existing.status = "submitted"
@@ -294,7 +341,7 @@ def create_result_batch(
                 subject_id=data.subject_id,
                 exam_type_id=data.exam_type_id,
                 marks_obtained=data.marks_obtained,
-                total_marks=data.total_marks,
+                total_marks=total_marks,
                 percentage=percentage,
                 grade=grade,
                 status="submitted",
@@ -303,6 +350,7 @@ def create_result_batch(
             )
             db.add(db_result)
             results.append(db_result)
+
 
     db.commit()
 
@@ -361,33 +409,56 @@ def update_result(db: Session, result_id: int, data: dict) -> Result:
         joinedload(Result.subject),
         joinedload(Result.exam_type)
     ).where(Result.id == result_id)
-    
+
     db_result = db.execute(stmt).scalar_one_or_none()
     if not db_result:
         raise ResourceNotFoundException("Result", str(result_id))
-    
+
+    # Get class_name for SubjectMaxMarks lookup
+    student_class = db_result.student.school_class if db_result.student else None
+    class_name = student_class.class_name if student_class else None
+
+    if not class_name:
+        raise ValidationException("Student class not found for max marks lookup")
+
+    # Lookup configured max marks for this subject/class/exam
+    max_marks_record = db.execute(
+        select(SubjectMaxMarks).where(
+            SubjectMaxMarks.class_name == class_name,
+            SubjectMaxMarks.subject_id == db_result.subject_id,
+            SubjectMaxMarks.exam_type_id == db_result.exam_type_id
+        )
+    ).scalar_one_or_none()
+
+    if not max_marks_record:
+        raise ValidationException(
+            f"Max marks not configured for Standard '{class_name}', subject ID {db_result.subject_id}, exam type ID {db_result.exam_type_id}. Configure it first."
+        )
+
+    configured_max = float(max_marks_record.max_marks)
+
     # Update fields
     if 'marks_obtained' in data:
-        db_result.marks_obtained = data['marks_obtained']
-        percentage, grade = calculate_grade_and_percentage(
-            db_result.marks_obtained, 
-            db_result.total_marks
-        )
-        db_result.percentage = percentage
-        db_result.grade = grade
-    
-    if 'total_marks' in data:
-        db_result.total_marks = data['total_marks']
-        percentage, grade = calculate_grade_and_percentage(
-            db_result.marks_obtained, 
-            db_result.total_marks
-        )
-        db_result.percentage = percentage
-        db_result.grade = grade
-    
+        marks_obtained = data['marks_obtained']
+        if marks_obtained > configured_max:
+            raise ValidationException(
+                f"Marks obtained ({marks_obtained}) cannot exceed configured maximum marks ({configured_max}) for subject ID {db_result.subject_id}."
+            )
+        db_result.marks_obtained = marks_obtained
+
+    # total_marks is now always from config, not client-supplied
+    db_result.total_marks = configured_max
+
+    percentage, grade = calculate_grade_and_percentage(
+        db_result.marks_obtained,
+        db_result.total_marks
+    )
+    db_result.percentage = percentage
+    db_result.grade = grade
+
     if 'status' in data:
         db_result.status = data['status']
-    
+
     db.commit()
     db.refresh(db_result)
     return db_result
