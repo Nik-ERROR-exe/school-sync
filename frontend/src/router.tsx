@@ -11,7 +11,7 @@ import Timetable from './pages/Timetable';
 import Substitute from './pages/Substitute';
 import SubstituteManagement from './pages/admin/SubstituteManagement';
 import Students from './pages/admin/Students';
-import Promotion from './pages/Promotion';
+import Promotion from './pages/admin/Promotion';
 import Settings from './pages/Settings';
 import Register from './pages/Register';
 import PendingTeachers from './pages/admin/PendingTeachers';
