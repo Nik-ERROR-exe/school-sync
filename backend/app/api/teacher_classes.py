@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy import cast, Integer
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.future import select
 from app.database import get_db
@@ -67,7 +68,7 @@ def get_students_by_class(
     students = db.execute(
         select(Student)
         .where(Student.class_id == class_id)
-        .order_by(Student.roll_no)
+        .order_by(cast(Student.roll_no, Integer))
     ).scalars().all()
 
     # 3. Get subjects this teacher teaches in this class (from teacher_class_subjects)

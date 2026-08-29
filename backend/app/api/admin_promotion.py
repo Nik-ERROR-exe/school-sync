@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func
+from sqlalchemy import func, cast, Integer
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
@@ -126,7 +126,7 @@ def execute_promotion(
             # Get students from source class (sorted by roll_no)
             class_students = db.query(Student).filter(
                 Student.class_id == source_class.id
-            ).order_by(Student.roll_no).all()
+            ).order_by(cast(Student.roll_no, Integer)).all()
             
             # Get existing roll numbers in destination class
             existing_rolls = db.query(Student.roll_no).filter(

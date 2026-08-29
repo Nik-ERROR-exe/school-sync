@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy import cast, Integer
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.api.deps import get_current_user
@@ -18,7 +19,7 @@ def get_students_by_class(
     """Get students and subjects for a class (no teacher filter)"""
     
     # Get students
-    students = db.query(Student).filter(Student.class_id == class_id).order_by(Student.roll_no).all()
+    students = db.query(Student).filter(Student.class_id == class_id).order_by(cast(Student.roll_no, Integer)).all()
     
     # Get ALL subjects for this class (from class_subjects mapping)
     subjects = db.query(Subject).join(

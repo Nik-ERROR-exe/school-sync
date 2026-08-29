@@ -1,3 +1,4 @@
+from sqlalchemy import cast, Integer
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.future import select
 from app.models.result import Result
@@ -114,7 +115,7 @@ def calculate_class_overall_results(db: Session, class_id: int, exam_type_id: in
     students = db.scalars(
         select(Student)
         .where(Student.class_id == class_id)
-        .order_by(Student.roll_no, Student.id)
+        .order_by(cast(Student.roll_no, Integer), Student.id)
     ).all()
 
     if not students:
