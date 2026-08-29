@@ -151,6 +151,36 @@ const ResultsEntry: React.FC = () => {
     return marks[key] !== undefined ? marks[key] : '';
   };
 
+  const getMarkError = (studentId: number, subjectId: number, value: string): string | null => {
+    const subjectObj = subjects.find(s => s.id === subjectId);
+    if (!subjectObj || subjectObj.needs_config || subjectObj.max_marks === null || subjectObj.max_marks === undefined) {
+      return null;
+    }
+    if (value === '') return null;
+    const num = parseFloat(value);
+    if (isNaN(num)) return null;
+    if (num < 0) {
+      return `Marks must be at least 0.`;
+    }
+    if (num > subjectObj.max_marks) {
+      return `Marks must be between 0 and ${subjectObj.max_marks}.`;
+    }
+    return null;
+  };
+
+  // Check if any entered mark is invalid — used to disable submit
+  const hasInvalidMarks = useMemo(() => {
+    for (const student of students) {
+      for (const subject of subjects) {
+        const value = getMark(student.id, subject.id);
+        if (value === '') continue;
+        const err = getMarkError(student.id, subject.id, value);
+        if (err) return true;
+      }
+    }
+    return false;
+  }, [students, subjects, marks]);
+
   // Memoized per-student calculations - only recalculates when marks or subjects change
   const studentCalculations = useMemo(() => {
     const result: { [studentId: number]: { total: number; percentage: number; grade: string } } = {};
@@ -347,26 +377,37 @@ const ResultsEntry: React.FC = () => {
                       <tr key={student.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 font-medium border-r sticky left-0 bg-white">{student.roll_no}</td>
                         <td className="px-4 py-3 font-medium border-r sticky left-16 bg-white">{student.name}</td>
-                        {subjects.map(subject => {
-                          const isConfigured = subject.max_marks !== null && subject.max_marks !== undefined && !subject.needs_config;
-                          return (
-                            <td key={subject.id} className="px-2 py-2 text-center border-r">
-                              <input
-                                type="number"
-                                min={0}
-                                max={isConfigured ? subject.max_marks! : undefined}
-                                value={getMark(student.id, subject.id)}
-                                onChange={(e) => handleMarkChange(student.id, subject.id, e.target.value)}
-                                placeholder={isConfigured ? "—" : "Not set"}
-                                disabled={!isConfigured}
-                                title={!isConfigured ? "Max marks not configured for this subject — contact admin" : ""}
-                                className={`w-16 px-2 py-1 border rounded text-center focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                                  !isConfigured ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-red-200' : ''
-                                }`}
-                              />
-                            </td>
-                          );
-                        })}
+                         {subjects.map(subject => {
+                           const isConfigured = subject.max_marks !== null && subject.max_marks !== undefined && !subject.needs_config;
+                           const rawValue = getMark(student.id, subject.id);
+                           const errorMsg = getMarkError(student.id, subject.id, rawValue);
+                           return (
+                             <td key={subject.id} className="px-2 py-2 text-center border-r">
+                               <div className="flex flex-col items-center">
+                               <input
+                                 type="number"
+                                 min={0}
+                                 max={isConfigured ? subject.max_marks! : undefined}
+                                 value={rawValue}
+                                 onChange={(e) => handleMarkChange(student.id, subject.id, e.target.value)}
+                                 placeholder={isConfigured ? "—" : "Not set"}
+                                 disabled={!isConfigured}
+                                 title={!isConfigured ? "Max marks not configured for this subject — contact admin" : ""}
+                                 className={`w-16 px-2 py-1 border rounded text-center focus:outline-none focus:ring-2 ${
+                                   !isConfigured
+                                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-red-200'
+                                     : errorMsg
+                                       ? 'border-red-400 focus:ring-red-500'
+                                       : 'focus:ring-blue-500'
+                                 }`}
+                               />
+                               {errorMsg && (
+                                 <span className="text-red-500 text-xs mt-1">{errorMsg}</span>
+                               )}
+                               </div>
+                             </td>
+                           );
+                         })}
                         <td className="px-4 py-3 text-center font-bold border-r">{total > 0 ? total : '—'}</td>
                         <td className="px-4 py-3 text-center font-medium border-r">{total > 0 ? `${percentage.toFixed(1)}%` : '—'}</td>
                         <td className="px-4 py-3 text-center font-bold">
@@ -387,18 +428,25 @@ const ResultsEntry: React.FC = () => {
               </table>
             </div>
 
-            <div className="px-6 py-4 border-t bg-gray-50 flex items-center justify-between">
-              <span className="text-sm text-gray-500">
-                {students.length} students · {subjects.length} subjects
-              </span>
-              <button
-                onClick={handleSubmit}
-                disabled={loading}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
-              >
-                {loading ? 'Submitting...' : '📤 Submit Results'}
-              </button>
-            </div>
+               <div className="px-6 py-4 border-t bg-gray-50 flex items-center justify-between">
+               <span className="text-sm text-gray-500">
+                 {students.length} students · {subjects.length} subjects
+               </span>
+               <div className="flex items-center gap-4">
+                 {hasInvalidMarks && (
+                   <span className="text-red-600 text-sm font-medium">
+                     Please fix invalid marks before submitting.
+                   </span>
+                 )}
+                 <button
+                   onClick={handleSubmit}
+                   disabled={loading || hasInvalidMarks}
+                   className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+                 >
+                   {loading ? 'Submitting...' : '📤 Submit Results'}
+                 </button>
+               </div>
+             </div>
           </div>
         </>
       )}

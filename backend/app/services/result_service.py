@@ -19,8 +19,8 @@ def calculate_grade_and_percentage(marks_obtained: float, total_marks: float) ->
     """Helper function to calculate percentage based on marks."""
     if total_marks <= 0:
         raise ValidationException("Total marks must be greater than 0.")
-    if marks_obtained < 1:
-        raise ValidationException("Marks obtained must be at least 1.")
+    if marks_obtained < 0:
+        raise ValidationException("Marks obtained cannot be negative.")
     if marks_obtained > total_marks:
         raise ValidationException("Marks obtained cannot exceed total marks.")
         
@@ -315,6 +315,11 @@ def create_result_batch(
                 f"Marks obtained ({data.marks_obtained}) cannot exceed configured maximum marks ({configured_max}) for subject ID {data.subject_id}."
             )
 
+        if data.marks_obtained < MIN_MARKS:
+            raise ValidationException(
+                f"Marks obtained must be between 0 and {configured_max} for subject ID {data.subject_id}."
+            )
+
         total_marks = configured_max
         percentage, grade = calculate_grade_and_percentage(data.marks_obtained, total_marks)
         key = (data.student_id, data.subject_id, data.exam_type_id)
@@ -440,6 +445,10 @@ def update_result(db: Session, result_id: int, data: dict) -> Result:
     # Update fields
     if 'marks_obtained' in data:
         marks_obtained = data['marks_obtained']
+        if marks_obtained < MIN_MARKS:
+            raise ValidationException(
+                f"Marks obtained must be between 0 and {configured_max} for subject ID {db_result.subject_id}."
+            )
         if marks_obtained > configured_max:
             raise ValidationException(
                 f"Marks obtained ({marks_obtained}) cannot exceed configured maximum marks ({configured_max}) for subject ID {db_result.subject_id}."

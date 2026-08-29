@@ -1,13 +1,13 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List
 
-# Marks range rule: entered marks must be >= 1 and total marks must be positive.
-MIN_MARKS = 1
+# Marks range rule: entered marks must be between 0 and the subject's configured max_marks.
+MIN_MARKS = 0
 MAX_MARKS = 1000
 
 class MarkEntry(BaseModel):
     student_id: int
-    marks_obtained: float = Field(ge=1)
+    marks_obtained: float = Field(ge=MIN_MARKS)
 
 class ResultSubmitRequest(BaseModel):
     class_id: int
@@ -18,7 +18,7 @@ class ResultSubmitRequest(BaseModel):
 class TeacherMarkEntry(BaseModel):
     student_id: int
     subject_id: int
-    marks_obtained: float = Field(ge=1)
+    marks_obtained: float = Field(ge=MIN_MARKS)
 
 class TeacherResultSubmit(BaseModel):
     class_id: int
@@ -55,7 +55,7 @@ class ResultCreate(BaseModel):
     student_id: int
     subject_id: int
     exam_type_id: int
-    marks_obtained: float = Field(ge=1)
+    marks_obtained: float = Field(ge=MIN_MARKS)
     percentage: Optional[float] = None
     grade: Optional[str] = None
     submitted_by_id: Optional[int] = None
@@ -65,7 +65,7 @@ class ResultBatchCreate(BaseModel):
 
 # --- Result Update Schemas ---
 class ResultUpdate(BaseModel):
-    marks_obtained: Optional[float] = Field(default=None, ge=1)
+    marks_obtained: Optional[float] = Field(default=None, ge=MIN_MARKS)
     status: Optional[str] = None
 
 # --- Result Approval Schema ---

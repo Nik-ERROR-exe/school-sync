@@ -7,6 +7,7 @@ from app.models.timetable import TimetableSlot
 from app.models.result import Result
 from app.models.substitute_assignment import SubstituteAssignment
 from app.models.weekly_requirement import WeeklyRequirement
+from app.models.teacher_class import TeacherClass
 from app.models.teacher_class_subject import TeacherClassSubject
 from app.models.timetable_settings import TimetableSettings
 from app.models.subject_max_marks import SubjectMaxMarks
@@ -22,6 +23,7 @@ __all__ = [
     "Result",
     "SubstituteAssignment",
     "WeeklyRequirement",
+    "TeacherClass",
     "TeacherClassSubject",
     "TimetableSettings",
     "SubjectMaxMarks",

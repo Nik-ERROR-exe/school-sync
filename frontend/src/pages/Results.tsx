@@ -50,27 +50,44 @@ const EditableMarkInput: React.FC<EditableMarkInputProps> = ({
   onSave,
 }) => {
   const [val, setVal] = useState<string>(initialValue !== null ? String(initialValue) : '');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setVal(initialValue !== null ? String(initialValue) : '');
   }, [initialValue]);
 
+  const maxAllowed = subjectMaxMarks;
+
+  const validate = (num: number): string | null => {
+    if (num < 0) {
+      return `Marks must be at least 0.`;
+    }
+    if (num > maxAllowed) {
+      return `Marks must be between 0 and ${maxAllowed}.`;
+    }
+    return null;
+  };
+
   const handleBlur = () => {
     if (val === '' || val === null) {
       setVal(initialValue !== null ? String(initialValue) : '');
+      setError(null);
       return;
     }
     const num = parseFloat(val);
     if (isNaN(num)) {
       setVal(initialValue !== null ? String(initialValue) : '');
+      setError(null);
       return;
     }
-    const maxAllowed = subjectMaxMarks;
-    if (num < 1 || num > maxAllowed) {
-      toast.error(`Marks must be between 1 and ${maxAllowed}.`);
+    const errMsg = validate(num);
+    if (errMsg) {
+      setError(errMsg);
+      toast.error(errMsg);
       setVal(initialValue !== null ? String(initialValue) : '');
       return;
     }
+    setError(null);
     if (num !== initialValue) {
       onSave(resultId, num, subjectId);
     }
@@ -83,16 +100,28 @@ const EditableMarkInput: React.FC<EditableMarkInputProps> = ({
   };
 
   return (
-    <input
-      type="number"
-      value={val}
-      onChange={(e) => setVal(e.target.value)}
-      onBlur={handleBlur}
-      onKeyDown={handleKeyDown}
-      className="w-16 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-      min={1}
-      max={subjectMaxMarks}
-    />
+    <div className="flex flex-col">
+      <input
+        type="number"
+        value={val}
+        onChange={(e) => {
+          setVal(e.target.value);
+          if (error) setError(null);
+        }}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        className={`w-16 px-2 py-1 border rounded focus:outline-none focus:ring-2 ${
+          error
+            ? 'border-red-400 focus:ring-red-500'
+            : 'focus:ring-blue-500'
+        }`}
+        min={0}
+        max={maxAllowed}
+      />
+      {error && (
+        <span className="text-red-500 text-xs mt-1">{error}</span>
+      )}
+    </div>
   );
 };
 
