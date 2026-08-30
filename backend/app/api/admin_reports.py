@@ -16,7 +16,7 @@ router = APIRouter(
 @router.get("/results")
 def export_results(
     format: str = Query(..., description="Export format: 'pdf' or 'excel'"),
-    school_name: str = Query("SchoolSync Academy", description="School name header to show on reports"),
+    school_name: str = Query("Amarkor Vidyalaya", description="School name header to show on reports"),
     db: Session = Depends(get_db)
 ):
     """
