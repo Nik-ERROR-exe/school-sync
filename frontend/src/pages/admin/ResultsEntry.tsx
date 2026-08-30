@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { toast } from 'react-hot-toast';
 import api from '../../api';
 import { Send } from 'lucide-react';
@@ -152,24 +152,25 @@ const ResultsEntry: React.FC = () => {
     const key = `${studentId}_${subjectId}`;
     return marks[key] || 0;
   };
-  
-  // Calculate student totals
-  const calculateStudentTotals = (studentId: number) => {
-    let totalObtained = 0;
-    let totalMax = 0;
-    
-    subjects.forEach(subject => {
-      const mark = getMarkForStudentSubject(studentId, subject.id);
-      totalObtained += mark;
-      totalMax += totalMarks;
+
+  // Memoized student totals - only recalculates when marks or subjects change
+  const studentTotals = useMemo(() => {
+    const totals: { [studentId: number]: { totalObtained: number; totalMax: number; percentage: number; grade: string } } = {};
+    students.forEach(student => {
+      let totalObtained = 0;
+      let totalMax = 0;
+      subjects.forEach(subject => {
+        const mark = getMarkForStudentSubject(student.id, subject.id);
+        totalObtained += mark;
+        totalMax += totalMarks;
+      });
+      const percentage = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0;
+      const grade = calculateGrade(percentage);
+      totals[student.id] = { totalObtained, totalMax, percentage, grade };
     });
-    
-    const percentage = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0;
-    const grade = calculateGrade(percentage);
-    
-    return { totalObtained, totalMax, percentage, grade };
-  };
-  
+    return totals;
+  }, [students, subjects, marks, totalMarks]);
+
   // ============================================================
   // SUBMIT MARKS ONLY - NO SAVE BUTTON
   // ============================================================
@@ -301,7 +302,7 @@ const ResultsEntry: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {students.map((student) => {
-                    const { totalObtained, totalMax, percentage, grade } = calculateStudentTotals(student.id);
+                    const { totalObtained, totalMax, percentage, grade } = studentTotals[student.id] || { totalObtained: 0, totalMax: 0, percentage: 0, grade: 'F' };
                     
                     return (
                       <tr key={student.id} className="hover:bg-gray-50">

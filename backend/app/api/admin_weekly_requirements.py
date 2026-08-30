@@ -13,6 +13,7 @@ from app.schemas.weekly_requirement import (
 from app.models.weekly_requirement import WeeklyRequirement
 from app.models.school_class import SchoolClass
 from app.models.subject import Subject
+from app.services.timetable.period_schedule import PERIODS_PER_DAY
 from app.core.exceptions import ResourceNotFoundException, ConflictException, ValidationException
 
 router = APIRouter(
@@ -149,7 +150,7 @@ def delete_weekly_requirement(id: int, db: Session = Depends(get_db)):
 
 @router.post("/seed-defaults", response_model=List[WeeklyRequirementResponse], status_code=status.HTTP_201_CREATED)
 def seed_default_requirements(
-    periods_per_day: int = Query(default=8, ge=1, description="Total teaching periods per day"),
+    periods_per_day: int = Query(default=PERIODS_PER_DAY, ge=1, description="Total teaching periods per day (fixed at 8)"),
     num_school_days: int = Query(default=6, ge=1, le=7, description="Number of school days per week"),
     db: Session = Depends(get_db),
 ):

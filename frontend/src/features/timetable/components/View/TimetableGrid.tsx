@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ApiSlot, ApiClass, ApiSubject, ApiTeacher } from '../../types';
+import { getPeriodTimeStr } from '../../periodSchedule';
 import EditCellModal from './EditCellModal';
 import { getScheduleConflicts } from '../../utils/conflictChecker';
 import { AlertTriangle } from 'lucide-react';
@@ -12,27 +13,11 @@ interface TimetableGridProps {
   schoolDays: string[];
   periodsPerDay: number;
   saturdayPeriods: number;
-  startTime: string;
-  periodDuration: number;
   lunchPeriod: number | null;
   ptSubjectId?: number | null;
   onSave: (updatedSchedule: ApiSlot[]) => void;
   onClassChange?: (id: number | null) => void;
 }
-
-const getPeriodTimeStr = (periodNum: number, startTime: string, duration: number) => {
-  const [startHour, startMin] = startTime.split(':').map(Number);
-  const totalStartMinutes = startHour * 60 + startMin + (periodNum - 1) * duration;
-  const totalEndMinutes = totalStartMinutes + duration;
-
-  const formatTime = (totalMinutes: number) => {
-    const hr = Math.floor(totalMinutes / 60) % 24;
-    const min = totalMinutes % 60;
-    return `${String(hr).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
-  };
-
-  return `${formatTime(totalStartMinutes)} – ${formatTime(totalEndMinutes)}`;
-};
 
 export default function TimetableGrid({
   schedule,
@@ -42,8 +27,6 @@ export default function TimetableGrid({
   schoolDays,
   periodsPerDay,
   saturdayPeriods,
-  startTime,
-  periodDuration,
   lunchPeriod,
   ptSubjectId = null,
   onSave,
@@ -177,7 +160,7 @@ export default function TimetableGrid({
               {Array.from({ length: periodsPerDay }).map((_, idx) => {
                 const periodNum = idx + 1;
                 const isLunch = periodNum === lunchPeriod;
-                const timeStr = getPeriodTimeStr(periodNum, startTime, periodDuration);
+                const timeStr = getPeriodTimeStr(periodNum);
 
                 if (isLunch) {
                   return (

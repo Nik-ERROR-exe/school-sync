@@ -5,7 +5,8 @@ from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.teacher import Teacher
 from app.models.school_class import SchoolClass
-from app.models.timetable import TimetableSlot
+from app.models.teacher_class import TeacherClass
+from app.models.teacher_class_subject import TeacherClassSubject
 from app.models.subject import Subject
 from app.models.student import Student
 
@@ -20,22 +21,25 @@ def get_my_classes(
 ):
     current_teacher_id = current_user.id
     
-    stmt = select(TimetableSlot.class_id).where(
-        TimetableSlot.teacher_id == current_teacher_id
-    ).distinct()
-    class_ids = [row[0] for row in db.execute(stmt).all()]
+    class_ids = db.scalars(
+        select(TeacherClass.class_id).where(
+            TeacherClass.teacher_id == current_teacher_id
+        )
+    ).all()
     
     if not class_ids:
         return []
     
-    classes = db.execute(
+    classes = db.scalars(
         select(SchoolClass)
-        .options(joinedload(SchoolClass.subjects))
         .where(SchoolClass.id.in_(class_ids))
         .order_by(SchoolClass.class_name, SchoolClass.division)
-    ).scalars().unique().all()
+    ).unique().all()
     
     return [{"id": c.id, "class_name": c.class_name, "division": c.division} for c in classes]
+
+
+
 
 
 @router.get("/students/by-class/{class_id}")
@@ -44,11 +48,11 @@ def get_students_by_class(
     current_user: Teacher = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # 1. Verify this teacher teaches in this class (from timetable)
+    # 1. Verify this teacher teaches in this class (from teacher_class_assignments)
     teaches_here = db.execute(
-        select(TimetableSlot.id).where(
-            TimetableSlot.teacher_id == current_user.id,
-            TimetableSlot.class_id == class_id
+        select(TeacherClass.id).where(
+            TeacherClass.teacher_id == current_user.id,
+            TeacherClass.class_id == class_id
         ).limit(1)
     ).scalar_one_or_none()
 
@@ -56,7 +60,7 @@ def get_students_by_class(
         return {
             "students": [],
             "subjects": [],
-            "message": "You are not assigned to this class in the timetable."
+            "message": "You are not assigned to this class."
         }
 
     # 2. Get students in this class
@@ -66,13 +70,12 @@ def get_students_by_class(
         .order_by(Student.roll_no)
     ).scalars().all()
 
-    # 3. Get subjects this teacher teaches in this class (from timetable)
+    # 3. Get subjects this teacher teaches in this class (from teacher_class_subjects)
     subject_ids = db.execute(
-        select(TimetableSlot.subject_id)
+        select(TeacherClassSubject.subject_id)
         .where(
-            TimetableSlot.teacher_id == current_user.id,
-            TimetableSlot.class_id == class_id,
-            TimetableSlot.subject_id > 0
+            TeacherClassSubject.teacher_id == current_user.id,
+            TeacherClassSubject.class_id == class_id
         )
         .distinct()
     ).scalars().all()
@@ -81,7 +84,7 @@ def get_students_by_class(
         select(Subject)
         .where(Subject.id.in_(subject_ids))
         .order_by(Subject.subject_name)
-    ).scalars().all()
+    ).scalars().all() if subject_ids else []
 
     return {
         "students": [
@@ -101,4 +104,4 @@ def get_students_by_class(
             }
             for s in subjects
         ]
-    }
+    }

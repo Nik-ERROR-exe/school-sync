@@ -111,9 +111,7 @@ function TeacherTimetableView({ teacherName }: TeacherViewProps) {
   const [schoolDays, setSchoolDays] = useState<string[]>(['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']);
   const [periodsPerDay, setPeriodsPerDay] = useState(8);
   const [saturdayPeriods, setSaturdayPeriods] = useState(4);
-  const [startTime, setStartTime] = useState('08:00');
-  const [periodDuration, setPeriodDuration] = useState(40);
-  const [lunchPeriod, setLunchPeriod] = useState<number | null>(null);
+  const [lunchPeriod, setLunchPeriod] = useState<number | null>(4);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -139,9 +137,7 @@ function TeacherTimetableView({ teacherName }: TeacherViewProps) {
           setSchoolDays(days);
           setPeriodsPerDay(s.periods_per_day ?? 8);
           setSaturdayPeriods(s.saturday_periods ?? 4);
-          setStartTime(s.start_time ?? '08:00');
-          setPeriodDuration(s.period_duration ?? 40);
-          setLunchPeriod(s.lunch_period ?? null);
+          setLunchPeriod(s.lunch_period ?? 4);
         }
       }
     } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -203,8 +199,6 @@ function TeacherTimetableView({ teacherName }: TeacherViewProps) {
         schoolDays={schoolDays}
         periodsPerDay={periodsPerDay}
         saturdayPeriods={saturdayPeriods}
-        startTime={startTime}
-        periodDuration={periodDuration}
         lunchPeriod={lunchPeriod}
       />
     </div>
@@ -232,24 +226,16 @@ function AdminTimetableFlow() {
   const [hasSavedTimetable, setHasSavedTimetable] = useState(false);
   const [wizardSettings, setWizardSettings] = useState<WizardState | null>(() => {
     const savedDays = localStorage.getItem('school_days');
-    const savedPeriods = localStorage.getItem('periods_per_day');
     const savedSatPeriods = localStorage.getItem('saturday_periods');
-    const savedStart = localStorage.getItem('start_time');
-    const savedDuration = localStorage.getItem('period_duration');
-    const savedLunch = localStorage.getItem('lunch_period');
     const savedPt = localStorage.getItem('pt_subject_id');
     const savedClassId = localStorage.getItem('selected_class_id');
-    const savedClassIds = localStorage.getItem('selected_class_ids');
 
-    if (savedDays && savedPeriods) {
+    if (savedDays) {
       return {
         schoolDays: JSON.parse(savedDays),
-        periodsPerDay: Number(savedPeriods),
+        periodsPerDay: 8,
         saturdayPeriods: savedSatPeriods ? Number(savedSatPeriods) : 4,
-        startTime: savedStart || '08:00',
-        endTime: '14:30',
-        periodDuration: savedDuration ? Number(savedDuration) : 40,
-        lunchPeriod: savedLunch ? Number(savedLunch) : null,
+        lunchPeriod: 4,
         selectedTeacherIds: [],
         ptSubjectId: savedPt ? Number(savedPt) : null,
         selectedClassId: savedClassId ? Number(savedClassId) : null,
@@ -296,17 +282,14 @@ function AdminTimetableFlow() {
         setWizardSettings(prev => ({
           ...(prev ?? {}),
           schoolDays: Array.isArray(s.school_days) ? s.school_days : JSON.parse(s.school_days),
-          periodsPerDay: s.periods_per_day,
-          saturdayPeriods: s.saturday_periods,
-          startTime: s.start_time,
-          periodDuration: s.period_duration,
-          lunchPeriod: s.lunch_period,
+          periodsPerDay: s.periods_per_day ?? 8,
+          saturdayPeriods: s.saturday_periods ?? 4,
+          lunchPeriod: s.lunch_period ?? 4,
           ptSubjectId: s.pt_subject_id,
           selectedTeacherIds: prev?.selectedTeacherIds ?? [],
           selectedClassId: prev?.selectedClassId ?? null,
           weeklyRequirements: prev?.weeklyRequirements ?? [],
           diagnosticIssues: prev?.diagnosticIssues ?? [],
-          endTime: prev?.endTime ?? '14:30',
           _teachersCache: prev?._teachersCache ?? [],
           _subjectsCache: prev?._subjectsCache ?? [],
         }));
@@ -342,9 +325,6 @@ function AdminTimetableFlow() {
           schoolDays: prev?.schoolDays ?? ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
           periodsPerDay: prev?.periodsPerDay ?? 8,
           saturdayPeriods: prev?.saturdayPeriods ?? 4,
-          startTime: prev?.startTime ?? '08:00',
-          endTime: prev?.endTime ?? '14:30',
-          periodDuration: prev?.periodDuration ?? 40,
           lunchPeriod: prev?.lunchPeriod ?? 4,
           selectedTeacherIds: prev?.selectedTeacherIds ?? [],
           ptSubjectId: ptSub.id,
@@ -366,12 +346,8 @@ function AdminTimetableFlow() {
 
     api.post('/admin/timetable/settings', {
       school_days: wizardState.schoolDays,
-      periods_per_day: wizardState.periodsPerDay,
       saturday_periods: wizardState.saturdayPeriods,
-      start_time: wizardState.startTime,
-      period_duration: wizardState.periodDuration,
       pt_subject_id: wizardState.ptSubjectId,
-      lunch_period: wizardState.lunchPeriod,
     }).catch(err => console.error('Failed to save timetable settings:', err));
   };
 
@@ -536,10 +512,7 @@ function AdminTimetableFlow() {
             schoolDays={wizardSettings?.schoolDays ?? ['Monday','Tuesday','Wednesday','Thursday','Friday']}
             periodsPerDay={wizardSettings?.periodsPerDay ?? 8}
             saturdayPeriods={wizardSettings?.saturdayPeriods ?? 4}
-            startTime={wizardSettings?.startTime ?? '08:00'}
-            periodDuration={wizardSettings?.periodDuration ?? 40}
-            lunchPeriod={wizardSettings?.lunchPeriod ?? null}
-            ptSubjectId={wizardSettings?.ptSubjectId ?? null}
+            lunchPeriod={wizardSettings?.lunchPeriod ?? 4}
             onSave={handleSaveSlotEdit}
             onClassChange={setViewClassId}
           />

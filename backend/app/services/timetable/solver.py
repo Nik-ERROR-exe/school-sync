@@ -5,6 +5,7 @@ from app.services.timetable.models_internal import SolverInput, SolverTeacher, S
 from app.services.timetable.constraints import (
     check_teacher_overlap,
     check_teacher_daily_limit,
+    check_teacher_back_to_back,
     check_pt_capacity,
     check_teacher_availability,
     check_no_consecutive_same_subject,
@@ -193,15 +194,17 @@ class TimetableSolver:
                 teachers = [t for t in teachers if t.id in allowed]
             valid = []
             for t in teachers:
-                if not check_teacher_availability(t, day, period):
-                    continue
                 if not check_teacher_overlap(t.id, day, period, assignments):
                     continue
                 if not check_teacher_daily_limit(t.id, day, t.max_lectures_per_day, assignments):
                     continue
+                if not check_teacher_back_to_back(t.id, day, period, assignments):
+                    continue
                 if sub_id == self.input.pt_subject_id:
                     if not check_pt_capacity(self.input.pt_subject_id, day, period, assignments):
                         continue
+                if not check_teacher_availability(t, day, period):
+                    continue
                 if not check_no_consecutive_same_subject(class_id, sub_id, day, period, assignments):
                     continue
                 pw = self.class_subject_weekly.get((class_id, sub_id), 1)

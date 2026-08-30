@@ -27,9 +27,6 @@ export interface WizardState {
   schoolDays: string[];
   periodsPerDay: number;
   saturdayPeriods: number;
-  startTime: string;
-  endTime: string;
-  periodDuration: number;
   lunchPeriod: number | null;
 
   selectedTeacherIds: number[];
@@ -41,20 +38,6 @@ export interface WizardState {
 
   _teachersCache: ApiTeacher[];
   _subjectsCache: ApiSubject[];
-}
-
-export function computePeriodsPerDay(
-  startTime: string,
-  endTime: string,
-  periodDuration: number
-): number {
-  const toMinutes = (t: string) => {
-    const [h, m] = t.split(':').map(Number);
-    return h * 60 + m;
-  };
-  const total = toMinutes(endTime) - toMinutes(startTime);
-  if (total <= 0 || periodDuration <= 0) return 8;
-  return Math.max(1, Math.floor(total / periodDuration));
 }
 
 export function computeMaxRequirements(
@@ -89,9 +72,6 @@ const defaultState: WizardState = {
   schoolDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
   periodsPerDay: 8,
   saturdayPeriods: 4,
-  startTime: '08:00',
-  endTime: '14:30',
-  periodDuration: 40,
   lunchPeriod: 4,
   selectedTeacherIds: [],
   ptSubjectId: null,
@@ -113,13 +93,7 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [state, setState] = useState<WizardState>(defaultState);
 
   const updateState = useCallback((partial: Partial<WizardState>) => {
-    setState(prev => {
-      const next = { ...prev, ...partial };
-      if (partial.startTime || partial.endTime || partial.periodDuration) {
-        next.periodsPerDay = computePeriodsPerDay(next.startTime, next.endTime, next.periodDuration);
-      }
-      return next;
-    });
+    setState(prev => ({ ...prev, ...partial }));
   }, []);
 
   return (

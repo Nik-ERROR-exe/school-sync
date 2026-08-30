@@ -23,8 +23,6 @@ class TimetableGenerateRequest(BaseModel):
     classes: Optional[List[ClassInput]] = None
     weekly_requirements: Optional[List[WeeklyRequirementInput]] = None
     school_days: List[str] = Field(default=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
-    periods_per_day: Optional[int] = Field(default=None, ge=1)
-    lunch_period: Optional[int] = Field(default=None)
     pt_subject_id: int
     subject_teacher_assignments: Optional[Dict[str, int]] = None
 
@@ -45,14 +43,9 @@ class TimetableResponse(BaseModel):
 
 class TimetableSaveRequest(BaseModel):
     slots: List[TimetableSlotResponse]
-    lunch_period: Optional[int] = None
 
 
 class TimetableSettingsSchema(BaseModel):
     school_days: List[str]
-    periods_per_day: int
     saturday_periods: int = 4
-    start_time: str = "08:00"
-    period_duration: int = 40
     pt_subject_id: Optional[int] = None
-    lunch_period: Optional[int] = None

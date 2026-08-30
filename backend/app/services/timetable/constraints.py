@@ -22,6 +22,46 @@ def check_teacher_overlap(
             
     return True
 
+def check_teacher_back_to_back(
+    teacher_id: int,
+    day: str,
+    period: int,
+    assignments: Dict[Tuple[int, str, int], Tuple[int, int]]
+) -> bool:
+    """
+    Constraint: A teacher may teach up to 4 consecutive periods in a day;
+    no more than 4 consecutive periods are allowed.
+    Returns True if valid (<= 4 consecutive), False otherwise.
+    """
+    if not teacher_id:  # Empty / free period
+        return True
+
+    # Get all periods for this teacher on this day, including proposed one
+    assigned_periods = [p for (c_id, d, p), (s_id, t_id) in assignments.items() 
+                        if t_id == teacher_id and d == day]
+    assigned_periods.append(period)
+    
+    # Sort unique periods
+    assigned_periods = sorted(list(set(assigned_periods)))
+    
+    if not assigned_periods:
+        return True
+        
+    # Check for consecutive run > 4
+    max_consecutive = 1
+    current_consecutive = 1
+    
+    for i in range(1, len(assigned_periods)):
+        if assigned_periods[i] == assigned_periods[i-1] + 1:
+            current_consecutive += 1
+        else:
+            max_consecutive = max(max_consecutive, current_consecutive)
+            current_consecutive = 1
+            
+    max_consecutive = max(max_consecutive, current_consecutive)
+    
+    return max_consecutive <= 4
+
 def check_teacher_daily_limit(
     teacher_id: int,
     day: str,
@@ -88,23 +128,24 @@ def check_no_consecutive_same_subject(
     assignments: Dict[Tuple[int, str, int], Tuple[int, int]]
 ) -> bool:
     """
-    Returns False if the IMMEDIATELY preceding period on the same day
-    already has the same subject for this class.
-    Prevents double-periods of the same subject.
+    Returns False if either the IMMEDIATELY preceding or the IMMEDIATELY
+    following period on the same day already has the same subject for this class.
+    Prevents double-periods of the same subject regardless of slot ordering.
     """
     if subject_id == 0:
         return True  # Free periods can be consecutive, no restriction
-    
-    prev_period = period - 1
-    if prev_period < 1:
-        return True  # No previous period exists
-    
-    prev_key = (class_id, day, prev_period)
-    if prev_key not in assignments:
-        return True  # Previous period not yet assigned (shouldn't happen in period-first order)
-    
-    prev_subject_id, _ = assignments[prev_key]
-    return prev_subject_id != subject_id  # True = OK (different), False = conflict (same)
+
+    for neighbor_period in (period - 1, period + 1):
+        if neighbor_period < 1:
+            continue  # No such period exists
+        neighbor_key = (class_id, day, neighbor_period)
+        if neighbor_key not in assignments:
+            continue  # Not assigned yet, nothing to conflict with
+        neighbor_subject_id, _ = assignments[neighbor_key]
+        if neighbor_subject_id == subject_id:
+            return False  # Conflict (same subject in adjacent period)
+
+    return True  # True = OK (no adjacent same subject)
 
 
 def check_subject_daily_limit(
@@ -130,6 +171,6 @@ def check_subject_daily_limit(
         1 for (cid, d, _), (sid, _) in assignments.items()
         if cid == class_id and d == day and sid == subject_id
     )
-    
-    return count <= max_per_day
+
+    return count < max_per_day
 

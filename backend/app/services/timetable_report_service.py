@@ -18,9 +18,10 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from app.core.date_utils import DAY_NAMES, format_time, int_to_day
+from app.core.date_utils import DAY_NAMES, int_to_day
 from app.models.timetable import TimetableSlot
 from app.models.timetable_settings import TimetableSettings
+from app.services.timetable.period_schedule import LUNCH_PERIOD, PERIODS_PER_DAY, START_TIME
 
 
 def _resolve_days(slots: List[TimetableSlot], settings: Optional[TimetableSettings]) -> List[str]:
@@ -82,10 +83,10 @@ def build_timetable_grids(
             teacher = s.teacher.name if (s.teacher and s.teacher_id) else ""
             rows[s.period_number][day] = subject + (f"\n{teacher}" if teacher else "")
 
-        # Reserve the configured lunch period across all school days.
-        if settings and settings.lunch_period and settings.lunch_period in rows:
+        # Reserve the fixed lunch period across all school days.
+        if LUNCH_PERIOD in rows:
             for day in days:
-                rows[settings.lunch_period][day] = "Lunch Break"
+                rows[LUNCH_PERIOD][day] = "Lunch Break"
 
         grids.append({
             "class_id": class_id,
@@ -100,12 +101,10 @@ def build_timetable_grids(
 
 def _settings_line(settings: Optional[TimetableSettings], grids: List[dict]) -> str:
     """Short settings summary shown under the PDF title."""
-    parts: List[str] = []
-    if settings:
-        if settings.start_time:
-            parts.append(f"Start {format_time(settings.start_time)}")
-        if settings.period_duration:
-            parts.append(f"{settings.period_duration} min periods")
+    parts: List[str] = [
+        f"Start {START_TIME}",
+        f"{PERIODS_PER_DAY} periods/day · lunch P{LUNCH_PERIOD}",
+    ]
     if grids:
         parts.append(f"{len(grids[0]['days'])} school days")
     return "  |  ".join(parts)

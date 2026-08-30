@@ -35,9 +35,9 @@ def test_timetable_solver_success():
         SolverRequirement(class_id=3, subject_id=102, periods_per_week=1),
     ]
     
-    school_days = ["Monday", "Tuesday"]
+    school_days = ["Monday", "Tuesday", "Wednesday", "Thursday"]
     periods_per_day = 3
-    lunch_period = 3  # Slot 3 is lunch (leaves slots 1 & 2 per day)
+    lunch_period = 2  # Slot 2 is lunch (leaves non-consecutive slots 1 & 3 per day)
     pt_subject_id = 103
     
     solver_input = SolverInput(
@@ -115,12 +115,16 @@ def test_timetable_solver_success():
         if sub_id == 0:
             continue
             
-        # 1. No consecutive same subject
+        # 1. No consecutive same subject (both directions)
         if period > 1:
             prev_key = (c_id, day, period - 1)
             if prev_key in assignments_dict:
                 assert assignments_dict[prev_key][0] != sub_id, f"Consecutive same subject {sub_id} for class {c_id} on {day}"
-                
+        if period < periods_per_day:
+            next_key = (c_id, day, period + 1)
+            if next_key in assignments_dict:
+                assert assignments_dict[next_key][0] != sub_id, f"Consecutive same subject {sub_id} for class {c_id} on {day}"
+        
         # 2. Subject daily limit
         req_item = next(
             r for r in solver.input.weekly_requirements
@@ -134,6 +138,19 @@ def test_timetable_solver_success():
             if slot2["class_id"] == c_id and slot2["day_of_week"] == day and slot2["subject_id"] == sub_id
         )
         assert count <= max_per_day, f"Subject {sub_id} exceeded daily limit of {max_per_day} for class {c_id} on {day}"
+
+    # 3. No teacher has back-to-back lectures (consecutive periods) on the same day.
+    teacher_periods: dict = {}  # (teacher_id, day) -> sorted list of periods
+    for slot in schedule:
+        if slot["subject_id"] == 0 or not slot["teacher_id"]:
+            continue
+        teacher_periods.setdefault((slot["teacher_id"], slot["day_of_week"]), []).append(slot["period_number"])
+    for (t_id, day), periods in teacher_periods.items():
+        periods = sorted(periods)
+        for p_prev, p_next in zip(periods, periods[1:]):
+            assert p_next != p_prev + 1, (
+                f"Teacher {t_id} has back-to-back lectures on {day} (periods {p_prev} and {p_next})."
+            )
 
 def test_timetable_solver_unsolvable():
     """

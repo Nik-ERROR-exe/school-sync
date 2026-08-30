@@ -1,6 +1,7 @@
 import React from 'react';
 import { Coffee } from 'lucide-react';
 import { ApiSlot, ApiClass, ApiSubject } from '../../types';
+import { getPeriodTimeStr, getPeriodStartTime } from '../../periodSchedule';
 
 interface TeacherTimetableGridProps {
   schedule: ApiSlot[];
@@ -10,24 +11,8 @@ interface TeacherTimetableGridProps {
   schoolDays: string[];
   periodsPerDay: number;
   saturdayPeriods: number;
-  startTime?: string;
-  periodDuration?: number;
   lunchPeriod?: number | null;
 }
-
-const getPeriodTimeStr = (periodNum: number, startTime: string, duration: number) => {
-  const [startHour, startMin] = startTime.split(':').map(Number);
-  const totalStartMinutes = startHour * 60 + startMin + (periodNum - 1) * duration;
-  const totalEndMinutes = totalStartMinutes + duration;
-
-  const formatTime = (totalMinutes: number) => {
-    const hr = Math.floor(totalMinutes / 60) % 24;
-    const min = totalMinutes % 60;
-    return `${String(hr).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
-  };
-
-  return `${formatTime(totalStartMinutes)} – ${formatTime(totalEndMinutes)}`;
-};
 
 interface DayRow {
   day: string;
@@ -44,8 +29,6 @@ export default function TeacherTimetableGrid({
   schoolDays,
   periodsPerDay,
   saturdayPeriods,
-  startTime,
-  periodDuration,
   lunchPeriod,
 }: TeacherTimetableGridProps) {
   const getSubject = (id: number) => subjects.find(s => s.id === id);
@@ -55,7 +38,6 @@ export default function TeacherTimetableGrid({
     schedule.find(s => s.day_of_week === day && s.period_number === periodNum);
 
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-  const hasTimeInfo = startTime && periodDuration;
   const lunchNum = lunchPeriod ?? null;
 
   // Pre-compute each day's lectures + free-period count once.
@@ -84,10 +66,7 @@ export default function TeacherTimetableGrid({
   });
 
   const totalLectures = days.reduce((sum, d) => sum + d.lectures.length, 0);
-  const lunchTimeLabel =
-    hasTimeInfo && lunchNum !== null
-      ? getPeriodTimeStr(lunchNum, startTime!, periodDuration!)
-      : null;
+  const lunchTimeLabel = lunchNum !== null ? getPeriodTimeStr(lunchNum) : null;
 
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
@@ -165,9 +144,7 @@ export default function TeacherTimetableGrid({
                   ) : (
                     <div className="space-y-2">
                       {lectures.map(({ period, subject, classInfo }) => {
-                        const time = hasTimeInfo
-                          ? getPeriodTimeStr(period, startTime!, periodDuration!)
-                          : null;
+                        const startTimeChip = getPeriodStartTime(period);
                         return (
                           <div
                             key={period}
@@ -178,9 +155,9 @@ export default function TeacherTimetableGrid({
                               <span className="font-heading text-xs font-extrabold leading-none">
                                 P{period}
                               </span>
-                              {time && (
+                              {startTimeChip && (
                                 <span className="mt-1 text-[9px] font-mono leading-none opacity-90">
-                                  {time.split(' – ')[0]}
+                                  {startTimeChip}
                                 </span>
                               )}
                             </div>

@@ -57,7 +57,14 @@ def _seed(db):
     student = Student(roll_no="1", name="Student", class_id=klass.id)
     db.add(student)
     db.flush()
+
+    from app.models.subject_max_marks import SubjectMaxMarks
+    smm = SubjectMaxMarks(class_name=klass.class_name, subject_id=subject.id, exam_type_id=exam.id, max_marks=100.0)
+    db.add(smm)
+    db.flush()
+
     return teacher, klass, subject, exam, student
+
 
 
 def _result(student, subject, exam):

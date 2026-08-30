@@ -20,7 +20,7 @@ export default function DiagnosticBanner({ issues, stepNumber, onFixIssue }: Dia
   const hasErrors = stepIssues.some(i => i.severity === 'error');
 
   return (
-    <div className={`rounded-xl border p-4 mb-6 animate-in fade-in slide-in-from-top-3 duration-500 ${
+    <div className={`rounded-xl border p-4 mt-4 mb-6 relative z-30 animate-in fade-in slide-in-from-top-3 duration-500 ${
       hasErrors
         ? 'bg-red-50 border-red-200'
         : 'bg-amber-50 border-amber-200'

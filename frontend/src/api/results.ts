@@ -10,13 +10,15 @@ export interface Subject {
   id: number;
   subject_name: string;
   code: string;
+  max_marks?: number | null;
+  needs_config?: boolean;
 }
 
 export interface ResultSubmit {
   class_id: number;
   subject_id: number;
   exam_type_id: number;
-  total_marks: number;
+  total_marks?: number;
   marks: { student_id: number; marks_obtained: number }[];
 }
 
@@ -36,8 +38,68 @@ export interface ResultResponse {
 
 export interface ResultUpdate {
   marks_obtained: number;
-  total_marks: number;
+  total_marks?: number;
 }
+
+export interface SubjectMaxMarks {
+  id: number;
+  class_name: string;
+  subject_id: number;
+  subject_name?: string;
+  subject_code?: string;
+  exam_type_id: number;
+  exam_type_name?: string;
+  max_marks: number;
+}
+
+export interface StudentResultResponse {
+  student_id: number;
+  roll_no: string;
+  name: string;
+  subjects: {
+    subject_id: number;
+    subject_name: string;
+    marks_obtained: number | null;
+    total_marks: number | null;
+    percentage: number | null;
+    grade: string | null;
+    status: string | null;
+    result_id: number | null;
+  }[];
+}
+
+export const subjectMaxMarksApi = {
+  list: async (class_name?: string, exam_type_id?: number): Promise<SubjectMaxMarks[]> => {
+    const params = new URLSearchParams();
+    if (class_name) params.append('class_name', class_name);
+    if (exam_type_id) params.append('exam_type_id', exam_type_id.toString());
+    const response = await api.get(`/admin/subject-max-marks?${params.toString()}`);
+    return response.data;
+  },
+  getMissing: async (class_name: string, exam_type_id: number): Promise<Subject[]> => {
+    const response = await api.get(`/admin/subject-max-marks/missing?class_name=${class_name}&exam_type_id=${exam_type_id}`);
+    return response.data;
+  },
+  create: async (data: { class_name: string; subject_id: number; exam_type_id: number; max_marks: number }): Promise<SubjectMaxMarks> => {
+    const response = await api.post('/admin/subject-max-marks', data);
+    return response.data;
+  },
+  update: async (id: number, max_marks: number): Promise<SubjectMaxMarks> => {
+    const response = await api.put(`/admin/subject-max-marks/${id}`, { max_marks });
+    return response.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/admin/subject-max-marks/${id}`);
+  },
+  copy: async (source_exam_type_id: number, target_exam_type_id: number, class_name?: string): Promise<SubjectMaxMarks[]> => {
+    const response = await api.post('/admin/subject-max-marks/copy', {
+      source_exam_type_id,
+      target_exam_type_id,
+      class_name,
+    });
+    return response.data;
+  },
+};
 
 export const resultApi = {
   // Get exam types
@@ -47,8 +109,10 @@ export const resultApi = {
   },
   
   // Get subjects for a class (teacher)
-  getSubjectsByClass: async (class_id: number): Promise<Subject[]> => {
-    const response = await api.get(`/teacher/subjects/by-class/${class_id}`);
+  getSubjectsByClass: async (class_id: number, exam_type_id?: number): Promise<Subject[]> => {
+    const params = new URLSearchParams();
+    if (exam_type_id) params.append('exam_type_id', exam_type_id.toString());
+    const response = await api.get(`/teacher/subjects/by-class/${class_id}?${params.toString()}`);
     return response.data;
   },
   
@@ -68,12 +132,12 @@ export const resultApi = {
   },
   
   // Get results by class and exam (teacher - for loading existing marks)
-  getResultsByClassAndExam: async (classId: number, examTypeId: number): Promise<{ [key: number]: number }> => {
+  getResultsByClassAndExam: async (classId: number, examTypeId: number): Promise<{ students: StudentResultResponse[] }> => {
     try {
       const response = await api.get(`/teacher/results/class/${classId}/exam/${examTypeId}`);
       return response.data;
     } catch {
-      return {};
+      return { students: [] };
     }
   },
   
@@ -94,4 +158,4 @@ export const resultApi = {
     const response = await api.put(`/admin/results/${id}/reject`);
     return response.data;
   }
-};
+};
