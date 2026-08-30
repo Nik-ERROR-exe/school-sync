@@ -20,6 +20,8 @@ router = APIRouter(
     dependencies=[Depends(require_admin)]
 )
 
+from app.core.class_sorter import sort_classes_natural
+
 @router.get("/", response_model=List[SchoolClassResponse])
 def list_classes(db: Session = Depends(get_db)):
     """
@@ -28,10 +30,10 @@ def list_classes(db: Session = Depends(get_db)):
     stmt = (
         select(SchoolClass)
         .options(joinedload(SchoolClass.subjects))
-        .order_by(SchoolClass.class_name, SchoolClass.division)
     )
     result = db.execute(stmt)
-    return list(result.scalars().unique().all())
+    classes = list(result.scalars().unique().all())
+    return sort_classes_natural(classes)
 @router.post("/", response_model=SchoolClassResponse, status_code=status.HTTP_201_CREATED)
 def create_class(data: SchoolClassCreate, db: Session = Depends(get_db)):
     """

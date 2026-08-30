@@ -12,6 +12,8 @@ from app.models.student import Student
 
 router = APIRouter(prefix="/teacher/classes", tags=["Teacher - Classes"])
 
+from app.core.class_sorter import sort_classes_natural
+
 @router.get("")
 @router.get("/")
 @router.get("/my-classes")
@@ -33,10 +35,10 @@ def get_my_classes(
     classes = db.scalars(
         select(SchoolClass)
         .where(SchoolClass.id.in_(class_ids))
-        .order_by(SchoolClass.class_name, SchoolClass.division)
     ).unique().all()
     
-    return [{"id": c.id, "class_name": c.class_name, "division": c.division} for c in classes]
+    sorted_classes = sort_classes_natural(list(classes))
+    return [{"id": c.id, "class_name": c.class_name, "division": c.division} for c in sorted_classes]
 
 
 

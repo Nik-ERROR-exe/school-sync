@@ -8,6 +8,8 @@ from app.models.teacher import Teacher
 from app.models.student import Student
 from app.models.school_class import SchoolClass
 
+from app.core.class_sorter import sort_classes_natural
+
 router = APIRouter(prefix="/admin/promotion", tags=["Admin - Promotion"])
 
 @router.get("/summary")
@@ -75,7 +77,7 @@ def get_promotion_preview(
                 "next_class_id": next_class_id
             })
 
-    return preview
+    return sort_classes_natural(preview)
 
 @router.post("/execute")
 def execute_promotion(

@@ -15,6 +15,8 @@ import {
 import { ApiClass } from '../../features/timetable/types';
 import { Link } from '@tanstack/react-router';
 
+import { sortClasses } from '../../utils/classSorter';
+
 export default function ClassManagement() {
   const [classes, setClasses] = useState<ApiClass[]>([]);
 
@@ -34,7 +36,7 @@ export default function ClassManagement() {
       setLoading(true);
       try {
         const classesRes = await api.get('/admin/classes/');
-        setClasses(classesRes.data);
+        setClasses(sortClasses(classesRes.data));
       } catch (err) {
         toast.error(
           isAxiosError(err) && typeof err.response?.data?.detail === 'string'
@@ -112,7 +114,7 @@ export default function ClassManagement() {
     (acc[cls.class_name] ||= []).push(cls);
     return acc;
   }, {});
-  const standards = Object.keys(grouped).sort((a, b) => Number(a) - Number(b));
+  const standards = sortClasses(Object.keys(grouped));
 
   return (
     <div className="mx-auto max-w-5xl space-y-5 font-body">

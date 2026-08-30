@@ -23,6 +23,8 @@ function getApiErrorMessage(error: any, fallback: string): string {
   return fallback;
 }
 
+import { sortClasses } from '../../utils/classSorter';
+
 const Students: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
@@ -49,7 +51,7 @@ const Students: React.FC = () => {
       setStudents(studentsRes.data);
       
       const classesRes = await api.get('/admin/classes/');
-      setClasses(classesRes.data);
+      setClasses(sortClasses(classesRes.data));
     } catch (error) {
       toast.error('Failed to load data');
     } finally {
@@ -203,7 +205,7 @@ const Students: React.FC = () => {
           className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="">All Classes</option>
-          {classes.map(c => (
+          {sortClasses(classes).map(c => (
             <option key={c.id} value={c.id}>
               Standard {c.class_name} - {c.division}
             </option>
@@ -288,7 +290,7 @@ const Students: React.FC = () => {
                   className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select Class</option>
-                  {classes.map(c => (
+                  {sortClasses(classes).map(c => (
                     <option key={c.id} value={c.id}>
                       Standard {c.class_name} - {c.division}
                     </option>
@@ -347,7 +349,7 @@ const Students: React.FC = () => {
                   className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select Class</option>
-                  {classes.map(c => (
+                  {sortClasses(classes).map(c => (
                     <option key={c.id} value={c.id}>
                       Standard {c.class_name} - {c.division}
                     </option>

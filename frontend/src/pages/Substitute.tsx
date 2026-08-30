@@ -20,6 +20,8 @@ import {
   RefreshCw
 } from 'lucide-react';
 
+import { sortClasses } from '../utils/classSorter';
+
 const Substitute: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -87,7 +89,7 @@ const Substitute: React.FC = () => {
         selectedDate,
         Number(absentTeacherId)
       );
-      setAffectedPeriods(periods);
+      setAffectedPeriods(sortClasses(periods, p => `${p.class_name} ${p.division}`));
       setPeriodsFetched(true);
       if (periods.length === 0) {
         toast('No affected periods found. All classes may already have substitutes assigned.');

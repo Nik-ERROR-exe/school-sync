@@ -4,6 +4,8 @@ import api from '../api';
 import { Download } from 'lucide-react';
 import { subjectMaxMarksApi } from '../api/results';
 
+import { sortClasses } from '../utils/classSorter';
+
 interface Class {
   id: number;
   class_name: string;
@@ -112,7 +114,7 @@ const Results: React.FC = () => {
     const fetchClasses = async () => {
       try {
         const response = await api.get('/admin/classes/');
-        setClasses(response.data);
+        setClasses(sortClasses(response.data));
       } catch (error) {
         toast.error('Failed to load classes');
       }
@@ -362,7 +364,7 @@ const Results: React.FC = () => {
             className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">Select Class</option>
-            {classes.map((cls) => (
+            {sortClasses(classes).map((cls) => (
               <option key={cls.id} value={cls.id}>
                 {cls.class_name} - {cls.division}
               </option>
