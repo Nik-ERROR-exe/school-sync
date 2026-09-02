@@ -51,28 +51,28 @@ const DashboardHome: React.FC = () => {
       label: 'School',
       value: 'Amarkor Vidyalaya, Bhandup West',
       chip: 'from-blue-500 to-blue-600',
-      ring: 'border-blue-100',
+      ring: 'border-blue-100 dark:border-blue-900/40',
     },
     {
       icon: Calendar,
       label: 'Today',
       value: todayLabel,
       chip: 'from-indigo-500 to-indigo-600',
-      ring: 'border-indigo-100',
+      ring: 'border-indigo-100 dark:border-indigo-900/40',
     },
     {
       icon: GraduationCap,
       label: 'Academic Year',
       value: '2026–27',
       chip: 'from-amber-500 to-orange-600',
-      ring: 'border-amber-100',
+      ring: 'border-amber-100 dark:border-amber-900/40',
     },
     {
       icon: ShieldCheck,
       label: 'Role',
       value: user?.role === 'ADMIN' ? 'Administrator' : 'Teacher',
       chip: 'from-emerald-500 to-emerald-600',
-      ring: 'border-emerald-100',
+      ring: 'border-emerald-100 dark:border-emerald-900/40',
     },
   ];
 
@@ -123,8 +123,8 @@ const DashboardHome: React.FC = () => {
 
         <div className="relative flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0 space-y-3">
-            <div className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-800 px-2.5 py-0.5 text-xs font-bold text-accent">
-              <Sparkles className="h-3.5 w-3.5 text-accent" />
+            <div className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-800/80 px-2.5 py-0.5 text-xs font-bold text-blue-400">
+              <Sparkles className="h-3.5 w-3.5 text-blue-400" />
               <span>Amarkor Vidyalaya, Bhandup West</span>
             </div>
             <div className="space-y-1">
@@ -179,22 +179,22 @@ const DashboardHome: React.FC = () => {
           </div>
 
           <div className="shrink-0">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-white/30 bg-accent/20 font-heading text-xl font-bold text-white">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-white/30 bg-blue-500/20 font-heading text-xl font-bold text-white">
               {(user?.name || '?').charAt(0).toUpperCase()}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Static Info Panel — no backend calls */}
+      {/* Static Info Panel */}
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {infoItems.map((item) => (
           <div
             key={item.label}
-            className="rounded-xl border border-slate-200/80 bg-gradient-to-br from-white to-slate-50 p-6 shadow-sm transition-all duration-200 hover:shadow-premium hover:-translate-y-0.5"
+            className="rounded-xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] p-6 shadow-sm transition-all duration-200 hover:shadow-premium hover:-translate-y-0.5"
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#64748B] dark:text-[#94A3B8]">
                 {item.label}
               </span>
               <div
@@ -204,7 +204,7 @@ const DashboardHome: React.FC = () => {
               </div>
             </div>
             <div className="mt-4">
-              <span className="text-base font-bold tracking-tight text-slate-900">
+              <span className="text-base font-bold tracking-tight text-[#0F172A] dark:text-[#F8FAFC]">
                 {item.value}
               </span>
             </div>
@@ -215,14 +215,14 @@ const DashboardHome: React.FC = () => {
       {/* Main Modules Shortcut Cards */}
       <div className="space-y-4">
         <div className="flex items-center gap-2.5">
-          <div className="inline-flex rounded-lg bg-slate-100 border border-slate-200 p-1.5 text-slate-700">
+          <div className="inline-flex rounded-lg bg-[#F8FAFC] dark:bg-[#161D29] border border-[#E2E8F0] dark:border-[#253044] p-1.5 text-[#0F172A] dark:text-[#F8FAFC]">
             <LayoutGrid className="h-4 w-4" />
           </div>
-          <h3 className="font-heading text-base font-bold text-slate-900">Module Shortcuts</h3>
-          <span className="ml-1 rounded-full bg-slate-100 border border-slate-200 px-2 py-0.5 text-[11px] font-bold text-slate-500">
+          <h3 className="font-heading text-base font-bold text-[#0F172A] dark:text-[#F8FAFC]">Module Shortcuts</h3>
+          <span className="ml-1 rounded-full bg-[#F8FAFC] dark:bg-[#161D29] border border-[#E2E8F0] dark:border-[#253044] px-2 py-0.5 text-[11px] font-bold text-[#64748B] dark:text-[#94A3B8]">
             {modules.length} modules
           </span>
-          <div className="hidden flex-1 border-t border-slate-200/80 sm:block" />
+          <div className="hidden flex-1 border-t border-[#E2E8F0] dark:border-[#253044] sm:block" />
         </div>
 
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
@@ -230,7 +230,7 @@ const DashboardHome: React.FC = () => {
             <Link
               key={mod.to}
               to={mod.to}
-              className={`group flex flex-col justify-between rounded-xl border border-t-4 border-slate-200/80 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-premium ${mod.accent}`}
+              className={`group flex flex-col justify-between rounded-xl border border-t-4 border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] p-6 shadow-sm transition-all duration-300 hover:shadow-premium ${mod.accent}`}
             >
               <div>
                 <div
@@ -238,10 +238,10 @@ const DashboardHome: React.FC = () => {
                 >
                   <mod.icon className="h-5 w-5" />
                 </div>
-                <h4 className="font-heading text-sm font-bold text-slate-950">{mod.title}</h4>
-                <p className="mt-2 text-xs leading-relaxed text-slate-500">{mod.description}</p>
+                <h4 className="font-heading text-sm font-bold text-[#0F172A] dark:text-[#F8FAFC]">{mod.title}</h4>
+                <p className="mt-2 text-xs leading-relaxed text-[#64748B] dark:text-[#94A3B8]">{mod.description}</p>
               </div>
-              <div className="mt-5 flex items-center gap-1.5 text-xs font-bold text-slate-950 transition-colors group-hover:text-accent">
+              <div className="mt-5 flex items-center gap-1.5 text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] transition-colors group-hover:text-[#1769FF] dark:group-hover:text-[#3B82F6]">
                 <span>Go to Module</span>
                 <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
               </div>
