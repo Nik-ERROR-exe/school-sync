@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRouterState } from '@tanstack/react-router';
 import { useAuth } from '../context/AuthContext';
@@ -8,7 +8,7 @@ import {
   Languages,
   Check,
   Sparkles,
-  Bell
+  Bell,
 } from 'lucide-react';
 
 const Navbar: React.FC = () => {
@@ -16,6 +16,7 @@ const Navbar: React.FC = () => {
   const { user } = useAuth();
   const routerState = useRouterState();
   const [showLangDropdown, setShowLangDropdown] = useState(false);
+  const langDropdownRef = useRef<HTMLDivElement>(null);
 
   const changeLanguage = (lng: string) => {
     i18n.changeLanguage(lng);
@@ -23,18 +24,32 @@ const Navbar: React.FC = () => {
     setShowLangDropdown(false);
   };
 
+  // Close language dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (langDropdownRef.current && !langDropdownRef.current.contains(e.target as Node)) {
+        setShowLangDropdown(false);
+      }
+    };
+    if (showLangDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showLangDropdown]);
+
   // Get Page Title from route
   const getPageTitle = () => {
     const path = routerState.location.pathname;
-    if (path.includes('results')) return t('common.results');
-    if (path.includes('timetable')) return t('common.timetable');
-    if (path.includes('substitute')) return t('common.substitute');
-    if (path.includes('promotion')) return t('common.promotion');
-    if (path.includes('settings')) return t('common.settings');
-    if (path.includes('students')) return 'Students';
-    if (path.includes('class-management')) return 'Class Management';
-    if (path.includes('teachers')) return 'Teachers Management';
-    if (path.includes('profile')) return 'My Profile';
+    if (path.includes('results-entry'))      return 'Enter Results';
+    if (path.includes('results'))            return t('common.results');
+    if (path.includes('timetable'))          return t('common.timetable');
+    if (path.includes('substitute'))         return t('common.substitute');
+    if (path.includes('promotion'))          return t('common.promotion');
+    if (path.includes('students'))           return 'Students';
+    if (path.includes('class-subject-mapping')) return 'Class-Subject Mapping';
+    if (path.includes('class-management'))   return 'Class Management';
+    if (path.includes('teachers'))           return 'Teachers Management';
+    if (path.includes('profile'))            return 'My Profile';
     return t('common.dashboard');
   };
 
@@ -45,7 +60,17 @@ const Navbar: React.FC = () => {
       <div className="flex items-center gap-3.5">
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('toggle-sidebar'))}
-          className="rounded-xl p-2 text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:bg-[#161D29] dark:hover:text-[#F8FAFC] md:hidden border border-[#E2E8F0] dark:border-[#253044] transition-colors"
+          className={[
+            'rounded-xl p-2 md:hidden',
+            'border border-[#E2E8F0] dark:border-[#253044]',
+            'bg-[#F8FAFC] dark:bg-[#161D29]',
+            'text-[#64748B] dark:text-[#94A3B8]',
+            'hover:bg-slate-100 dark:hover:bg-[#121A27]',
+            'hover:text-[#0F172A] dark:hover:text-[#F8FAFC]',
+            'active:scale-[.95]',
+            'transition-all duration-150',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1769FF]',
+          ].join(' ')}
           aria-label="Toggle Navigation Sidebar"
         >
           <Menu className="h-5 w-5" />
@@ -64,14 +89,31 @@ const Navbar: React.FC = () => {
       <div className="flex items-center gap-2.5 md:gap-3">
 
         {/* Dynamic School Badge */}
-        <div className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-800/50 text-[#1769FF] dark:text-[#3B82F6] text-xs font-semibold">
-          <Sparkles className="h-3.5 w-3.5 text-[#1769FF] dark:text-[#3B82F6]" />
+        <div className={[
+          'hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold',
+          'bg-blue-50 dark:bg-blue-950/40',
+          'border border-blue-100 dark:border-blue-800/50',
+          'text-[#1769FF] dark:text-[#3B82F6]',
+          'transition-all duration-150',
+          'hover:bg-blue-100 dark:hover:bg-blue-950/60 hover:border-blue-200 dark:hover:border-blue-700/60',
+        ].join(' ')}>
+          <Sparkles className="h-3.5 w-3.5" />
           <span>Academic Year 2026-27</span>
         </div>
 
-        {/* Notification Bell Icon */}
+        {/* Notification Bell */}
         <button
-          className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#161D29] text-[#64748B] dark:text-[#94A3B8] hover:bg-slate-100 dark:hover:bg-[#121A27] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-all shadow-xs"
+          className={[
+            'relative flex h-9 w-9 items-center justify-center rounded-xl',
+            'border border-[#E2E8F0] dark:border-[#253044]',
+            'bg-[#F8FAFC] dark:bg-[#161D29]',
+            'text-[#64748B] dark:text-[#94A3B8]',
+            'hover:bg-slate-100 dark:hover:bg-[#121A27]',
+            'hover:text-[#0F172A] dark:hover:text-[#F8FAFC]',
+            'active:scale-[.95]',
+            'transition-all duration-150 shadow-xs',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1769FF]',
+          ].join(' ')}
           aria-label="Notifications"
         >
           <Bell className="h-4 w-4" />
@@ -82,20 +124,30 @@ const Navbar: React.FC = () => {
         <AnimatedThemeToggler variant="circle" duration={500} />
 
         {/* Language Switcher */}
-        <div className="relative">
+        <div className="relative" ref={langDropdownRef}>
           <button
             onClick={() => setShowLangDropdown(!showLangDropdown)}
-            className="flex items-center gap-1.5 rounded-xl border border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#161D29] px-3 py-2 text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC] hover:bg-slate-100 dark:hover:bg-[#121A27] shadow-xs transition-all"
+            className={[
+              'flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold',
+              'border border-[#E2E8F0] dark:border-[#253044]',
+              'bg-[#F8FAFC] dark:bg-[#161D29]',
+              'text-[#0F172A] dark:text-[#F8FAFC]',
+              'hover:bg-slate-100 dark:hover:bg-[#121A27]',
+              'active:scale-[.97]',
+              'transition-all duration-150 shadow-xs',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1769FF]',
+              showLangDropdown ? 'bg-slate-100 dark:bg-[#121A27]' : '',
+            ].join(' ')}
           >
             <Languages className="h-4 w-4 text-[#64748B] dark:text-[#94A3B8]" />
             <span className="uppercase">{i18n.language}</span>
           </button>
 
           {showLangDropdown && (
-            <div className="absolute right-0 mt-2 w-36 origin-top-right rounded-2xl bg-white dark:bg-[#10151F] p-1.5 shadow-xl ring-1 ring-black/5 z-40 border border-[#E2E8F0] dark:border-[#253044]">
+            <div className="absolute right-0 mt-2 w-36 origin-top-right rounded-2xl bg-white dark:bg-[#10151F] p-1.5 shadow-xl ring-1 ring-black/5 z-40 border border-[#E2E8F0] dark:border-[#253044] animate-dropdown-reveal">
               <button
                 onClick={() => changeLanguage('en')}
-                className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold text-left transition-colors ${
+                className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold text-left transition-all duration-150 active:scale-[.98] ${
                   i18n.language === 'en'
                     ? 'bg-blue-50 dark:bg-blue-950/60 text-[#1769FF] dark:text-[#3B82F6]'
                     : 'text-[#0F172A] dark:text-[#F8FAFC] hover:bg-[#F8FAFC] dark:hover:bg-[#161D29]'
@@ -106,7 +158,7 @@ const Navbar: React.FC = () => {
               </button>
               <button
                 onClick={() => changeLanguage('mr')}
-                className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold text-left transition-colors ${
+                className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold text-left transition-all duration-150 active:scale-[.98] ${
                   i18n.language === 'mr'
                     ? 'bg-blue-50 dark:bg-blue-950/60 text-[#1769FF] dark:text-[#3B82F6]'
                     : 'text-[#0F172A] dark:text-[#F8FAFC] hover:bg-[#F8FAFC] dark:hover:bg-[#161D29]'
