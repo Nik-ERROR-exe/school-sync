@@ -21,13 +21,13 @@ const Settings: React.FC = () => {
     <div className="space-y-8 font-body animate-fade-in">
       
       {/* Settings Card */}
-      <div className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm max-w-3xl">
-        <div className="border-b border-slate-100 pb-4 mb-6">
-          <h3 className="font-heading text-base font-bold text-slate-900 flex items-center gap-2">
-            <Languages className="h-5 w-5 text-accent" />
+      <div className="rounded-xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] p-6 shadow-sm max-w-3xl">
+        <div className="border-b border-[#E2E8F0] dark:border-[#253044] pb-4 mb-6">
+          <h3 className="font-heading text-base font-bold text-[#0F172A] dark:text-[#F8FAFC] flex items-center gap-2">
+            <Languages className="h-5 w-5 text-[#1769FF] dark:text-[#3B82F6]" />
             <span>Multi Language Configuration</span>
           </h3>
-          <p className="text-[10px] text-slate-400 font-medium uppercase mt-0.5">
+          <p className="text-[10px] text-[#64748B] dark:text-[#94A3B8] font-medium uppercase mt-0.5">
             Select system interface display language
           </p>
         </div>
@@ -39,16 +39,16 @@ const Settings: React.FC = () => {
             onClick={() => changeLanguage('en')}
             className={`flex items-center justify-between p-4 rounded-xl border text-left transition shadow-sm ${
               i18n.language === 'en' 
-                ? 'border-accent bg-blue-50/20 text-accent font-bold ring-2 ring-accent/10' 
-                : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                ? 'border-[#1769FF] dark:border-[#3B82F6] bg-blue-50/20 dark:bg-blue-950/40 text-[#1769FF] dark:text-[#3B82F6] font-bold ring-2 ring-[#1769FF]/10' 
+                : 'border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#121A27] hover:bg-[#F8FAFC] dark:hover:bg-[#161D29] text-[#0F172A] dark:text-[#F8FAFC]'
             }`}
           >
             <div>
-              <span className="text-sm block">English</span>
-              <span className="text-[10px] text-slate-400 font-medium uppercase mt-0.5">Standard English (US)</span>
+              <span className="text-sm block font-semibold">English</span>
+              <span className="text-[10px] text-[#64748B] dark:text-[#94A3B8] font-medium uppercase mt-0.5">Standard English (US)</span>
             </div>
             {i18n.language === 'en' && (
-              <div className="rounded-full bg-accent p-1 text-white shadow-sm">
+              <div className="rounded-full bg-[#1769FF] dark:bg-[#3B82F6] p-1 text-white shadow-sm">
                 <Check className="h-4 w-4" />
               </div>
             )}
@@ -59,16 +59,16 @@ const Settings: React.FC = () => {
             onClick={() => changeLanguage('mr')}
             className={`flex items-center justify-between p-4 rounded-xl border text-left transition shadow-sm ${
               i18n.language === 'mr' 
-                ? 'border-accent bg-blue-50/20 text-accent font-bold ring-2 ring-accent/10' 
-                : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                ? 'border-[#1769FF] dark:border-[#3B82F6] bg-blue-50/20 dark:bg-blue-950/40 text-[#1769FF] dark:text-[#3B82F6] font-bold ring-2 ring-[#1769FF]/10' 
+                : 'border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#121A27] hover:bg-[#F8FAFC] dark:hover:bg-[#161D29] text-[#0F172A] dark:text-[#F8FAFC]'
             }`}
           >
             <div>
-              <span className="text-sm block">मराठी (Marathi)</span>
-              <span className="text-[10px] text-slate-400 font-medium uppercase mt-0.5">प्रादेशिक भाषा (Maharashtra)</span>
+              <span className="text-sm block font-semibold">मराठी (Marathi)</span>
+              <span className="text-[10px] text-[#64748B] dark:text-[#94A3B8] font-medium uppercase mt-0.5">प्रादेशिक भाषा (Maharashtra)</span>
             </div>
             {i18n.language === 'mr' && (
-              <div className="rounded-full bg-accent p-1 text-white shadow-sm">
+              <div className="rounded-full bg-[#1769FF] dark:bg-[#3B82F6] p-1 text-white shadow-sm">
                 <Check className="h-4 w-4" />
               </div>
             )}
@@ -78,42 +78,42 @@ const Settings: React.FC = () => {
 
       {/* User Profile Card */}
       {user && (
-        <div className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm max-w-3xl">
-          <div className="border-b border-slate-100 pb-4 mb-6">
-            <h3 className="font-heading text-base font-bold text-slate-900 flex items-center gap-2">
-              <User className="h-5 w-5 text-accent" />
+        <div className="rounded-xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] p-6 shadow-sm max-w-3xl">
+          <div className="border-b border-[#E2E8F0] dark:border-[#253044] pb-4 mb-6">
+            <h3 className="font-heading text-base font-bold text-[#0F172A] dark:text-[#F8FAFC] flex items-center gap-2">
+              <User className="h-5 w-5 text-[#1769FF] dark:text-[#3B82F6]" />
               <span>User Profile Details</span>
             </h3>
-            <p className="text-[10px] text-slate-400 font-medium uppercase mt-0.5">
+            <p className="text-[10px] text-[#64748B] dark:text-[#94A3B8] font-medium uppercase mt-0.5">
               Current login session properties
             </p>
           </div>
 
           <div className="space-y-4">
-            <div className="grid gap-2 sm:grid-cols-3 border-b border-slate-100 pb-3">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Full Name</span>
-              <span className="text-xs font-extrabold text-slate-900 sm:col-span-2">{user.name}</span>
+            <div className="grid gap-2 sm:grid-cols-3 border-b border-[#E2E8F0] dark:border-[#253044] pb-3">
+              <span className="text-xs font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider">Full Name</span>
+              <span className="text-xs font-extrabold text-[#0F172A] dark:text-[#F8FAFC] sm:col-span-2">{user.name}</span>
             </div>
-            <div className="grid gap-2 sm:grid-cols-3 border-b border-slate-100 pb-3">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Email Address</span>
-              <span className="text-xs font-semibold text-slate-900 sm:col-span-2">{user.email}</span>
+            <div className="grid gap-2 sm:grid-cols-3 border-b border-[#E2E8F0] dark:border-[#253044] pb-3">
+              <span className="text-xs font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider">Email Address</span>
+              <span className="text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC] sm:col-span-2">{user.email}</span>
             </div>
-            <div className="grid gap-2 sm:grid-cols-3 border-b border-slate-100 pb-3">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Staff ID</span>
-              <span className="text-xs font-mono font-bold text-slate-900 sm:col-span-2">{user.teacher_id}</span>
+            <div className="grid gap-2 sm:grid-cols-3 border-b border-[#E2E8F0] dark:border-[#253044] pb-3">
+              <span className="text-xs font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider">Staff ID</span>
+              <span className="text-xs font-mono font-bold text-[#0F172A] dark:text-[#F8FAFC] sm:col-span-2">{user.teacher_id}</span>
             </div>
-            <div className="grid gap-2 sm:grid-cols-3 border-b border-slate-100 pb-3">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">System Role</span>
+            <div className="grid gap-2 sm:grid-cols-3 border-b border-[#E2E8F0] dark:border-[#253044] pb-3">
+              <span className="text-xs font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider">System Role</span>
               <span className="sm:col-span-2">
-                <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase bg-slate-950 text-white border border-slate-900">
+                <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase bg-[#0F172A] dark:bg-[#161D29] text-white dark:text-[#F8FAFC] border border-[#0F172A] dark:border-[#253044]">
                   {user.role}
                 </span>
               </span>
             </div>
             <div className="grid gap-2 sm:grid-cols-3">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Account Status</span>
+              <span className="text-xs font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider">Account Status</span>
               <span className="sm:col-span-2">
-                <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase bg-emerald-50 text-emerald-700 border border-emerald-100">
+                <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/60">
                   {user.status}
                 </span>
               </span>
@@ -123,11 +123,11 @@ const Settings: React.FC = () => {
       )}
 
       {/* Security alert context */}
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 shadow-sm max-w-3xl flex gap-3.5">
-        <ShieldAlert className="h-5.5 w-5.5 text-slate-400 shrink-0 mt-0.5" />
+      <div className="rounded-xl border border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#121A27] p-6 shadow-sm max-w-3xl flex gap-3.5">
+        <ShieldAlert className="h-5.5 w-5.5 text-[#64748B] dark:text-[#94A3B8] shrink-0 mt-0.5" />
         <div className="space-y-1">
-          <h4 className="font-heading text-xs font-bold text-slate-900 uppercase tracking-wider">Security & API Mode</h4>
-          <p className="text-xs text-slate-500 leading-relaxed">
+          <h4 className="font-heading text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] uppercase tracking-wider">Security & API Mode</h4>
+          <p className="text-xs text-[#64748B] dark:text-[#94A3B8] leading-relaxed">
             This application is running in mock offline mode. JWTs, profile objects, and marks uploads are persisted locally in the web browser database. When connected to FastAPI & PostgreSQL later, actions will authenticate over HTTPS using OAuth2 protocols.
           </p>
         </div>
