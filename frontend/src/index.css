@@ -139,6 +139,126 @@
   animation: formShake 0.35s ease-in-out;
 }
 
+/* ═══════════════════════════════════════════════════
+   PREMIUM MOTION SYSTEM
+   ═══════════════════════════════════════════════════ */
+
+/* Hero card entrance: fade + 8px upward */
+@keyframes heroEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-hero-enter {
+  animation: heroEnter 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Card staggered entrance */
+@keyframes cardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-card-enter {
+  animation: cardEnter 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Subtle background texture drift */
+@keyframes driftBg {
+  0%   { transform: translate(0, 0) scale(1.0); }
+  33%  { transform: translate(5px, -4px) scale(1.005); }
+  66%  { transform: translate(-4px, 3px) scale(1.0); }
+  100% { transform: translate(0, 0) scale(1.0); }
+}
+
+.animate-drift {
+  animation: driftBg 14s ease-in-out infinite;
+}
+
+/* Dropdown: subtle fade + scale reveal */
+@keyframes dropdownReveal {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-dropdown-reveal {
+  animation: dropdownReveal 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ─── Text Shine Animation (Uiverse-inspired) ─
+   Adapts to the existing Sora font-heading.
+   Subtle light sweep — premium, readable.
+   Light mode: dark-on-light sweep with blue highlight.
+   Dark mode:  white-on-dark sweep with soft blue-white highlight.
+   ─────────────────────────────────────────── */
+
+@keyframes textShine {
+  0%   { background-position: -220% center; }
+  100% { background-position: 220% center; }
+}
+
+.shine-text {
+  --shine-base: #0F172A;
+  --shine-accent: #60a5fa;
+  background: linear-gradient(
+    90deg,
+    var(--shine-base)   0%,
+    var(--shine-base)   30%,
+    var(--shine-accent) 50%,
+    var(--shine-base)   70%,
+    var(--shine-base)   100%
+  );
+  background-size: 220% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: textShine 4.5s linear infinite;
+}
+
+.dark .shine-text {
+  --shine-base: #F8FAFC;
+  --shine-accent: rgba(196, 220, 255, 0.90);
+}
+
+/* ─── Hero Dot-Grid Texture (theme-aware) ─── */
+
+.hero-dot-grid {
+  background-image: radial-gradient(rgba(15, 23, 42, 0.06) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+.dark .hero-dot-grid {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.14) 1px, transparent 1px);
+}
+
+/* ─── Sidebar Active Indicator transition ─── */
+.sidebar-nav-item {
+  position: relative;
+  transition: background-color 200ms ease, color 200ms ease, transform 100ms ease;
+}
+
+.sidebar-nav-item:active {
+  transform: scale(0.98);
+}
+
 /* ─── Custom Scrollbars ───────────────────── */
 
 ::-webkit-scrollbar {
@@ -177,4 +297,26 @@
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* ═══════════════════════════════════════════════════
+   ACCESSIBILITY — Respect prefers-reduced-motion
+   ═══════════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-hero-enter,
+  .animate-card-enter,
+  .animate-drift,
+  .animate-dropdown-reveal,
+  .animate-fade-in {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .shine-text {
+    animation: none !important;
+    -webkit-text-fill-color: currentColor !important;
+    background: none !important;
+  }
 }
