@@ -21,7 +21,6 @@ interface InfoItem {
   label: string;
   value: string;
   chip: string;
-  ring: string;
 }
 
 interface ModuleCard {
@@ -51,35 +50,31 @@ const DashboardHome: React.FC = () => {
       label: 'School',
       value: 'Amarkor Vidyalaya, Bhandup West',
       chip: 'from-blue-500 to-blue-600',
-      ring: 'border-blue-100 dark:border-blue-900/40',
     },
     {
       icon: Calendar,
       label: 'Today',
       value: todayLabel,
       chip: 'from-indigo-500 to-indigo-600',
-      ring: 'border-indigo-100 dark:border-indigo-900/40',
     },
     {
       icon: GraduationCap,
       label: 'Academic Year',
       value: '2026–27',
       chip: 'from-amber-500 to-orange-600',
-      ring: 'border-amber-100 dark:border-amber-900/40',
     },
     {
       icon: ShieldCheck,
       label: 'Role',
       value: user?.role === 'ADMIN' ? 'Administrator' : 'Teacher',
       chip: 'from-emerald-500 to-emerald-600',
-      ring: 'border-emerald-100 dark:border-emerald-900/40',
     },
   ];
 
   const modules: ModuleCard[] = [
     {
       icon: FileSpreadsheet,
-      to: '/admin/results',
+      to: user?.role === 'ADMIN' ? '/admin/results' : '/teacher/results-entry',
       title: 'Result Management',
       description:
         'Review marks submitted by teachers, approve report cards, or manage student registries.',
@@ -97,7 +92,7 @@ const DashboardHome: React.FC = () => {
     },
     {
       icon: UserCheck,
-      to: '/substitute',
+      to: user?.role === 'ADMIN' ? '/admin/substitute' : '/teacher/substitute',
       title: 'Substitute Teacher',
       description:
         'Identify and assign substitute teachers for absent staff members during specific lectures.',
@@ -108,35 +103,59 @@ const DashboardHome: React.FC = () => {
 
   return (
     <div className="space-y-8 font-body">
-      {/* Profile Hero — user info + photo */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 px-6 py-8 text-white shadow-premium border border-slate-800 sm:px-12 sm:py-10">
-        {/* Dot grid texture */}
-        <div
-          className="absolute inset-0 opacity-40"
-          style={{
-            backgroundImage: 'radial-gradient(rgba(255,255,255,0.14) 1px, transparent 1px)',
-            backgroundSize: '22px 22px',
-          }}
-        />
-        <div className="absolute right-0 top-0 -mr-4 -mt-4 h-32 w-32 rounded-full bg-accent/20 blur-2xl" />
-        <div className="absolute bottom-0 right-1/4 -mb-8 h-40 w-40 rounded-full bg-blue-500/10 blur-3xl" />
+
+      {/* ────────────────────────────────────────
+          PROFILE HERO CARD
+          Theme-aware: light surface in light mode,
+          dark surface in dark mode — no hardcoded dark colours.
+          ──────────────────────────────────────── */}
+      <div
+        className={[
+          'animate-hero-enter relative overflow-hidden rounded-2xl px-6 py-8 sm:px-12 sm:py-10',
+          'shadow-premium border transition-colors duration-300',
+          /* Light mode surface */
+          'bg-gradient-to-br from-white via-slate-50 to-blue-50/70',
+          'border-[#E2E8F0]',
+          /* Dark mode overrides */
+          'dark:from-slate-900 dark:via-slate-900 dark:to-indigo-950',
+          'dark:border-slate-800',
+        ].join(' ')}
+      >
+        {/* Dot-grid texture — theme-aware via CSS class (see index.css) */}
+        <div className="hero-dot-grid absolute inset-0 opacity-40 animate-drift pointer-events-none" />
+
+        {/* Soft glow blobs */}
+        <div className="absolute right-0 top-0 -mr-6 -mt-6 h-36 w-36 rounded-full bg-blue-400/10 dark:bg-blue-500/20 blur-2xl pointer-events-none" />
+        <div className="absolute bottom-0 right-1/4 -mb-10 h-44 w-44 rounded-full bg-indigo-400/10 dark:bg-blue-500/10 blur-3xl pointer-events-none" />
 
         <div className="relative flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0 space-y-3">
-            <div className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-800/80 px-2.5 py-0.5 text-xs font-bold text-blue-400">
-              <Sparkles className="h-3.5 w-3.5 text-blue-400" />
+
+            {/* School badge */}
+            <div className={[
+              'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold',
+              'border border-blue-200/80 bg-blue-50 text-blue-600',
+              'dark:border-slate-700 dark:bg-slate-800/80 dark:text-blue-400',
+            ].join(' ')}>
+              <Sparkles className="h-3.5 w-3.5" />
               <span>Amarkor Vidyalaya, Bhandup West</span>
             </div>
+
             <div className="space-y-1">
-              <h2 className="font-heading text-2xl font-extrabold tracking-tight md:text-3xl">
+              {/* Welcome heading — subtle Uiverse-style text shine via CSS class.
+                  Adapts to Sora font; no font changes introduced. */}
+              <h2 className="shine-text font-heading text-2xl font-extrabold tracking-tight md:text-3xl">
                 {t('common.welcome')}, {user?.name}!
               </h2>
-              <p className="text-sm text-slate-300">{user?.email}</p>
+              <p className="text-sm text-[#64748B] dark:text-slate-300">
+                {user?.email}
+              </p>
             </div>
 
+            {/* Teacher: Classes I Teach */}
             {user?.role === 'TEACHER' && (
               <div className="pt-1">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] dark:text-slate-400">
                   Classes I Teach
                 </p>
                 {user.classes_teaching && user.classes_teaching.length > 0 ? (
@@ -144,7 +163,11 @@ const DashboardHome: React.FC = () => {
                     {user.classes_teaching.map((c) => (
                       <span
                         key={`${c.class_name}-${c.division}`}
-                        className="rounded-lg border border-slate-700/60 bg-slate-800/40 px-2.5 py-1.5 text-xs font-semibold text-slate-100"
+                        className={[
+                          'rounded-lg px-2.5 py-1.5 text-xs font-semibold',
+                          'border border-[#E2E8F0] bg-[#F8FAFC] text-[#0F172A]',
+                          'dark:border-slate-700/60 dark:bg-slate-800/40 dark:text-slate-100',
+                        ].join(' ')}
                       >
                         {c.class_name} {c.division} —{' '}
                         {c.subjects.map((s) => s.subject_name).join(', ')}
@@ -152,24 +175,45 @@ const DashboardHome: React.FC = () => {
                     ))}
                   </div>
                 ) : (
-                  <p className="mt-2 text-xs text-slate-400">No classes assigned yet.</p>
+                  <p className="mt-2 text-xs text-[#64748B] dark:text-slate-400">
+                    No classes assigned yet.
+                  </p>
                 )}
               </div>
             )}
 
+            {/* Admin: Stats blocks — interactive hover lift */}
             {user?.role === 'ADMIN' && user.stats && (
               <div className="grid max-w-md grid-cols-3 gap-3 pt-1">
                 {[
                   { label: 'Teachers', value: user.stats.teachers_count },
-                  { label: 'Classes', value: user.stats.classes_count },
+                  { label: 'Classes',  value: user.stats.classes_count  },
                   { label: 'Students', value: user.stats.students_count },
                 ].map((s) => (
                   <div
                     key={s.label}
-                    className="rounded-xl border border-slate-700/60 bg-slate-800/40 px-4 py-3"
+                    className={[
+                      'group rounded-xl px-4 py-3 cursor-default',
+                      'border transition-all duration-200',
+                      /* Light */
+                      'border-[#E2E8F0] bg-white/80',
+                      /* Dark */
+                      'dark:border-slate-700/60 dark:bg-slate-800/40',
+                      /* Hover */
+                      'hover:-translate-y-0.5 hover:shadow-md hover:shadow-blue-500/10',
+                      'hover:border-blue-200 dark:hover:border-blue-800/60',
+                      /* Pressed */
+                      'active:scale-[.98]',
+                    ].join(' ')}
                   >
-                    <p className="font-heading text-2xl font-extrabold">{s.value}</p>
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    <p className={[
+                      'font-heading text-2xl font-extrabold',
+                      'text-[#0F172A] dark:text-white',
+                      'origin-left transition-transform duration-200 group-hover:scale-[1.06]',
+                    ].join(' ')}>
+                      {s.value}
+                    </p>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] dark:text-slate-400">
                       {s.label}
                     </p>
                   </div>
@@ -178,27 +222,49 @@ const DashboardHome: React.FC = () => {
             )}
           </div>
 
+          {/* Avatar initial */}
           <div className="shrink-0">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-white/30 bg-blue-500/20 font-heading text-xl font-bold text-white">
+            <div className={[
+              'flex h-16 w-16 items-center justify-center rounded-full font-heading text-xl font-bold',
+              'border-2 transition-transform duration-200 hover:scale-105',
+              /* Light */
+              'border-blue-200 bg-blue-100 text-[#1769FF]',
+              /* Dark */
+              'dark:border-white/30 dark:bg-blue-500/20 dark:text-white',
+            ].join(' ')}>
               {(user?.name || '?').charAt(0).toUpperCase()}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Static Info Panel */}
+      {/* ────────────────────────────────────────
+          STATIC INFO PANEL — staggered entrance
+          ──────────────────────────────────────── */}
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        {infoItems.map((item) => (
+        {infoItems.map((item, i) => (
           <div
             key={item.label}
-            className="rounded-xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] p-6 shadow-sm transition-all duration-200 hover:shadow-premium hover:-translate-y-0.5"
+            className={[
+              'animate-card-enter group rounded-xl p-6 shadow-sm cursor-default',
+              'border transition-all duration-200',
+              /* Surface */
+              'bg-white dark:bg-[#10151F]',
+              'border-[#E2E8F0] dark:border-[#253044]',
+              /* Hover */
+              'hover:-translate-y-1 hover:shadow-premium',
+              'hover:border-blue-100 dark:hover:border-blue-900/50',
+              /* Pressed */
+              'active:scale-[.98]',
+            ].join(' ')}
+            style={{ animationDelay: `${i * 75}ms` }}
           >
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-[#64748B] dark:text-[#94A3B8]">
                 {item.label}
               </span>
               <div
-                className={`inline-flex rounded-lg bg-gradient-to-br p-2 text-white shadow-sm ${item.chip}`}
+                className={`inline-flex rounded-lg bg-gradient-to-br p-2 text-white shadow-sm transition-transform duration-200 group-hover:scale-110 group-hover:-translate-y-0.5 ${item.chip}`}
               >
                 <item.icon className="h-4 w-4" />
               </div>
@@ -212,13 +278,17 @@ const DashboardHome: React.FC = () => {
         ))}
       </div>
 
-      {/* Main Modules Shortcut Cards */}
+      {/* ────────────────────────────────────────
+          MODULE SHORTCUT CARDS — staggered entrance
+          ──────────────────────────────────────── */}
       <div className="space-y-4">
         <div className="flex items-center gap-2.5">
           <div className="inline-flex rounded-lg bg-[#F8FAFC] dark:bg-[#161D29] border border-[#E2E8F0] dark:border-[#253044] p-1.5 text-[#0F172A] dark:text-[#F8FAFC]">
             <LayoutGrid className="h-4 w-4" />
           </div>
-          <h3 className="font-heading text-base font-bold text-[#0F172A] dark:text-[#F8FAFC]">Module Shortcuts</h3>
+          <h3 className="font-heading text-base font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+            Module Shortcuts
+          </h3>
           <span className="ml-1 rounded-full bg-[#F8FAFC] dark:bg-[#161D29] border border-[#E2E8F0] dark:border-[#253044] px-2 py-0.5 text-[11px] font-bold text-[#64748B] dark:text-[#94A3B8]">
             {modules.length} modules
           </span>
@@ -226,24 +296,44 @@ const DashboardHome: React.FC = () => {
         </div>
 
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {modules.map((mod) => (
+          {modules.map((mod, i) => (
             <Link
               key={mod.to}
               to={mod.to}
-              className={`group flex flex-col justify-between rounded-xl border border-t-4 border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] p-6 shadow-sm transition-all duration-300 hover:shadow-premium ${mod.accent}`}
+              className={[
+                'animate-card-enter group flex flex-col justify-between rounded-xl p-6 shadow-sm',
+                'border border-t-4 transition-all duration-250',
+                /* Surface */
+                'bg-white dark:bg-[#10151F]',
+                'border-[#E2E8F0] dark:border-[#253044]',
+                /* Hover lift + shadow */
+                'hover:-translate-y-1 hover:shadow-premium',
+                'hover:border-blue-100 dark:hover:border-blue-900/40',
+                /* Pressed */
+                'active:scale-[.98]',
+                /* Focus */
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1769FF] focus-visible:ring-offset-2',
+                /* Top accent */
+                mod.accent,
+              ].join(' ')}
+              style={{ animationDelay: `${180 + i * 90}ms` }}
             >
               <div>
                 <div
-                  className={`mb-4 inline-flex items-center justify-center rounded-lg bg-gradient-to-br p-2.5 text-white shadow-sm transition group-hover:scale-105 ${mod.chip}`}
+                  className={`mb-4 inline-flex items-center justify-center rounded-lg bg-gradient-to-br p-2.5 text-white shadow-sm transition-all duration-200 group-hover:scale-110 group-hover:-translate-y-0.5 ${mod.chip}`}
                 >
                   <mod.icon className="h-5 w-5" />
                 </div>
-                <h4 className="font-heading text-sm font-bold text-[#0F172A] dark:text-[#F8FAFC]">{mod.title}</h4>
-                <p className="mt-2 text-xs leading-relaxed text-[#64748B] dark:text-[#94A3B8]">{mod.description}</p>
+                <h4 className="font-heading text-sm font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                  {mod.title}
+                </h4>
+                <p className="mt-2 text-xs leading-relaxed text-[#64748B] dark:text-[#94A3B8]">
+                  {mod.description}
+                </p>
               </div>
-              <div className="mt-5 flex items-center gap-1.5 text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] transition-colors group-hover:text-[#1769FF] dark:group-hover:text-[#3B82F6]">
+              <div className="mt-5 flex items-center gap-1.5 text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] transition-colors duration-200 group-hover:text-[#1769FF] dark:group-hover:text-[#3B82F6]">
                 <span>Go to Module</span>
-                <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+                <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-1.5" />
               </div>
             </Link>
           ))}
