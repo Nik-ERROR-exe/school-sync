@@ -11,7 +11,7 @@ import Timetable from './pages/Timetable';
 import Substitute from './pages/Substitute';
 import SubstituteManagement from './pages/admin/SubstituteManagement';
 import Students from './pages/admin/Students';
-import Promotion from './pages/admin/Promotion';
+import Promotion from './pages/Promotion';
 import Settings from './pages/Settings';
 import Register from './pages/Register';
 import PendingTeachers from './pages/admin/PendingTeachers';
@@ -65,7 +65,7 @@ const DashboardLayout = () => {
   useKeepAlive(); // ping backend every 14 min to keep it awake while the app is open
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden transition-colors duration-300">
+    <div className="flex h-screen bg-[#F6F8FC] dark:bg-[#080B12] text-[#0F172A] dark:text-[#F8FAFC] overflow-hidden transition-colors duration-300">
       {/* Sidebar */}
       <Sidebar />
 
