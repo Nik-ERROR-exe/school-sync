@@ -12,7 +12,6 @@ import Substitute from './pages/Substitute';
 import SubstituteManagement from './pages/admin/SubstituteManagement';
 import Students from './pages/admin/Students';
 import Promotion from './pages/Promotion';
-import Settings from './pages/Settings';
 import Register from './pages/Register';
 import PendingTeachers from './pages/admin/PendingTeachers';
 import AllTeachers from './pages/admin/AllTeachers';
@@ -156,12 +155,6 @@ const promotionRoute = createRoute({
   component: Promotion,
 });
 
-const settingsRoute = createRoute({
-  getParentRoute: () => dashboardLayoutRoute,
-  path: '/settings',
-  component: Settings,
-});
-
 const pendingTeachersRoute = createRoute({
   getParentRoute: () => dashboardLayoutRoute,
   path: '/admin/teachers/pending',
@@ -199,20 +192,19 @@ const routeTree = rootRoute.addChildren([
   registerRoute,
   dashboardLayoutRoute.addChildren([
     dashboardHomeRoute,
-    resultsRoute,          // Admin: /admin/results
-    resultsEntryRoute,     // Teacher: /teacher/results-entry
+    resultsRoute,              // Admin: /admin/results
+    resultsEntryRoute,         // Teacher: /teacher/results-entry
     timetableRoute,
     substituteRoute,
     substituteManagementRoute,
     teacherSubstituteRoute,
     studentsRoute,
     promotionRoute,
-    settingsRoute,
     pendingTeachersRoute,
     allTeachersRoute,
     classManagementRoute,
     teacherProfileRoute,
-    classSubjectMappingRoute, 
+    classSubjectMappingRoute,
   ]),
 ]);
 
