@@ -192,17 +192,17 @@ const ResultsEntry: React.FC = () => {
       <h1 className="text-2xl font-bold">📝 Enter Results</h1>
 
       {/* Selection Section */}
-      <div className="bg-white p-6 rounded-xl border shadow-sm">
+      <div className="bg-white dark:bg-[#10151F] p-6 rounded-xl border border-[#E2E8F0] dark:border-[#253044] shadow-sm">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Class</label>
+            <label className="block text-sm font-medium mb-1 text-[#0F172A] dark:text-[#F8FAFC]">Class</label>
             <select
               value={selectedClass}
               onChange={(e) => {
                 setSelectedClass(e.target.value ? Number(e.target.value) : '');
                 setSelectedExam('');
               }}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#121A27] text-[#0F172A] dark:text-[#F8FAFC] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Select Class</option>
               {classes.map(c => (
