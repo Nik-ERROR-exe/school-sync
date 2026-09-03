@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import select, cast, Integer
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from app.database import get_db
@@ -164,7 +164,7 @@ def get_results_by_class_and_exam(
     students_stmt = (
         select(Student)
         .where(Student.class_id == class_id)
-        .order_by(Student.roll_no, Student.id)
+        .order_by(cast(Student.roll_no, Integer), Student.id)
     )
     students = db.execute(students_stmt).scalars().all()
 
@@ -283,7 +283,7 @@ def export_results(
             Student.class_id == class_id,
             Result.exam_type_id == exam_type_id,
         )
-        .order_by(Student.roll_no)
+        .order_by(cast(Student.roll_no, Integer))
     )
     results = db.execute(stmt).scalars().unique().all()
 
@@ -292,7 +292,7 @@ def export_results(
     results = sorted(
         results,
         key=lambda r: (
-            r.student.roll_no if r.student else "",
+            int(r.student.roll_no) if (r.student and r.student.roll_no and r.student.roll_no.isdigit()) else 0,
             r.subject.subject_name if r.subject else "",
         ),
     )
