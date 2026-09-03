@@ -9,7 +9,6 @@ import {
   FileSpreadsheet,
   Clock,
   ArrowUpCircle,
-  Settings,
   LogOut,
   X,
   GraduationCap,
@@ -17,7 +16,10 @@ import {
   UserPlus,
   UserCircle,
   UserMinus,
-  BookOpen,
+  Layers,
+  UsersRound,
+  CalendarCheck,
+  BookCheck,
 } from 'lucide-react';
 
 const Sidebar: React.FC = () => {
@@ -75,7 +77,7 @@ const Sidebar: React.FC = () => {
     {
       to: '/admin/results',
       label: 'Review Results',
-      icon: FileSpreadsheet,
+      icon: BookCheck,
       roles: ['ADMIN'],
       badge: null,
     },
@@ -98,7 +100,7 @@ const Sidebar: React.FC = () => {
     {
       to: '/teacher/substitute',
       label: 'My Substitutions',
-      icon: BookOpen,
+      icon: CalendarCheck,
       roles: ['TEACHER'],
       badge: null,
     },
@@ -121,19 +123,10 @@ const Sidebar: React.FC = () => {
     {
       to: '/admin/class-subject-mapping',
       label: 'Class-Subject',
-      icon: Users,
+      icon: Layers,
       roles: ['ADMIN'],
       badge: null,
     },
-    // Admin Only: Subject Max Marks Config
-    {
-      to: '/admin/subject-max-marks',
-      label: 'Max Marks Config',
-      icon: Settings,
-      roles: ['ADMIN'],
-      badge: null,
-    },
-
     {
       to: '/admin/teachers/pending',
       label: 'Pending Approvals',
@@ -144,7 +137,7 @@ const Sidebar: React.FC = () => {
     {
       to: '/admin/teachers',
       label: 'All Teachers',
-      icon: Users,
+      icon: UsersRound,
       roles: ['ADMIN'],
       badge: null,
     },
@@ -160,13 +153,6 @@ const Sidebar: React.FC = () => {
       label: 'My Profile',
       icon: UserCircle,
       roles: ['TEACHER', 'ADMIN'],
-      badge: null,
-    },
-    {
-      to: '/settings',
-      label: t('common.settings'),
-      icon: Settings,
-      roles: ['ADMIN', 'TEACHER'],
       badge: null,
     },
   ];
@@ -186,29 +172,29 @@ const Sidebar: React.FC = () => {
       {/* Sidebar Container */}
       <aside
         className={`
-        fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-slate-950 dark:bg-slate-950 text-slate-300 transition-transform duration-300 ease-in-out md:static md:translate-x-0 border-r border-slate-800/80 dark:border-slate-800/80 shadow-xl
+        fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-white dark:bg-[#10151F] text-[#0F172A] dark:text-[#F8FAFC] transition-transform duration-300 ease-in-out md:static md:translate-x-0 border-r border-[#E2E8F0] dark:border-[#253044] shadow-md
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
       `}
       >
-        {/* 🏫 SIDEBAR HEADER — Premium School Emblem Logo Formatting */}
-        <div className="flex flex-col pt-5 pb-4 px-4 border-b border-slate-800/80 dark:border-slate-800">
+        {/* 🏫 SIDEBAR HEADER */}
+        <div className="flex flex-col pt-5 pb-4 px-4 border-b border-[#E2E8F0] dark:border-[#253044]">
           <div className="flex items-center justify-between">
             <Link to="/dashboard" className="group flex items-center gap-3">
-              {/* Official 40px x 40px School Emblem Logo */}
-              <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 border border-slate-800 p-1 transition-transform duration-300 group-hover:scale-105 shadow-md">
+              {/* 40px x 40px School Emblem Logo */}
+              <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#F8FAFC] dark:bg-[#161D29] border border-[#E2E8F0] dark:border-[#253044] p-1 transition-transform duration-300 group-hover:scale-105 shadow-xs">
                 <img
                   src={schoolLogo}
                   alt="Amarkor Vidyalaya Emblem"
-                  className="h-full w-full object-contain drop-shadow-[0_0_8px_rgba(59,130,246,0.3)]"
+                  className="h-full w-full object-contain"
                 />
               </div>
 
               {/* School Name & Subtitle */}
               <div className="flex flex-col min-w-0">
-                <span className="font-heading text-[17px] font-bold text-white tracking-tight truncate leading-tight group-hover:text-blue-400 transition-colors">
+                <span className="font-heading text-[17px] font-bold text-[#0F172A] dark:text-[#F8FAFC] tracking-tight truncate leading-tight group-hover:text-[#1769FF] dark:group-hover:text-[#3B82F6] transition-colors">
                   Amarkor Vidyalaya
                 </span>
-                <span className="text-[12px] text-slate-400 font-medium tracking-wide truncate">
+                <span className="text-[12px] text-[#64748B] dark:text-[#94A3B8] font-medium tracking-wide truncate">
                   Bhandup West
                 </span>
               </div>
@@ -217,7 +203,7 @@ const Sidebar: React.FC = () => {
             {/* Mobile Close Button */}
             <button
               onClick={() => setIsOpen(false)}
-              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-900 hover:text-white md:hidden"
+              className="rounded-lg p-1.5 text-[#64748B] dark:text-[#94A3B8] hover:bg-[#F8FAFC] dark:hover:bg-[#161D29] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-all duration-150 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1769FF] md:hidden"
               aria-label="Close sidebar"
             >
               <X className="h-5 w-5" />
@@ -226,30 +212,34 @@ const Sidebar: React.FC = () => {
         </div>
 
         {/* Sidebar Navigation */}
-        <nav className="flex-1 space-y-1.5 px-3 py-5 overflow-y-auto">
+        <nav className="flex-1 space-y-0.5 px-3 py-4 overflow-y-auto">
           {navItems
             .filter(item => user && item.roles.includes(user.role))
             .map(item => {
               const Icon = item.icon;
-              const isActive =
-                activePath === item.to || activePath.startsWith(item.to + '/');
+              // Exact match active state — avoids false positives (e.g. /admin/teachers
+              // incorrectly active when on /admin/teachers/pending)
+              const isActive = activePath === item.to;
               return (
                 <Link
                   key={item.to}
                   to={item.to}
                   className={`
-                    flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200
+                    sidebar-nav-item flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1769FF] focus-visible:ring-inset
                     ${
                       isActive
-                        ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25'
-                        : 'hover:bg-slate-900/90 hover:text-white text-slate-400'
+                        ? 'bg-[#1769FF] dark:bg-[#3B82F6] text-white shadow-md shadow-blue-500/20'
+                        : 'text-[#64748B] dark:text-[#94A3B8] hover:bg-[#F1F5F9] dark:hover:bg-[#161D29] hover:text-[#0F172A] dark:hover:text-[#F8FAFC]'
                     }
                   `}
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <Icon
-                      className={`h-4 w-4 shrink-0 ${
-                        isActive ? 'text-white' : 'text-slate-400'
+                      className={`h-4 w-4 shrink-0 transition-transform duration-200 ${
+                        isActive
+                          ? 'text-white'
+                          : 'text-[#64748B] dark:text-[#94A3B8] group-hover:scale-110'
                       }`}
                     />
                     <span className="truncate">{item.label}</span>
@@ -266,28 +256,28 @@ const Sidebar: React.FC = () => {
 
         {/* User Profile & Logout Section */}
         {user && (
-          <div className="border-t border-slate-800/80 p-3.5 bg-slate-950/60">
+          <div className="border-t border-[#E2E8F0] dark:border-[#253044] p-3.5 bg-[#F8FAFC]/50 dark:bg-[#10151F]">
             <div className="flex items-center gap-3 px-1 py-1">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 font-heading text-xs font-bold text-blue-400 border border-slate-800 shadow-xs">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 dark:bg-[#161D29] font-heading text-xs font-bold text-[#1769FF] dark:text-[#3B82F6] border border-[#E2E8F0] dark:border-[#253044] shadow-xs">
                 {user.name.charAt(0)}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold text-white truncate leading-snug">
+                <p className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] truncate leading-snug">
                   {user.name}
                 </p>
-                <p className="text-[10px] text-slate-400 truncate mb-0.5">
+                <p className="text-[10px] text-[#64748B] dark:text-[#94A3B8] truncate mb-0.5">
                   {user.email}
                 </p>
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-blue-950 text-blue-300 border border-blue-800/60 uppercase tracking-wider">
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-blue-50 dark:bg-blue-950/60 text-[#1769FF] dark:text-[#3B82F6] border border-blue-200 dark:border-blue-800/60 uppercase tracking-wider">
                   {user.role}
                 </span>
               </div>
             </div>
             <button
               onClick={logout}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900/80 hover:bg-red-950/40 border border-slate-800 hover:border-red-900/40 px-3 py-2 text-xs font-bold text-slate-400 hover:text-red-400 transition-all duration-200"
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-white dark:bg-[#161D29] hover:bg-red-50 dark:hover:bg-red-950/30 border border-[#E2E8F0] dark:border-[#253044] hover:border-red-200 dark:hover:border-red-900/40 px-3 py-2 text-xs font-bold text-[#64748B] dark:text-[#94A3B8] hover:text-red-600 dark:hover:text-red-400 transition-all duration-200 active:scale-[.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
             >
-              <LogOut className="h-3.5 w-3.5" />
+              <LogOut className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
               <span>{t('common.logout')}</span>
             </button>
           </div>

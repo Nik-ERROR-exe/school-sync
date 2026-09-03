@@ -212,15 +212,15 @@ const Substitute: React.FC = () => {
           {/* Step 1: Select Absent Teacher + Date */}
           <div className="grid gap-8 lg:grid-cols-3 animate-fade-in">
             {/* Left Panel: Absent Teacher Selection */}
-            <div className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm h-fit">
-              <h3 className="font-heading text-base font-bold text-slate-900 mb-4 flex items-center gap-2">
+            <div className="rounded-xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] p-6 shadow-sm h-fit">
+              <h3 className="font-heading text-base font-bold text-[#0F172A] dark:text-[#F8FAFC] mb-4 flex items-center gap-2">
                 <UserMinus className="h-5 w-5 text-red-500" />
                 <span>Report Absent Teacher</span>
               </h3>
 
               <form onSubmit={handleFindAffectedPeriods} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
+                  <label className="block text-xs font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider mb-2">
                     Absent Teacher
                   </label>
                   <select
@@ -232,7 +232,7 @@ const Substitute: React.FC = () => {
                       setExpandedPeriods({});
                       setAvailableTeachersMap({});
                     }}
-                    className="block w-full rounded-lg border border-slate-200 p-2.5 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent bg-white shadow-sm"
+                    className="block w-full rounded-lg border border-[#E2E8F0] dark:border-[#253044] p-2.5 text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent bg-[#F8FAFC] dark:bg-[#121A27] shadow-sm"
                     required
                   >
                     <option value="">-- Select Absent Staff --</option>

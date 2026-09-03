@@ -12,16 +12,13 @@ import Substitute from './pages/Substitute';
 import SubstituteManagement from './pages/admin/SubstituteManagement';
 import Students from './pages/admin/Students';
 import Promotion from './pages/Promotion';
-import Settings from './pages/Settings';
 import Register from './pages/Register';
 import PendingTeachers from './pages/admin/PendingTeachers';
 import AllTeachers from './pages/admin/AllTeachers';
 import ClassManagement from './pages/admin/ClassManagement';
 import ClassSubjectMapping from './pages/admin/ClassSubjectMapping';
-import SubjectMaxMarksConfig from './pages/admin/SubjectMaxMarks';
 import Profile from './pages/teacher/Profile';
 import ResultsEntry from './pages/teacher/ResultsEntry'; // Teacher's result entry page
-
 
 // Root Route
 const Root = () => {
@@ -67,7 +64,7 @@ const DashboardLayout = () => {
   useKeepAlive(); // ping backend every 14 min to keep it awake while the app is open
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden transition-colors duration-300">
+    <div className="flex h-screen bg-[#F6F8FC] dark:bg-[#080B12] text-[#0F172A] dark:text-[#F8FAFC] overflow-hidden transition-colors duration-300">
       {/* Sidebar */}
       <Sidebar />
 
@@ -158,12 +155,6 @@ const promotionRoute = createRoute({
   component: Promotion,
 });
 
-const settingsRoute = createRoute({
-  getParentRoute: () => dashboardLayoutRoute,
-  path: '/settings',
-  component: Settings,
-});
-
 const pendingTeachersRoute = createRoute({
   getParentRoute: () => dashboardLayoutRoute,
   path: '/admin/teachers/pending',
@@ -194,12 +185,6 @@ const classSubjectMappingRoute = createRoute({
   component: ClassSubjectMapping,
 });
 
-const subjectMaxMarksRoute = createRoute({
-  getParentRoute: () => dashboardLayoutRoute,
-  path: '/admin/subject-max-marks',
-  component: SubjectMaxMarksConfig,
-});
-
 // Build route tree
 const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -207,24 +192,21 @@ const routeTree = rootRoute.addChildren([
   registerRoute,
   dashboardLayoutRoute.addChildren([
     dashboardHomeRoute,
-    resultsRoute,          // Admin: /admin/results
-    resultsEntryRoute,     // Teacher: /teacher/results-entry
+    resultsRoute,              // Admin: /admin/results
+    resultsEntryRoute,         // Teacher: /teacher/results-entry
     timetableRoute,
     substituteRoute,
     substituteManagementRoute,
     teacherSubstituteRoute,
     studentsRoute,
     promotionRoute,
-    settingsRoute,
     pendingTeachersRoute,
     allTeachersRoute,
     classManagementRoute,
     teacherProfileRoute,
     classSubjectMappingRoute,
-    subjectMaxMarksRoute,
   ]),
 ]);
-
 
 export const router = createRouter({
   routeTree,
