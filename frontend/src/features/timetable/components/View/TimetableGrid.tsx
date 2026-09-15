@@ -5,6 +5,8 @@ import EditCellModal from './EditCellModal';
 import { getScheduleConflicts } from '../../utils/conflictChecker';
 import { AlertTriangle } from 'lucide-react';
 
+import { sortClasses } from '../../../../utils/classSorter';
+
 interface TimetableGridProps {
   schedule: ApiSlot[];
   classes: ApiClass[];
@@ -32,8 +34,10 @@ export default function TimetableGrid({
   onSave,
   onClassChange,
 }: TimetableGridProps) {
+  const sortedClasses = useMemo(() => sortClasses(classes), [classes]);
+
   const [selectedClassId, setSelectedClassId] = useState<number | null>(
-    classes.length > 0 ? classes[0].id : null
+    sortedClasses.length > 0 ? sortedClasses[0].id : null
   );
   const [editingSlot, setEditingSlot] = useState<ApiSlot | null>(null);
 
@@ -44,10 +48,10 @@ export default function TimetableGrid({
 
   // Set default class if not set yet
   useEffect(() => {
-    if (classes.length > 0 && selectedClassId === null) {
-      setSelectedClassId(classes[0].id);
+    if (sortedClasses.length > 0 && selectedClassId === null) {
+      setSelectedClassId(sortedClasses[0].id);
     }
-  }, [classes, selectedClassId]);
+  }, [sortedClasses, selectedClassId]);
 
   // Notify the parent of the currently viewed class (for download scoping)
   useEffect(() => {
@@ -128,7 +132,7 @@ export default function TimetableGrid({
             onChange={e => setSelectedClassId(Number(e.target.value))}
             className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
           >
-            {classes.map(c => (
+            {sortedClasses.map(c => (
               <option key={c.id} value={c.id}>
                 Class {c.class_name} - {c.division}
               </option>

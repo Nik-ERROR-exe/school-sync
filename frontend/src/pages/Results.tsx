@@ -53,16 +53,14 @@ interface StudentResult {
 interface EditableMarkInputProps {
   resultId: number | null;
   initialValue: number | null;
-  subjectId: number;
-  subjectMaxMarks: number;
-  onSave: (resultId: number | null, newMarks: number, subjectId: number) => void;
+  totalMarks: number;
+  onSave: (resultId: number | null, newMarks: number, totalMarks: number) => void;
 }
 
 const EditableMarkInput: React.FC<EditableMarkInputProps> = ({
   resultId,
   initialValue,
-  subjectId,
-  subjectMaxMarks,
+  totalMarks,
   onSave,
 }) => {
   const [val, setVal] = useState<string>(initialValue !== null ? String(initialValue) : '');
@@ -83,14 +81,14 @@ const EditableMarkInput: React.FC<EditableMarkInputProps> = ({
       setVal(initialValue !== null ? String(initialValue) : '');
       return;
     }
-    const maxAllowed = subjectMaxMarks;
-    if (num < 1 || num > maxAllowed) {
-      toast.error(`Marks must be between 1 and ${maxAllowed}.`);
+    const maxAllowed = Math.min(totalMarks, MAX_MARKS);
+    if (num < MIN_MARKS || num > maxAllowed) {
+      toast.error(`Marks must be between ${MIN_MARKS} and ${maxAllowed}.`);
       setVal(initialValue !== null ? String(initialValue) : '');
       return;
     }
     if (num !== initialValue) {
-      onSave(resultId, num, subjectId);
+      onSave(resultId, num, totalMarks);
     }
   };
 
@@ -461,32 +459,6 @@ const Results: React.FC = () => {
     fetchExamTypes();
   }, []);
 
-  // Load subject max marks map when class and exam are selected
-  useEffect(() => {
-    if (!selectedClass || !selectedExam) {
-      setSubjectMaxMarksMap({});
-      return;
-    }
-
-    const fetchMaxMarks = async () => {
-      try {
-        const classObj = classes.find(c => c.id === selectedClass);
-        if (!classObj) return;
-
-        const maxMarksList = await subjectMaxMarksApi.list(classObj.class_name, Number(selectedExam));
-        const map: { [key: number]: number } = {};
-        maxMarksList.forEach(item => {
-          map[item.subject_id] = item.max_marks;
-        });
-        setSubjectMaxMarksMap(map);
-      } catch (error) {
-        toast.error('Failed to load subject max marks configuration');
-      }
-    };
-
-    fetchMaxMarks();
-  }, [selectedClass, selectedExam, classes]);
-
   // Load results when class and exam are selected
   useEffect(() => {
     if (!selectedClass || !selectedExam) {
@@ -516,14 +488,14 @@ const Results: React.FC = () => {
     studentId: number,
     subjectId: number,
     resultId: number | null,
-    newMarks: number
+    newMarks: number,
+    total: number
   ) => {
     try {
       let savedResultId: number | null = resultId;
-      const subjectMaxMarks = subjectMaxMarksMap[subjectId];
 
       if (resultId) {
-        // Update an existing result - total_marks now comes from config, not client
+        // Update an existing result
         await api.put(`/admin/results/${resultId}`, {
           marks_obtained: newMarks,
           total_marks: total,

@@ -6,6 +6,8 @@ import { ApiClass } from '../../types';
 import { toast } from 'react-hot-toast';
 import DiagnosticBanner from './DiagnosticBanner';
 
+import { sortClasses } from '../../../../utils/classSorter';
+
 interface WeeklyReqState {
   id?: number;
   class_id: number;
@@ -45,7 +47,7 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
           api.get('/admin/weekly-requirements/'),
         ]);
 
-        setClasses(classesRes.data);
+        setClasses(sortClasses(classesRes.data));
         setTeachers(teachersRes.data);
 
         const allDbReqs = dbReqsRes.data.map((r: any) => ({

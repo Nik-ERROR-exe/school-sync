@@ -9,6 +9,8 @@ from app.models.student import Student
 from app.models.teacher_class_subject import TeacherClassSubject
 
 
+from app.core.class_sorter import sort_classes_natural
+
 def _get_teacher_classes(db: Session, teacher_id: int) -> list:
     """Classes a teacher teaches, grouped from the authoritative class-subject mapping."""
     rows = (
@@ -16,7 +18,6 @@ def _get_teacher_classes(db: Session, teacher_id: int) -> list:
         .join(SchoolClass, TeacherClassSubject.class_id == SchoolClass.id)
         .join(Subject, TeacherClassSubject.subject_id == Subject.id)
         .filter(TeacherClassSubject.teacher_id == teacher_id)
-        .order_by(SchoolClass.class_name, SchoolClass.division, Subject.subject_name)
         .all()
     )
 
@@ -33,7 +34,7 @@ def _get_teacher_classes(db: Session, teacher_id: int) -> list:
             {"subject_name": subject.subject_name, "code": subject.code}
         )
 
-    return list(grouped.values())
+    return sort_classes_natural(list(grouped.values()))
 
 
 def _get_admin_stats(db: Session) -> Dict[str, int]:

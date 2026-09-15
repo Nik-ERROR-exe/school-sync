@@ -4,6 +4,8 @@ import { useWizard, computeMaxRequirements } from '../../WizardContext';
 import { Loader2, AlertTriangle, CheckCircle2, Clock, Users, BookOpen, Calendar } from 'lucide-react';
 import { ApiClass } from '../../types';
 
+import { sortClasses } from '../../../../utils/classSorter';
+
 export default function Step3ClassesSubjects({ onNext, onPrev }: { onNext: () => void; onPrev: () => void }) {
   const { state } = useWizard();
 
@@ -17,7 +19,7 @@ export default function Step3ClassesSubjects({ onNext, onPrev }: { onNext: () =>
       setError(null);
       try {
         const res = await api.get('/admin/classes/');
-        setClasses(res.data);
+        setClasses(sortClasses(res.data));
       } catch (err: any) {
         setError('Failed to load classes information.');
       } finally {

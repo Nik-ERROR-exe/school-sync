@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../api';
+import { sortClasses } from '../utils/classSorter';
 
 export interface SubjectTeachingInfo {
   subject_name: string;
@@ -52,7 +53,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     try {
       const response = await api.get('/auth/me');
-      setUser(response.data);
+      const data = response.data;
+      if (data && Array.isArray(data.classes_teaching)) {
+        data.classes_teaching = sortClasses(data.classes_teaching);
+      }
+      setUser(data);
     } catch (error) {
       // Token invalid or expired
       localStorage.removeItem('access_token');

@@ -2,6 +2,7 @@ import io
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
+from sqlalchemy import cast, Integer
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -51,7 +52,7 @@ def list_students(
         query = query.filter(
             Student.name.ilike(f"%{search}%") | Student.roll_no.ilike(f"%{search}%")
         )
-    return query.order_by(Student.roll_no).all()
+    return query.order_by(cast(Student.roll_no, Integer)).all()
 
 
 @router.post("/", response_model=StudentResponse, status_code=status.HTTP_201_CREATED)

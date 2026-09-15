@@ -15,6 +15,8 @@ import {
   Plus,
 } from 'lucide-react';
 
+import { sortClasses } from '../../utils/classSorter';
+
 interface SubjectBasic {
   id: number;
   subject_name: string;
@@ -187,7 +189,7 @@ const ClassSubjectEditPanel: React.FC<ClassSubjectEditPanelProps> = ({
                   className="rounded-lg border border-slate-200 py-2 px-3 text-sm text-slate-900 focus:border-green-400 focus:ring-2 focus:ring-green-100 focus:outline-none shadow-sm bg-white"
                 >
                   <option value={0}>Select Class…</option>
-                  {allClasses.map((cls) => (
+                  {sortClasses(allClasses).map((cls) => (
                     <option key={cls.id} value={cls.id}>
                       {cls.class_name}-{cls.division}
                     </option>
@@ -305,7 +307,7 @@ const AllTeachers: React.FC = () => {
   const fetchClasses = useCallback(async () => {
     try {
       const res = await api.get('/admin/classes/');
-      setAllClasses(res.data);
+      setAllClasses(sortClasses(res.data));
     } catch {}
   }, []);
 

@@ -12,6 +12,8 @@ import {
   X,
 } from 'lucide-react';
 
+import { sortClasses } from '../utils/classSorter';
+
 const Promotion: React.FC = () => {
   const { t } = useTranslation();
 
@@ -137,7 +139,7 @@ const Promotion: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
-                    {previews.map(p => (
+                    {sortClasses(previews, p => `${p.currentClassName} ${p.currentDivision}`).map(p => (
                       <tr key={p.studentId} className="transition hover:bg-slate-50/50">
                         <td className="px-6 py-3 font-medium text-slate-800">
                           Standard {p.currentClassName}{p.currentDivision}

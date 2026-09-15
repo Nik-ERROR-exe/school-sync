@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func
+from sqlalchemy import func, cast, Integer
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
@@ -7,6 +7,8 @@ from app.api.deps import require_admin
 from app.models.teacher import Teacher
 from app.models.student import Student
 from app.models.school_class import SchoolClass
+
+from app.core.class_sorter import sort_classes_natural
 
 router = APIRouter(prefix="/admin/promotion", tags=["Admin - Promotion"])
 
@@ -75,7 +77,7 @@ def get_promotion_preview(
                 "next_class_id": next_class_id
             })
 
-    return preview
+    return sort_classes_natural(preview)
 
 @router.post("/execute")
 def execute_promotion(
@@ -126,7 +128,7 @@ def execute_promotion(
             # Get students from source class (sorted by roll_no)
             class_students = db.query(Student).filter(
                 Student.class_id == source_class.id
-            ).order_by(Student.roll_no).all()
+            ).order_by(cast(Student.roll_no, Integer)).all()
             
             # Get existing roll numbers in destination class
             existing_rolls = db.query(Student.roll_no).filter(

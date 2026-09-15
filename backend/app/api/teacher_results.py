@@ -1,6 +1,7 @@
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import select
+from sqlalchemy import select, cast, Integer
 from typing import List
 from app.database import get_db
 from app.api.deps import get_current_user
@@ -125,7 +126,7 @@ def get_results_by_class_and_exam(
     students_stmt = (
         select(Student)
         .where(Student.class_id == class_id)
-        .order_by(Student.roll_no, Student.id)
+        .order_by(cast(Student.roll_no, Integer), Student.id)
     )
     students = db.execute(students_stmt).scalars().all()
 

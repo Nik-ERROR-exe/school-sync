@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import cast, Integer
 from sqlalchemy.orm import Session
 from sqlalchemy.future import select
 from app.database import get_db
@@ -37,7 +38,7 @@ def get_students_by_class(
         )
 
     # 2. Students in this class
-    stmt = select(Student).where(Student.class_id == class_id).order_by(Student.roll_no)
+    stmt = select(Student).where(Student.class_id == class_id).order_by(cast(Student.roll_no, Integer))
     students = db.execute(stmt).scalars().all()
 
     # 3. Subjects taught by THIS teacher in THIS class according to teacher_class_subjects

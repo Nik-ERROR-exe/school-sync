@@ -6,8 +6,7 @@ from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 
 class Settings(BaseSettings):
     # Database Settings
-    DATABASE_URL: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/school_sync"
-
+    DATABASE_URL: str 
     @field_validator("DATABASE_URL", mode="after")
     @classmethod
     def normalize_database_url(cls, v: str) -> str:

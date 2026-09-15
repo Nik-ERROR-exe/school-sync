@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy import cast, Integer
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.future import select
 from app.database import get_db
@@ -11,6 +12,8 @@ from app.models.subject import Subject
 from app.models.student import Student
 
 router = APIRouter(prefix="/teacher/classes", tags=["Teacher - Classes"])
+
+from app.core.class_sorter import sort_classes_natural
 
 @router.get("")
 @router.get("/")
@@ -33,10 +36,10 @@ def get_my_classes(
     classes = db.scalars(
         select(SchoolClass)
         .where(SchoolClass.id.in_(class_ids))
-        .order_by(SchoolClass.class_name, SchoolClass.division)
     ).unique().all()
     
-    return [{"id": c.id, "class_name": c.class_name, "division": c.division} for c in classes]
+    sorted_classes = sort_classes_natural(list(classes))
+    return [{"id": c.id, "class_name": c.class_name, "division": c.division} for c in sorted_classes]
 
 
 
@@ -67,7 +70,7 @@ def get_students_by_class(
     students = db.execute(
         select(Student)
         .where(Student.class_id == class_id)
-        .order_by(Student.roll_no)
+        .order_by(cast(Student.roll_no, Integer))
     ).scalars().all()
 
     # 3. Get subjects this teacher teaches in this class (from teacher_class_subjects)
