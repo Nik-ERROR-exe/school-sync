@@ -12,7 +12,6 @@ import Substitute from './pages/Substitute';
 import SubstituteManagement from './pages/admin/SubstituteManagement';
 import Students from './pages/admin/Students';
 import Promotion from './pages/Promotion';
-import Settings from './pages/Settings';
 import Register from './pages/Register';
 import PendingTeachers from './pages/admin/PendingTeachers';
 import AllTeachers from './pages/admin/AllTeachers';
@@ -67,7 +66,7 @@ const DashboardLayout = () => {
   useKeepAlive(); // ping backend every 14 min to keep it awake while the app is open
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
+    <div className="flex h-screen bg-[#F6F8FC] dark:bg-[#080B12] text-[#0F172A] dark:text-[#F8FAFC] overflow-hidden transition-colors duration-300">
       {/* Sidebar */}
       <Sidebar />
 
@@ -158,12 +157,6 @@ const promotionRoute = createRoute({
   component: Promotion,
 });
 
-const settingsRoute = createRoute({
-  getParentRoute: () => dashboardLayoutRoute,
-  path: '/settings',
-  component: Settings,
-});
-
 const pendingTeachersRoute = createRoute({
   getParentRoute: () => dashboardLayoutRoute,
   path: '/admin/teachers/pending',
@@ -207,21 +200,19 @@ const routeTree = rootRoute.addChildren([
   registerRoute,
   dashboardLayoutRoute.addChildren([
     dashboardHomeRoute,
-    resultsRoute,          // Admin: /admin/results
-    resultsEntryRoute,     // Teacher: /teacher/results-entry
+    resultsRoute,              // Admin: /admin/results
+    resultsEntryRoute,         // Teacher: /teacher/results-entry
     timetableRoute,
     substituteRoute,
     substituteManagementRoute,
     teacherSubstituteRoute,
     studentsRoute,
     promotionRoute,
-    settingsRoute,
     pendingTeachersRoute,
     allTeachersRoute,
     classManagementRoute,
     teacherProfileRoute,
     classSubjectMappingRoute,
-    subjectMaxMarksRoute,
   ]),
 ]);
 

@@ -15,13 +15,7 @@ def validate_timetable_slots(
     teachers_map = {t.id: t for t in teachers_list}
     
     class_period_check = set()
-    teacher_period_check = set()
-    
-    # Track lecture counts per teacher per day: (teacher_id, day) -> count
-    teacher_daily_count: Dict[Tuple[int, str], int] = {}
-    
-    # Track classes using the PT ground per slot: (day, period) -> count
-    pt_period_count: Dict[Tuple[str, int], int] = {}
+    teacher_period_map: Dict[Tuple[int, str, int], int] = {}
     
     for slot in slots:
         # 0 represents Free / Study periods (no teacher required, no constraints)
@@ -39,13 +33,14 @@ def validate_timetable_slots(
         
         # Constraint 1: A single teacher cannot have overlapping lectures
         teacher_key = (slot.teacher_id, slot.day_of_week, slot.period_number)
-        if teacher_key in teacher_period_check:
+        if teacher_key in teacher_period_map:
+            other_class_id = teacher_period_map[teacher_key]
             t_name = teachers_map[slot.teacher_id].name if slot.teacher_id in teachers_map else f"ID {slot.teacher_id}"
             raise ValidationException(
-                f"Teacher Overlap: Teacher '{t_name}' is scheduled in multiple classes during "
+                f"Teacher Overlap: Teacher '{t_name}' is scheduled in multiple classes (Class ID {other_class_id} and Class ID {slot.class_id}) during "
                 f"{slot.day_of_week} Period {slot.period_number}."
             )
-        teacher_period_check.add(teacher_key)
+        teacher_period_map[teacher_key] = slot.class_id
         
         # Constraint 3: No teacher exceeds their max lectures limit
         teacher_daily_key = (slot.teacher_id, slot.day_of_week)
@@ -68,3 +63,4 @@ def validate_timetable_slots(
                     f"PT Ground Capacity Limit Exceeded: More than 2 classes are assigned PT during "
                     f"{slot.day_of_week} Period {slot.period_number}."
                 )
+

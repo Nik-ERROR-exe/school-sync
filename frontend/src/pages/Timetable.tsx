@@ -46,12 +46,12 @@ function AdminLandingPage({ hasSavedTimetable, onStartWizard, onViewTimetable }:
       {/* Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl w-full">
         {/* Card 1: Generate */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-200 transition-all duration-200 p-8 flex flex-col items-center text-center group">
+        <div className="bg-white dark:bg-[#10151F] rounded-2xl border border-[#E2E8F0] dark:border-[#253044] shadow-sm hover:shadow-md hover:border-blue-200 transition-all duration-200 p-8 flex flex-col items-center text-center group">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center mb-5 shadow-lg shadow-blue-500/20 group-hover:scale-105 transition-transform duration-200">
             <Sparkles size={26} className="text-white" />
           </div>
-          <h2 className="text-lg font-extrabold text-slate-900 mb-2">Generate New Timetable</h2>
-          <p className="text-xs text-slate-500 leading-relaxed mb-6 max-w-[260px]">
+          <h2 className="text-lg font-extrabold text-[#0F172A] dark:text-[#F8FAFC] mb-2">Generate New Timetable</h2>
+          <p className="text-xs text-[#64748B] dark:text-[#94A3B8] leading-relaxed mb-6 max-w-[260px]">
             Create a new timetable using the wizard. Configure school settings, select teachers, set weekly requirements and generate.
           </p>
           <button

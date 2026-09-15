@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { PromotionService } from '../features/promotion/services';
+import { PromotionService } from "../features/promotion/services";
 import { PromotionPreview } from '../features/promotion/types';
 import { toast } from 'react-hot-toast';
 import {

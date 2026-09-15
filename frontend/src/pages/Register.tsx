@@ -1,231 +1,357 @@
-import React, { useState, useEffect } from 'react';
+"use client";
+
+import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from '@tanstack/react-router';
-import { GraduationCap, Lock, Mail, User, ArrowRight, ArrowLeft, CheckCircle } from 'lucide-react';
+import { Mail, Lock, User, ArrowRight, CheckCircle, Info } from 'lucide-react';
 import api from '../api';
+import schoolLogo from '../assets/school_logo.png';
+import schoolAssembly from '../assets/school-assembly.jpg';
+import { TextReveal } from '@/components/unlumen-ui/primitives/text-reveal';
+import { AnimatedThemeToggler } from '../components/ui/AnimatedThemeToggler';
+import {
+  AuthInput,
+  AuthButton,
+  PasswordToggle,
+  SegmentedControl,
+  LanguageSelector,
+} from '../components/ui/auth-primitives';
 
 const Register: React.FC = () => {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [registered, setRegistered] = useState(false);
+  const [shakeForm, setShakeForm] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<{
+    name?: string;
+    email?: string;
+    password?: string;
+    confirmPassword?: string;
+  }>({});
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const triggerShake = () => {
+    setShakeForm(true);
+    setTimeout(() => setShakeForm(false), 400);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !email.trim() || !password || !confirmPassword) {
-      toast.error('All fields are required.');
-      return;
-    }
-    
-    if (password !== confirmPassword) {
-      toast.error('Passwords do not match.');
+    const errors: typeof fieldErrors = {};
+
+    if (!name.trim()) errors.name = 'Required';
+    if (!email.trim()) errors.email = 'Required';
+    if (!password) errors.password = 'Required';
+    if (!confirmPassword) errors.confirmPassword = 'Required';
+    else if (password !== confirmPassword) errors.confirmPassword = 'Passwords don\'t match';
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      triggerShake();
+      if (errors.confirmPassword === 'Passwords don\'t match') {
+        toast.error('Passwords do not match.');
+      } else {
+        toast.error('All fields are required.');
+      }
       return;
     }
 
-    if (password.length < 6) {
-      toast.error('Password must be at least 6 characters.');
-      return;
-    }
-
+    setFieldErrors({});
     setLoading(true);
+
     try {
       const res = await api.post('/auth/register', { name, email, password });
       toast.success(res.data.message || 'Registration successful! Awaiting admin approval.');
       setRegistered(true);
       setTimeout(() => navigate({ to: '/login' }), 4000);
     } catch (err: any) {
+      triggerShake();
       toast.error(err.response?.data?.detail || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  const changeLanguage = (lng: string) => {
+    i18n.changeLanguage(lng);
+    localStorage.setItem('language', lng);
+  };
+
+  const clearError = (field: keyof typeof fieldErrors) => {
+    if (fieldErrors[field]) setFieldErrors((p) => ({ ...p, [field]: undefined }));
+  };
+
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-100 p-4 font-body">
-      
-      {/* Background decorative elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-200/30 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-indigo-200/20 rounded-full blur-3xl" />
-      </div>
+    <div
+      className="relative flex min-h-screen w-full items-center justify-center p-4 sm:p-6 lg:p-10 transition-colors duration-300"
+      style={{ backgroundColor: 'var(--bg-color)' }}
+    >
+      {/* ── Outer Card ── */}
+      <div
+        className="relative z-10 w-full max-w-[1060px] overflow-hidden rounded-[22px] border transition-all duration-300"
+        style={{
+          backgroundColor: 'var(--surface-color)',
+          borderColor: 'var(--border-color)',
+          boxShadow: '0 16px 48px -12px rgba(0,0,0,0.08), 0 4px 12px -2px rgba(0,0,0,0.04)',
+        }}
+      >
+        <div className="flex flex-col lg:flex-row min-h-[600px]">
 
-      {/* Main Card */}
-      <div className={`relative w-full max-w-5xl transition-all duration-1000 ease-out ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-        <div className="flex flex-col lg:flex-row overflow-hidden rounded-3xl bg-white shadow-2xl shadow-slate-200/50 ring-1 ring-slate-200/50">
-          
-          {/* Left Panel - Branding */}
-          <div className="relative lg:w-5/12 bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 p-10 lg:p-14 flex flex-col justify-between min-h-[300px] lg:min-h-[500px]">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl" />
-            <div className="absolute bottom-0 left-0 w-40 h-40 bg-blue-500/10 rounded-full blur-2xl" />
-            
-            <div className="relative z-10">
-              <div className="flex items-center gap-3 mb-10">
-                <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-sm flex items-center justify-center border border-white/10">
-                  <GraduationCap className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-white font-bold text-xl tracking-tight">Amarkor</h1>
-                  <p className="text-blue-300/70 text-[10px] font-medium tracking-widest uppercase">Vidyalaya</p>
-                </div>
+          {/* ════════════════════════════════════════════
+              LEFT IMAGE PANEL
+             ════════════════════════════════════════════ */}
+          <div className="relative hidden lg:flex flex-col justify-between overflow-hidden lg:w-[50%] p-10 text-white">
+            {/* Background image + cinematic gradient */}
+            <div className="absolute inset-0">
+              <img
+                src={schoolAssembly}
+                alt=""
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-b from-slate-900/60 via-slate-900/40 to-slate-900/85" />
+              <div className="absolute inset-0" style={{ boxShadow: 'inset 0 0 80px rgba(0,0,0,0.4)' }} />
+            </div>
+
+            {/* Header Brand */}
+            <div className="relative z-10 flex items-center gap-3.5 auth-enter auth-enter-d1">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/15 bg-white/10 p-1.5 backdrop-blur-md">
+                <img src={schoolLogo} alt="Amarkor Vidyalaya" className="h-full w-full object-contain" />
               </div>
-
-              <h2 className="text-3xl lg:text-4xl font-bold text-white leading-tight">
-                Join Our Team
-              </h2>
-              <p className="mt-3 text-blue-200/80 text-sm max-w-xs leading-relaxed">
-                Register to become a teacher at Amarkor Vidyalaya. Your account will be reviewed by an admin.
-              </p>
-
-              <div className="mt-8 space-y-3">
-                {['✅ Quick Registration', '⏳ Admin Approval Process', '🔐 Secure Access'].map((feature, i) => (
-                  <div key={i} className="flex items-center gap-3 text-blue-200/70 text-sm">
-                    <span className="text-blue-400">{feature}</span>
-                  </div>
-                ))}
+              <div>
+                <h2 className="text-lg font-bold tracking-tight text-white" style={{ fontFamily: 'var(--font-heading)' }}>
+                  Amarkor Vidyalaya
+                </h2>
+                <p className="text-[11px] font-medium text-slate-300/75 tracking-wide">Bhandup West · Est. School</p>
               </div>
             </div>
 
-            <p className="relative z-10 text-blue-300/50 text-xs mt-8">
-              © 2026 Amarkor Vidyalaya, Bhandup West
-            </p>
+            {/* Center Content */}
+            <div className="relative z-10 my-auto py-8">
+              <TextReveal
+                text="Join Your School Community"
+                as="h1"
+                splitBy="words"
+                staggerDelay={0.05}
+                duration={0.5}
+                once={true}
+                className="text-[2.25rem] font-bold tracking-tight text-white leading-[1.15]"
+                style={{ fontFamily: 'var(--font-heading)' }}
+              />
+
+              <TextReveal
+                text="Create your account and stay connected with everything your school has to offer."
+                as="p"
+                splitBy="words"
+                staggerDelay={0.03}
+                duration={0.5}
+                once={true}
+                className="mt-3.5 text-[15px] font-medium text-slate-200/85 leading-relaxed max-w-[380px]"
+              />
+            </div>
+
+            {/* Footer */}
+            <div className="relative z-10 flex items-center justify-between border-t border-white/10 pt-4 text-[11px] text-slate-300/60 font-medium auth-enter auth-enter-d3">
+              <p>© 2026 Amarkor Vidyalaya</p>
+              <p className="tracking-wide">ज्ञान संस्कार चारित्र्य</p>
+            </div>
           </div>
 
-          {/* Right Panel - Registration Form */}
-          <div className="flex-1 p-8 lg:p-12">
-            <div className="max-w-sm mx-auto">
-              {/* Header */}
-              <div className="mb-8">
-                <button
-                  onClick={() => navigate({ to: '/login' })}
-                  className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700 transition-colors mb-4"
+          {/* ════════════════════════════════════════════
+              MOBILE IMAGE BANNER
+             ════════════════════════════════════════════ */}
+          <div className="relative lg:hidden h-44 overflow-hidden">
+            <img src={schoolAssembly} alt="" className="absolute inset-0 w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-b from-slate-900/50 to-slate-900/80" />
+            <div className="relative z-10 flex h-full flex-col justify-end p-5">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/15 bg-white/10 p-1 backdrop-blur-md">
+                  <img src={schoolLogo} alt="Amarkor Vidyalaya" className="h-full w-full object-contain" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold tracking-tight text-white" style={{ fontFamily: 'var(--font-heading)' }}>
+                    Amarkor Vidyalaya
+                  </h2>
+                  <p className="text-[10px] font-medium text-slate-300/70">Bhandup West · Est. School</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ════════════════════════════════════════════
+              RIGHT FORM PANEL
+             ════════════════════════════════════════════ */}
+          <div
+            className="flex flex-1 flex-col justify-between p-6 sm:p-8 lg:p-10"
+            style={{ backgroundColor: 'var(--surface-color)' }}
+          >
+            {/* ── Top Controls ── */}
+            <div className="flex items-center justify-between gap-3 auth-enter auth-enter-d1">
+              <SegmentedControl
+                active="register"
+                onSwitch={(tab) => {
+                  if (tab === 'login') navigate({ to: '/login' });
+                }}
+              />
+
+              <div className="flex items-center gap-2">
+                <LanguageSelector currentLang={i18n.language} onChange={changeLanguage} />
+                <AnimatedThemeToggler size="sm" variant="circle" />
+              </div>
+            </div>
+
+            {/* ── Form Area ── */}
+            <div className={`mx-auto my-auto w-full max-w-[360px] py-5 ${shakeForm ? 'animate-shake' : ''}`}>
+              {/* Heading */}
+              <div className="mb-5 auth-enter auth-enter-d2">
+                <h2
+                  className="text-[22px] font-bold tracking-tight"
+                  style={{ color: 'var(--text-color)', fontFamily: 'var(--font-heading)' }}
                 >
-                  <ArrowLeft className="w-4 h-4" /> Back to Login
-                </button>
-                <h2 className="text-2xl font-bold text-slate-900">Create Account</h2>
-                <p className="text-sm text-slate-500 mt-1">
-                  Already have an account?{' '}
-                  <button
-                    onClick={() => navigate({ to: '/login' })}
-                    className="font-semibold text-blue-600 hover:text-blue-800 transition-colors"
-                  >
-                    Sign in
-                  </button>
+                  Create Account
+                </h2>
+                <p className="mt-1 text-[13px]" style={{ color: 'var(--secondary-text)' }}>
+                  Join the Amarkor Vidyalaya community
                 </p>
               </div>
 
-              {/* Success Message */}
               {registered ? (
-                <div className="text-center py-8">
-                  <div className="w-16 h-16 mx-auto rounded-full bg-emerald-100 flex items-center justify-center mb-4">
-                    <CheckCircle className="w-8 h-8 text-emerald-600" />
+                /* ── Success State ── */
+                <div className="text-center py-8 auth-enter auth-enter-d3">
+                  <div
+                    className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full"
+                    style={{ backgroundColor: 'color-mix(in srgb, var(--primary-color) 12%, transparent)' }}
+                  >
+                    <CheckCircle className="h-7 w-7" style={{ color: 'var(--primary-color)' }} />
                   </div>
-                  <h3 className="text-xl font-bold text-slate-900">Registration Complete!</h3>
-                  <p className="text-sm text-slate-500 mt-2">
-                    Your account is pending admin approval.
-                    You will be notified once approved.
+                  <h3
+                    className="text-lg font-bold"
+                    style={{ color: 'var(--text-color)', fontFamily: 'var(--font-heading)' }}
+                  >
+                    Registration Submitted!
+                  </h3>
+                  <p className="mt-2 text-[13px] leading-relaxed" style={{ color: 'var(--secondary-text)' }}>
+                    Your account is currently in <strong style={{ color: 'var(--text-color)' }}>Pending</strong> status for admin review.
+                    You will be able to log in once approved.
                   </p>
-                  <p className="text-xs text-slate-400 mt-4">
-                    Redirecting to login in a moment...
+                  <p className="mt-4 text-[12px] font-semibold" style={{ color: 'var(--primary-color)' }}>
+                    Redirecting to Login page in a moment…
                   </p>
                 </div>
               ) : (
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  {/* Name Field */}
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5">Full Name</label>
-                    <div className="relative">
-                      <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <input
-                        type="text"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-sm"
-                        placeholder="John Doe"
-                      />
-                    </div>
+                /* ── Registration Form ── */
+                <form onSubmit={handleSubmit} noValidate className="space-y-3.5">
+                  <div className="auth-enter auth-enter-d3">
+                    <AuthInput
+                      id="name"
+                      label="Full Name"
+                      type="text"
+                      value={name}
+                      onChange={(v) => { setName(v); clearError('name'); }}
+                      autoComplete="name"
+                      icon={<User size={15} />}
+                      error={fieldErrors.name}
+                    />
                   </div>
 
-                  {/* Email Field */}
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5">Email Address</label>
-                    <div className="relative">
-                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-sm"
-                        placeholder="john@school.com"
-                      />
-                    </div>
+                  <div className="auth-enter auth-enter-d4">
+                    <AuthInput
+                      id="email"
+                      label="Email Address"
+                      type="email"
+                      value={email}
+                      onChange={(v) => { setEmail(v); clearError('email'); }}
+                      autoComplete="email"
+                      icon={<Mail size={15} />}
+                      error={fieldErrors.email}
+                    />
                   </div>
 
-                  {/* Password Field */}
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5">Password</label>
-                    <div className="relative">
-                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <input
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-sm"
-                        placeholder="Min 6 characters"
-                      />
-                    </div>
+                  <div className="auth-enter auth-enter-d5">
+                    <AuthInput
+                      id="password"
+                      label="Password"
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(v) => { setPassword(v); clearError('password'); }}
+                      autoComplete="new-password"
+                      icon={<Lock size={15} />}
+                      error={fieldErrors.password}
+                      rightSlot={
+                        <PasswordToggle
+                          visible={showPassword}
+                          onToggle={() => setShowPassword((s) => !s)}
+                        />
+                      }
+                    />
                   </div>
 
-                  {/* Confirm Password Field */}
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5">Confirm Password</label>
-                    <div className="relative">
-                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <input
-                        type="password"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-sm"
-                        placeholder="Re-enter password"
-                      />
-                    </div>
+                  <div className="auth-enter auth-enter-d6">
+                    <AuthInput
+                      id="confirmPassword"
+                      label="Confirm Password"
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={confirmPassword}
+                      onChange={(v) => { setConfirmPassword(v); clearError('confirmPassword'); }}
+                      autoComplete="new-password"
+                      icon={<Lock size={15} />}
+                      error={fieldErrors.confirmPassword}
+                      rightSlot={
+                        <PasswordToggle
+                          visible={showConfirmPassword}
+                          onToggle={() => setShowConfirmPassword((s) => !s)}
+                        />
+                      }
+                    />
                   </div>
 
-                  {/* Info Box */}
-                  <div className="rounded-xl bg-amber-50 border border-amber-200 p-3.5">
-                    <p className="text-xs text-amber-800 leading-relaxed">
-                      <strong>ℹ️ Note:</strong> After registration, your account will be in <strong>Pending</strong> status.
-                      An admin must approve it before you can log in.
-                    </p>
-                  </div>
-
-                  {/* Submit Button */}
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  {/* Info notice */}
+                  <div
+                    className="flex items-start gap-2.5 rounded-xl border p-3 text-[12px] leading-relaxed auth-enter auth-enter-d7"
+                    style={{
+                      backgroundColor: 'color-mix(in srgb, var(--primary-color) 6%, var(--input-bg))',
+                      borderColor: 'color-mix(in srgb, var(--primary-color) 15%, var(--border-color))',
+                      color: 'var(--primary-color)',
+                    }}
                   >
-                    {loading ? (
-                      <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                    ) : (
-                      <>
-                        Register
-                        <ArrowRight className="w-4 h-4" />
-                      </>
-                    )}
-                  </button>
+                    <Info size={15} className="mt-0.5 shrink-0 opacity-80" />
+                    <span>Your account requires admin review before full login access is granted.</span>
+                  </div>
+
+                  {/* Submit */}
+                  <div className="pt-1 auth-enter auth-enter-d8">
+                    <AuthButton loading={loading} loadingText="Registering…">
+                      <span>Register Account</span>
+                      <ArrowRight size={15} className="transition-transform duration-200 group-hover:translate-x-1" />
+                    </AuthButton>
+                  </div>
                 </form>
               )}
+
+              {/* Sign In link */}
+              <div className="mt-5 text-center text-[12.5px] auth-enter auth-enter-d8" style={{ color: 'var(--secondary-text)' }}>
+                Already have an account?{' '}
+                <button
+                  type="button"
+                  onClick={() => navigate({ to: '/login' })}
+                  className="font-semibold underline-offset-2 hover:underline"
+                  style={{ color: 'var(--primary-color)' }}
+                >
+                  Sign In
+                </button>
+              </div>
+            </div>
+
+            {/* ── Footer ── */}
+            <div className="text-center text-[11px] font-medium auth-enter auth-enter-d8" style={{ color: 'var(--secondary-text)' }}>
+              © 2026 Amarkor Vidyalaya · School Management Portal
             </div>
           </div>
         </div>
