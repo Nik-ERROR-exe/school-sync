@@ -20,6 +20,7 @@ import {
   UsersRound,
   CalendarCheck,
   BookCheck,
+  Settings,
 } from 'lucide-react';
 
 const Sidebar: React.FC = () => {
@@ -124,6 +125,13 @@ const Sidebar: React.FC = () => {
       to: '/admin/class-subject-mapping',
       label: 'Class-Subject',
       icon: Layers,
+      roles: ['ADMIN'],
+      badge: null,
+    },
+    {
+      to: '/admin/subject-max-marks',
+      label: 'Max Marks Config',
+      icon: Settings,
       roles: ['ADMIN'],
       badge: null,
     },
