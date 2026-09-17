@@ -1,10 +1,11 @@
+import asyncio
 import io
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
-from sqlalchemy import cast, Integer
+from sqlalchemy import cast, Integer, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from app.database import get_db
 from app.api.deps import require_admin
@@ -39,34 +40,40 @@ def _clean_cell(v) -> str:
 
 
 @router.get("/", response_model=List[StudentResponse])
-def list_students(
+async def list_students(
     class_id: Optional[int] = None,
     search: Optional[str] = None,
     current_admin: Teacher = Depends(require_admin),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    query = db.query(Student)
+    """List students filtered by class or search query asynchronously."""
+    stmt = select(Student)
     if class_id:
-        query = query.filter(Student.class_id == class_id)
+        stmt = stmt.where(Student.class_id == class_id)
     if search:
-        query = query.filter(
+        stmt = stmt.where(
             Student.name.ilike(f"%{search}%") | Student.roll_no.ilike(f"%{search}%")
         )
-    return query.order_by(cast(Student.roll_no, Integer)).all()
+    stmt = stmt.order_by(cast(Student.roll_no, Integer))
+    res = await db.execute(stmt)
+    return list(res.scalars().all())
 
 
 @router.post("/", response_model=StudentResponse, status_code=status.HTTP_201_CREATED)
-def create_student(
+async def create_student(
     data: StudentCreate,
     current_admin: Teacher = Depends(require_admin),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
+    """Create a new student record asynchronously."""
     # Check if roll_no already exists in the SAME class
-    existing = db.query(Student).filter(
-        Student.roll_no == data.roll_no,
-        Student.class_id == data.class_id
-    ).first()
-    if existing:
+    existing_res = await db.execute(
+        select(Student).where(
+            Student.roll_no == data.roll_no,
+            Student.class_id == data.class_id
+        )
+    )
+    if existing_res.scalars().first():
         raise HTTPException(
             status_code=400, 
             detail=f"Roll number {data.roll_no} already exists in this class"
@@ -78,21 +85,21 @@ def create_student(
         class_id=data.class_id,
     )
     db.add(new_student)
-    db.commit()
-    db.refresh(new_student)
+    await db.commit()
+    await db.refresh(new_student)
     return new_student
 
 
 @router.post("/upload", response_model=StudentBulkUploadResponse)
-def bulk_upload_students(
+async def bulk_upload_students(
     file: UploadFile = File(...),
     default_class_id: Optional[int] = Form(None),
     current_admin: Teacher = Depends(require_admin),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    # Read with a hard byte cap so an oversized / decompression-bomb file is
-    # rejected BEFORE it is parsed into memory.
-    content = file.file.read(MAX_UPLOAD_BYTES + 1)
+    """Upload and parse Excel/CSV student list asynchronously."""
+    # Read with a hard byte cap so an oversized file is rejected early
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
@@ -102,7 +109,7 @@ def bulk_upload_students(
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
     try:
-        header_map, rows = parse_student_file(file.filename or "", content)
+        header_map, rows = await asyncio.to_thread(parse_student_file, file.filename or "", content)
     except InvalidFileError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -122,18 +129,18 @@ def bulk_upload_students(
     # Resolve default class (fallback target for rows without Class/Division).
     default_class = None
     if default_class_id is not None:
-        default_class = db.query(SchoolClass).filter(
-            SchoolClass.id == default_class_id
-        ).first()
+        c_res = await db.execute(select(SchoolClass).where(SchoolClass.id == default_class_id))
+        default_class = c_res.scalars().first()
         if default_class is None:
             raise HTTPException(
                 status_code=400, detail="Selected default class does not exist."
             )
 
     # Class lookup by (class_name, division), case-insensitive.
+    classes_res = await db.execute(select(SchoolClass))
     class_lookup = {
         (c.class_name.strip().lower(), c.division.strip().lower()): c.id
-        for c in db.query(SchoolClass).all()
+        for c in classes_res.scalars().all()
     }
 
     # Phase 1: validate + resolve class_id per row.
@@ -187,12 +194,10 @@ def bulk_upload_students(
     class_ids = {cid for _, _, _, cid in pending}
     existing_pairs = set()
     if class_ids:
-        existing_pairs = {
-            (cid, rno)
-            for cid, rno in db.query(Student.class_id, Student.roll_no)
-            .filter(Student.class_id.in_(class_ids))
-            .all()
-        }
+        pairs_res = await db.execute(
+            select(Student.class_id, Student.roll_no).where(Student.class_id.in_(class_ids))
+        )
+        existing_pairs = set(pairs_res.all())
 
     # Phase 3: duplicate detection (in-file first, then DB) + build insert list.
     seen_first = {}  # (class_id, roll_no) -> first row number
@@ -230,9 +235,9 @@ def bulk_upload_students(
     if to_insert:
         db.add_all(to_insert)
         try:
-            db.commit()
+            await db.commit()
         except IntegrityError:
-            db.rollback()
+            await db.rollback()
             raise HTTPException(
                 status_code=409,
                 detail="A roll number conflicts with an existing student "
@@ -248,8 +253,9 @@ def bulk_upload_students(
 
 
 @router.get("/template")
-def download_student_template(current_admin: Teacher = Depends(require_admin)):
-    data = generate_student_template()
+async def download_student_template(current_admin: Teacher = Depends(require_admin)):
+    """Generate and download the student Excel upload template."""
+    data = await asyncio.to_thread(generate_student_template)
     return StreamingResponse(
         io.BytesIO(data),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -260,24 +266,28 @@ def download_student_template(current_admin: Teacher = Depends(require_admin)):
 
 
 @router.put("/{id}", response_model=StudentResponse)
-def update_student(
+async def update_student(
     id: int,
     data: StudentUpdate,
     current_admin: Teacher = Depends(require_admin),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    student = db.query(Student).filter(Student.id == id).first()
+    """Update student record asynchronously."""
+    s_res = await db.execute(select(Student).where(Student.id == id))
+    student = s_res.scalars().first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     
     if data.roll_no:
         # Check if roll_no already exists in the SAME class (excluding current student)
-        existing = db.query(Student).filter(
-            Student.roll_no == data.roll_no,
-            Student.class_id == student.class_id,
-            Student.id != id
-        ).first()
-        if existing:
+        chk = await db.execute(
+            select(Student).where(
+                Student.roll_no == data.roll_no,
+                Student.class_id == student.class_id,
+                Student.id != id
+            )
+        )
+        if chk.scalars().first():
             raise HTTPException(
                 status_code=400, 
                 detail=f"Roll number {data.roll_no} already exists in this class"
@@ -292,33 +302,37 @@ def update_student(
         new_class_id = data.class_id
         roll_no_to_check = data.roll_no if data.roll_no else student.roll_no
         
-        existing = db.query(Student).filter(
-            Student.roll_no == roll_no_to_check,
-            Student.class_id == new_class_id,
-            Student.id != id
-        ).first()
-        if existing:
+        chk = await db.execute(
+            select(Student).where(
+                Student.roll_no == roll_no_to_check,
+                Student.class_id == new_class_id,
+                Student.id != id
+            )
+        )
+        if chk.scalars().first():
             raise HTTPException(
                 status_code=400, 
                 detail=f"Roll number {roll_no_to_check} already exists in the new class"
             )
         student.class_id = data.class_id
 
-    db.commit()
-    db.refresh(student)
+    await db.commit()
+    await db.refresh(student)
     return student
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_student(
+async def delete_student(
     id: int,
     current_admin: Teacher = Depends(require_admin),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    student = db.query(Student).filter(Student.id == id).first()
+    """Delete student record asynchronously."""
+    s_res = await db.execute(select(Student).where(Student.id == id))
+    student = s_res.scalars().first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
 
-    db.delete(student)
-    db.commit()
+    await db.delete(student)
+    await db.commit()
     return None
