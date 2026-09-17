@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, status, HTTPException
-from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete
 from typing import List
 from app.database import get_db
 from app.api.deps import require_admin
@@ -19,12 +19,16 @@ router = APIRouter(
     dependencies=[Depends(require_admin)]
 )
 
-# ----------------------- Existing endpoints unchanged -----------------------
+
 @router.post("/", response_model=TeacherResponse, status_code=status.HTTP_201_CREATED)
-def create_teacher(data: TeacherCreate, db: Session = Depends(get_db)):
-    existing = db.query(Teacher).filter(
-        (Teacher.teacher_id == data.teacher_id) | (Teacher.email == data.email)
-    ).first()
+async def create_teacher(data: TeacherCreate, db: AsyncSession = Depends(get_db)):
+    """Create a new teacher asynchronously."""
+    result = await db.execute(
+        select(Teacher).where(
+            (Teacher.teacher_id == data.teacher_id) | (Teacher.email == data.email)
+        )
+    )
+    existing = result.scalars().first()
     if existing:
         raise ConflictException("A teacher with this Email or Teacher ID already exists.")
     
@@ -38,27 +42,39 @@ def create_teacher(data: TeacherCreate, db: Session = Depends(get_db)):
         max_lectures_per_day=data.max_lectures_per_day
     )
     db.add(db_teacher)
-    db.commit()
-    db.refresh(db_teacher)
+    await db.commit()
+    await db.refresh(db_teacher)
     return db_teacher
 
+
 @router.get("/pending", response_model=List[TeacherResponse])
-def list_pending_teachers(db: Session = Depends(get_db)):
-    teachers = db.query(Teacher).filter(Teacher.status == "PENDING").order_by(Teacher.name).all()
-    return teachers
+async def list_pending_teachers(db: AsyncSession = Depends(get_db)):
+    """List pending teacher approvals asynchronously."""
+    result = await db.execute(
+        select(Teacher).where(Teacher.status == "PENDING").order_by(Teacher.name)
+    )
+    return list(result.scalars().all())
+
 
 @router.put("/{id}/approve", response_model=TeacherResponse)
-def approve_teacher(id: int, db: Session = Depends(get_db)):
-    teacher = db.query(Teacher).filter(Teacher.id == id, Teacher.status == "PENDING").first()
+async def approve_teacher(id: int, db: AsyncSession = Depends(get_db)):
+    """Approve a pending teacher registration."""
+    res = await db.execute(
+        select(Teacher).where(Teacher.id == id, Teacher.status == "PENDING")
+    )
+    teacher = res.scalars().first()
     if not teacher:
         raise ResourceNotFoundException("Pending Teacher", str(id))
     
-    existing_ids = db.query(Teacher.teacher_id).filter(Teacher.teacher_id.like("T%")).all()
+    id_res = await db.execute(
+        select(Teacher.teacher_id).where(Teacher.teacher_id.like("T%"))
+    )
+    existing_ids = id_res.scalars().all()
     max_num = 0
     for tid in existing_ids:
-        if tid[0]:
+        if tid:
             try:
-                num = int(tid[0][1:])
+                num = int(tid[1:])
                 if num > max_num:
                     max_num = num
             except ValueError:
@@ -68,61 +84,82 @@ def approve_teacher(id: int, db: Session = Depends(get_db)):
     
     teacher.teacher_id = new_teacher_id
     teacher.status = "ACTIVE"
-    db.commit()
-    db.refresh(teacher)
+    await db.commit()
+    await db.refresh(teacher)
     return teacher
 
+
 @router.put("/{id}/reject", response_model=TeacherResponse)
-def reject_teacher(id: int, db: Session = Depends(get_db)):
-    teacher = db.query(Teacher).filter(Teacher.id == id, Teacher.status == "PENDING").first()
+async def reject_teacher(id: int, db: AsyncSession = Depends(get_db)):
+    """Reject a pending teacher registration."""
+    res = await db.execute(
+        select(Teacher).where(Teacher.id == id, Teacher.status == "PENDING")
+    )
+    teacher = res.scalars().first()
     if not teacher:
         raise ResourceNotFoundException("Pending Teacher", str(id))
     teacher.status = "INACTIVE"
-    db.commit()
-    db.refresh(teacher)
+    await db.commit()
+    await db.refresh(teacher)
     return teacher
 
+
 @router.put("/{id}/activate", response_model=TeacherResponse)
-def activate_teacher(id: int, db: Session = Depends(get_db)):
-    teacher = db.query(Teacher).filter(Teacher.id == id).first()
+async def activate_teacher(id: int, db: AsyncSession = Depends(get_db)):
+    """Activate an inactive teacher."""
+    res = await db.execute(select(Teacher).where(Teacher.id == id))
+    teacher = res.scalars().first()
     if not teacher:
         raise ResourceNotFoundException("Teacher", str(id))
     teacher.status = "ACTIVE"
-    db.commit()
-    db.refresh(teacher)
+    await db.commit()
+    await db.refresh(teacher)
     return teacher
 
+
 @router.put("/{id}/deactivate", response_model=TeacherResponse)
-def deactivate_teacher(id: int, db: Session = Depends(get_db)):
-    teacher = db.query(Teacher).filter(Teacher.id == id).first()
+async def deactivate_teacher(id: int, db: AsyncSession = Depends(get_db)):
+    """Deactivate an active teacher."""
+    res = await db.execute(select(Teacher).where(Teacher.id == id))
+    teacher = res.scalars().first()
     if not teacher:
         raise ResourceNotFoundException("Teacher", str(id))
     teacher.status = "INACTIVE"
-    db.commit()
-    db.refresh(teacher)
+    await db.commit()
+    await db.refresh(teacher)
     return teacher
 
+
 @router.get("/", response_model=List[TeacherResponse])
-def list_teachers(db: Session = Depends(get_db)):
-    teachers = db.query(Teacher).order_by(Teacher.name).all()
-    return teachers
+async def list_teachers(db: AsyncSession = Depends(get_db)):
+    """List all teachers ordered by name."""
+    res = await db.execute(select(Teacher).order_by(Teacher.name))
+    return list(res.scalars().all())
+
 
 @router.get("/{id}", response_model=TeacherResponse)
-def get_teacher(id: int, db: Session = Depends(get_db)):
-    teacher = db.query(Teacher).filter(Teacher.id == id).first()
+async def get_teacher(id: int, db: AsyncSession = Depends(get_db)):
+    """Get teacher details by ID."""
+    res = await db.execute(select(Teacher).where(Teacher.id == id))
+    teacher = res.scalars().first()
     if not teacher:
         raise ResourceNotFoundException("Teacher", str(id))
     return teacher
 
+
 @router.put("/{id}", response_model=TeacherResponse)
-def update_teacher(id: int, data: TeacherUpdate, db: Session = Depends(get_db)):
-    teacher = db.query(Teacher).filter(Teacher.id == id).first()
+async def update_teacher(id: int, data: TeacherUpdate, db: AsyncSession = Depends(get_db)):
+    """Update teacher details."""
+    res = await db.execute(select(Teacher).where(Teacher.id == id))
+    teacher = res.scalars().first()
     if not teacher:
         raise ResourceNotFoundException("Teacher", str(id))
     
     if data.email:
-        email_check = db.query(Teacher).filter(Teacher.email == data.email, Teacher.id != id).first()
-        if email_check:
+        chk = await db.execute(
+            select(Teacher).where(Teacher.email == data.email, Teacher.id != id)
+        )
+        if chk.scalars().first():
             raise ConflictException("Email already in use")
         teacher.email = data.email
     if data.name:
@@ -136,42 +173,49 @@ def update_teacher(id: int, data: TeacherUpdate, db: Session = Depends(get_db)):
     if data.max_lectures_per_day is not None:
         teacher.max_lectures_per_day = data.max_lectures_per_day
     
-    db.commit()
-    db.refresh(teacher)
+    await db.commit()
+    await db.refresh(teacher)
     return teacher
 
+
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_teacher(id: int, db: Session = Depends(get_db)):
-    teacher = db.query(Teacher).filter(Teacher.id == id).first()
+async def delete_teacher(id: int, db: AsyncSession = Depends(get_db)):
+    """Delete a teacher by ID."""
+    res = await db.execute(select(Teacher).where(Teacher.id == id))
+    teacher = res.scalars().first()
     if not teacher:
         raise ResourceNotFoundException("Teacher", str(id))
-    db.delete(teacher)
-    db.commit()
+    await db.delete(teacher)
+    await db.commit()
     return None
 
-# ---------- Three‑Way Class‑Subject Management (replaces the dropped teacher_subjects) ----------
+
+# ---------- Three-Way Class-Subject Management ----------
 @router.get("/{teacher_id}/class-subjects", response_model=List[TeacherClassSubjectResponse])
-def get_teacher_class_subjects(teacher_id: int, db: Session = Depends(get_db)):
-    teacher = db.query(Teacher).filter(Teacher.id == teacher_id).first()
+async def get_teacher_class_subjects(teacher_id: int, db: AsyncSession = Depends(get_db)):
+    """Get three-way class-subject mappings for a teacher."""
+    res = await db.execute(select(Teacher).where(Teacher.id == teacher_id))
+    teacher = res.scalars().first()
     if not teacher:
         raise ResourceNotFoundException("Teacher", str(teacher_id))
 
     try:
-        rows = (
-            db.query(TeacherClassSubject, SchoolClass, Subject)
+        stmt = (
+            select(TeacherClassSubject, SchoolClass, Subject)
             .join(SchoolClass, TeacherClassSubject.class_id == SchoolClass.id)
             .join(Subject, TeacherClassSubject.subject_id == Subject.id)
-            .filter(TeacherClassSubject.teacher_id == teacher_id)
-            .all()
+            .where(TeacherClassSubject.teacher_id == teacher_id)
         )
+        rows = (await db.execute(stmt)).all()
     except Exception:
-        # Fallback: if joins fail (orphaned rows), query without joins
-        db.rollback()
-        tcs_rows = db.query(TeacherClassSubject).filter(TeacherClassSubject.teacher_id == teacher_id).all()
+        await db.rollback()
+        tcs_rows = (await db.execute(
+            select(TeacherClassSubject).where(TeacherClassSubject.teacher_id == teacher_id)
+        )).scalars().all()
         results = []
         for tcs in tcs_rows:
-            sc = db.query(SchoolClass).filter(SchoolClass.id == tcs.class_id).first()
-            sub = db.query(Subject).filter(Subject.id == tcs.subject_id).first()
+            sc = (await db.execute(select(SchoolClass).where(SchoolClass.id == tcs.class_id))).scalars().first()
+            sub = (await db.execute(select(Subject).where(Subject.id == tcs.subject_id))).scalars().first()
             if sc and sub:
                 results.append(
                     TeacherClassSubjectResponse(
@@ -203,13 +247,16 @@ def get_teacher_class_subjects(teacher_id: int, db: Session = Depends(get_db)):
         )
     return results
 
+
 @router.post("/{teacher_id}/class-subjects", response_model=List[TeacherClassSubjectResponse])
-def set_teacher_class_subjects(
+async def set_teacher_class_subjects(
     teacher_id: int,
     body: TeacherClassSubjectBatchCreate,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    teacher = db.query(Teacher).filter(Teacher.id == teacher_id).first()
+    """Replace all three-way class-subject assignments for a teacher."""
+    res = await db.execute(select(Teacher).where(Teacher.id == teacher_id))
+    teacher = res.scalars().first()
     if not teacher:
         raise ResourceNotFoundException("Teacher", str(teacher_id))
 
@@ -223,19 +270,19 @@ def set_teacher_class_subjects(
 
     # Validate existence of classes and subjects
     if class_ids:
-        found_classes = set(db.scalars(select(SchoolClass.id).where(SchoolClass.id.in_(class_ids))).all())
+        found_classes = set((await db.scalars(select(SchoolClass.id).where(SchoolClass.id.in_(class_ids)))).all())
         missing_classes = class_ids - found_classes
         if missing_classes:
             raise HTTPException(status_code=400, detail=f"Class IDs not found: {list(missing_classes)}")
 
     if subject_ids:
-        found_subjects = set(db.scalars(select(Subject.id).where(Subject.id.in_(subject_ids))).all())
+        found_subjects = set((await db.scalars(select(Subject.id).where(Subject.id.in_(subject_ids)))).all())
         missing_subjects = subject_ids - found_subjects
         if missing_subjects:
             raise HTTPException(status_code=400, detail=f"Subject IDs not found: {list(missing_subjects)}")
 
-    # Replace all three‑way assignments for this teacher
-    db.query(TeacherClassSubject).filter(TeacherClassSubject.teacher_id == teacher_id).delete()
+    # Replace all three-way assignments for this teacher
+    await db.execute(delete(TeacherClassSubject).where(TeacherClassSubject.teacher_id == teacher_id))
     for item in unique.values():
         db.add(TeacherClassSubject(
             teacher_id=teacher_id,
@@ -243,7 +290,7 @@ def set_teacher_class_subjects(
             subject_id=item.subject_id
         ))
 
-    db.commit()
+    await db.commit()
 
     # Return the fresh list
-    return get_teacher_class_subjects(teacher_id, db)
+    return await get_teacher_class_subjects(teacher_id, db)
