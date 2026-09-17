@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 import json
 from app.database import get_db
@@ -18,16 +18,16 @@ router = APIRouter(
 )
 
 @router.get("/settings")
-def get_timetable_settings_public(
+async def get_timetable_settings_public(
     current_user: Teacher = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Returns the current timetable settings.
     Accessible by both admins and teachers (any logged-in user).
     Used by teachers to render their personal timetable grid correctly.
     """
-    settings = db.execute(select(TimetableSettings)).scalar_one_or_none()
+    settings = (await db.execute(select(TimetableSettings))).scalar_one_or_none()
     if not settings:
         return {
             "success": False,
