@@ -1,45 +1,49 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, cast, Integer
-from sqlalchemy.orm import Session
+from sqlalchemy import func, cast, Integer, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from app.database import get_db
 from app.api.deps import require_admin
 from app.models.teacher import Teacher
 from app.models.student import Student
 from app.models.school_class import SchoolClass
-
 from app.core.class_sorter import sort_classes_natural
+
+logger = logging.getLogger("uvicorn.error")
 
 router = APIRouter(prefix="/admin/promotion", tags=["Admin - Promotion"])
 
 @router.get("/summary")
-def get_promotion_summary(
+async def get_promotion_summary(
     current_admin: Teacher = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Return total students per standard (class), aggregated across divisions."""
-    rows = (
-        db.query(SchoolClass.class_name, func.count(Student.id))
+    stmt = (
+        select(SchoolClass.class_name, func.count(Student.id))
         .outerjoin(Student, Student.class_id == SchoolClass.id)
-        .filter(SchoolClass.class_name.isdigit())  # standards only
         .group_by(SchoolClass.class_name)
-        .all()
     )
+    res = await db.execute(stmt)
+    rows = [r for r in res.all() if r[0] and str(r[0]).isdigit()]
     rows.sort(key=lambda r: int(r[0]))  # numeric order: 1..10
     return [{"class_name": name, "total_students": count} for name, count in rows]
 
 
 @router.get("/preview")
-def get_promotion_preview(
+async def get_promotion_preview(
     current_admin: Teacher = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Get promotion preview for all students (2 queries total, no N+1)."""
-    classes = db.query(SchoolClass).all()
+    classes_res = await db.execute(select(SchoolClass))
+    classes = classes_res.scalars().all()
     class_by_id = {c.id: c for c in classes}
     class_by_key = {(c.class_name, c.division): c for c in classes}
 
-    students = db.query(Student).all()
+    students_res = await db.execute(select(Student))
+    students = students_res.scalars().all()
 
     preview = []
     for student in students:
@@ -80,9 +84,9 @@ def get_promotion_preview(
     return sort_classes_natural(preview)
 
 @router.post("/execute")
-def execute_promotion(
+async def execute_promotion(
     current_admin: Teacher = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Execute promotion for all students.
@@ -93,16 +97,18 @@ def execute_promotion(
     """
     
     # Step 1: Graduate Class 10 students (delete them)
-    class_10_ids = db.query(SchoolClass.id).filter(SchoolClass.class_name == "10").all()
-    class_10_ids = [c[0] for c in class_10_ids]
+    res_10 = await db.execute(select(SchoolClass.id).where(SchoolClass.class_name == "10"))
+    class_10_ids = res_10.scalars().all()
     
     graduated_count = 0
-    for student in db.query(Student).filter(Student.class_id.in_(class_10_ids)).all():
-        db.delete(student)
-        graduated_count += 1
+    if class_10_ids:
+        res_students_10 = await db.execute(select(Student).where(Student.class_id.in_(class_10_ids)))
+        for student in res_students_10.scalars().all():
+            await db.delete(student)
+            graduated_count += 1
     
-    db.commit()
-    print(f"✅ Graduated {graduated_count} students from Class 10")
+    await db.commit()
+    logger.info("Graduated %d students from Class 10", graduated_count)
     
     # Step 2: Promote remaining students (9→8→7→...→1)
     promoted_count = 0
@@ -110,37 +116,44 @@ def execute_promotion(
     
     # Process from highest class to lowest to avoid conflicts
     for class_num in range(9, 0, -1):
-        source_classes = db.query(SchoolClass).filter(
-            SchoolClass.class_name == str(class_num)
-        ).all()
+        source_classes_res = await db.execute(
+            select(SchoolClass).where(SchoolClass.class_name == str(class_num))
+        )
+        source_classes = source_classes_res.scalars().all()
         
         for source_class in source_classes:
             next_class_num = class_num + 1
-            next_class = db.query(SchoolClass).filter(
-                SchoolClass.class_name == str(next_class_num),
-                SchoolClass.division == source_class.division  # A→A, B→B
-            ).first()
+            next_class_res = await db.execute(
+                select(SchoolClass).where(
+                    SchoolClass.class_name == str(next_class_num),
+                    SchoolClass.division == source_class.division  # A→A, B→B
+                )
+            )
+            next_class = next_class_res.scalars().first()
             
             if not next_class:
-                print(f"⚠️ Class {next_class_num}{source_class.division} not found")
+                logger.warning("Class %d%s not found during promotion", next_class_num, source_class.division)
                 continue
             
             # Get students from source class (sorted by roll_no)
-            class_students = db.query(Student).filter(
-                Student.class_id == source_class.id
-            ).order_by(cast(Student.roll_no, Integer)).all()
+            class_students_res = await db.execute(
+                select(Student)
+                .where(Student.class_id == source_class.id)
+                .order_by(cast(Student.roll_no, Integer))
+            )
+            class_students = class_students_res.scalars().all()
             
             # Get existing roll numbers in destination class
-            existing_rolls = db.query(Student.roll_no).filter(
-                Student.class_id == next_class.id
-            ).all()
-            existing_rolls = [int(r[0]) for r in existing_rolls if r[0].isdigit()]
+            existing_rolls_res = await db.execute(
+                select(Student.roll_no).where(Student.class_id == next_class.id)
+            )
+            existing_rolls = [int(r[0]) for r in existing_rolls_res.all() if r[0] and str(r[0]).isdigit()]
             
             for student in class_students:
                 new_roll = student.roll_no
                 
                 # Check if roll_no already exists in destination class
-                if new_roll.isdigit() and int(new_roll) in existing_rolls:
+                if new_roll and str(new_roll).isdigit() and int(new_roll) in existing_rolls:
                     # Find next available roll number
                     next_available = 1
                     while next_available in existing_rolls:
@@ -148,19 +161,19 @@ def execute_promotion(
                     new_roll = str(next_available)
                     existing_rolls.append(next_available)
                     roll_updated_count += 1
-                    print(f"⚠️ Roll number changed: {student.name} ({student.roll_no} → {new_roll})")
+                    logger.info("Roll number changed: %s (%s -> %s)", student.name, student.roll_no, new_roll)
                 else:
                     # Keep original roll number
-                    if new_roll.isdigit():
+                    if new_roll and str(new_roll).isdigit():
                         existing_rolls.append(int(new_roll))
                 
                 # Move to next class with the new/updated roll number
-                student.roll_no = new_roll
+                student.roll_no = str(new_roll)
                 student.class_id = next_class.id
                 promoted_count += 1
-                print(f"✅ {student.name} (Roll: {student.roll_no}) → {next_class_num}{source_class.division}")
+                logger.info("Promoted %s (Roll: %s) -> %d%s", student.name, student.roll_no, next_class_num, source_class.division)
     
-    db.commit()
+    await db.commit()
     
     return {
         "message": "Promotion completed successfully",
