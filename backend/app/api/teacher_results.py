@@ -1,6 +1,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import joinedload
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, cast, Integer
 from typing import List
 from app.database import get_db
@@ -11,21 +12,42 @@ from app.models.result import Result
 from app.models.subject import Subject
 from app.models.teacher_class_subject import TeacherClassSubject
 from app.models.school_class import SchoolClass, class_subjects
-from app.schemas.result import ResultBatchCreate, ResultResponse
+from app.schemas.result import ResultBatchCreate, ResultResponse, ResultSubmitRequest, ResultCreate
 from app.services.result_service import create_result_batch, calculate_class_overall_results
 
 router = APIRouter(prefix="/teacher/results", tags=["Teacher - Results"])
 
+@router.post("/submit", status_code=status.HTTP_200_OK)
+async def submit_results(
+    req: ResultSubmitRequest,
+    current_user: Teacher = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Submits student results grouped by class, subject, and exam type.
+    """
+    results_data = [
+        ResultCreate(
+            student_id=m.student_id,
+            subject_id=req.subject_id,
+            exam_type_id=req.exam_type_id,
+            marks_obtained=m.marks_obtained,
+        )
+        for m in req.marks
+    ]
+    await create_result_batch(db, results_data, current_user.id)
+    return {"message": "Results submitted successfully"}
+
 @router.post("/", response_model=List[ResultResponse], status_code=status.HTTP_201_CREATED)
-def submit_student_results(
+async def submit_student_results(
     req: ResultBatchCreate,
     current_user: Teacher = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Submits or updates a batch of student exam marks. Results are initialized with 'submitted' status.
     """
-    results = create_result_batch(db, req.results, current_user.id)
+    results = await create_result_batch(db, req.results, current_user.id)
 
     # Map raw models to response list
     response_data = []
@@ -56,11 +78,11 @@ def submit_student_results(
 
 
 @router.get("/class/{class_id}/exam/{exam_type_id}")
-def get_results_by_class_and_exam(
+async def get_results_by_class_and_exam(
     class_id: int,
     exam_type_id: int,
     current_user: Teacher = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Returns results grouped by student for a given class and exam type.
@@ -69,25 +91,25 @@ def get_results_by_class_and_exam(
     Includes student overall total marks, percentage, grade, and rank.
     """
     # 1. Verify teacher teaches in this class
-    teaches_here = db.execute(
+    teaches_here = (await db.execute(
         select(TeacherClassSubject.id).where(
             TeacherClassSubject.teacher_id == current_user.id,
             TeacherClassSubject.class_id == class_id
         ).limit(1)
-    ).scalar_one_or_none()
+    )).scalar_one_or_none()
 
     if not teaches_here:
         raise HTTPException(status_code=403, detail="You are not assigned to this class.")
 
     # 2. Fetch subjects this teacher teaches in this class
-    subject_ids = db.execute(
+    subject_ids = (await db.execute(
         select(TeacherClassSubject.subject_id)
         .where(
             TeacherClassSubject.teacher_id == current_user.id,
             TeacherClassSubject.class_id == class_id
         )
         .distinct()
-    ).scalars().all()
+    )).scalars().all()
 
     if not subject_ids:
         return {"students": [], "subjects": []}
@@ -97,7 +119,7 @@ def get_results_by_class_and_exam(
         .where(Subject.id.in_(subject_ids))
         .order_by(Subject.subject_name)
     )
-    subjects = list(db.execute(subjects_stmt).scalars().all())
+    subjects = list((await db.execute(subjects_stmt)).scalars().all())
     subject_map = {s.id: s for s in subjects}
 
     # 3. Fetch existing results for this class and exam type
@@ -114,13 +136,13 @@ def get_results_by_class_and_exam(
             Result.subject_id.in_(subject_ids)
         )
     )
-    results = db.execute(results_stmt).scalars().unique().all()
+    results = (await db.execute(results_stmt)).scalars().unique().all()
 
     # Build lookup table for existing results: (student_id, subject_id) -> Result
     results_lookup = {(r.student_id, r.subject_id): r for r in results}
 
     # 4. Compute overall class summary (totals, percentage, overall grade, rank)
-    overall_summary = calculate_class_overall_results(db, class_id, exam_type_id)
+    overall_summary = await calculate_class_overall_results(db, class_id, exam_type_id)
 
     # 5. Fetch all students in this class
     students_stmt = (
@@ -128,7 +150,7 @@ def get_results_by_class_and_exam(
         .where(Student.class_id == class_id)
         .order_by(cast(Student.roll_no, Integer), Student.id)
     )
-    students = db.execute(students_stmt).scalars().all()
+    students = (await db.execute(students_stmt)).scalars().all()
 
     # 6. Construct response for each student
     students_list = []
