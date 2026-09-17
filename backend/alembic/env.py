@@ -40,6 +40,11 @@ target_metadata = Base.metadata
 # hardcode credentials in alembic.ini.
 # ---------------------------------------------------------------------------
 _db_url = settings.DATABASE_URL
+# Alembic runs migrations synchronously via engine_from_config; map async driver schemes to sync
+if "+asyncpg" in _db_url:
+    _db_url = _db_url.replace("+asyncpg", "+psycopg2")
+if "+aiosqlite" in _db_url:
+    _db_url = _db_url.replace("+aiosqlite", "")
 # Normalise SSL params for psycopg2 (same logic as database.py)
 _db_url = _db_url.replace("?ssl=require", "?sslmode=require")
 _db_url = _db_url.replace("&ssl=require", "&sslmode=require")
