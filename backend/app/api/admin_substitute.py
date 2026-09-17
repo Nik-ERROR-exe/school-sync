@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query, BackgroundTasks
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date as pydate
 from typing import List
 from app.database import get_db
@@ -36,25 +36,21 @@ router = APIRouter(
 
 
 @router.get("/", response_model=List[SubstituteAssignmentResponse])
-def list_substitute_assignments(
-    db: Session = Depends(get_db)
+async def list_substitute_assignments(
+    db: AsyncSession = Depends(get_db)
 ):
-    """Returns all substitute assignments (history log)."""
-    return get_all_assignments(db)
+    """Returns all substitute assignments (history log) asynchronously."""
+    return await get_all_assignments(db)
 
 
 @router.get("/affected-periods", response_model=List[AffectedPeriodResponse])
-def get_absent_teacher_affected_periods(
+async def get_absent_teacher_affected_periods(
     day_of_week: str = Query(..., description="Day of week (e.g. Monday)"),
     absent_teacher_id: int = Query(..., description="Database ID of the absent teacher"),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    Returns all timetable slots for the absent teacher on the given day_of_week.
-    Returns recurring slots (no specific date), excluding slots that already
-    have a substitute assignment (pending/notified/accepted) for that day/period.
-    """
-    periods = get_future_affected_periods(db, absent_teacher_id, day_of_week)
+    """Returns all timetable slots for the absent teacher on the given day_of_week asynchronously."""
+    periods = await get_future_affected_periods(db, absent_teacher_id, day_of_week)
     if not periods:
         raise ValidationException(
             f"The absent teacher has no scheduled classes on {day_of_week}, or all slots already have substitutes assigned."
@@ -63,17 +59,16 @@ def get_absent_teacher_affected_periods(
 
 
 @router.get("/available", response_model=dict)
-def get_available_substitutes(
+async def get_available_substitutes(
     date: pydate = Query(..., description="Date of the scheduled class absence"),
     period_number: int = Query(..., ge=1, description="Period slot number"),
     absent_teacher_id: int = Query(..., description="Database ID of the absent teacher"),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
+    """Checks the master schedule to determine which class is affected by the teacher's absence,
+    and returns a list of available substitute teachers for that specific period asynchronously.
     """
-    Checks the master schedule to determine which class is affected by the teacher's absence,
-    and returns a list of available substitute teachers for that specific period.
-    """
-    slot, available_teachers = find_available_substitutes(
+    slot, available_teachers = await find_available_substitutes(
         db, date, period_number, absent_teacher_id
     )
 
@@ -91,20 +86,16 @@ def get_available_substitutes(
 
 
 @router.get("/available-teachers")
-def get_available_teachers_for_future_slot(
+async def get_available_teachers_for_future_slot(
     class_id: int = Query(..., description="Class ID"),
     day_of_week: str = Query(..., description="Day of week (e.g. Monday)"),
     period: int = Query(..., ge=1, description="Period slot number"),
     subject_id: int = Query(..., description="Subject ID for expertise matching"),
     exclude_teacher_id: int = Query(..., description="Teacher ID to exclude (the absent teacher)"),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    Returns available teachers who are not already occupied in the given slot
-    (day_of_week + period), optionally ordered by expertise match.
-    Used for the future-slot substitution workflow (no specific date).
-    """
-    teachers = find_available_teachers_for_slot(
+    """Returns available teachers who are not already occupied in the given slot asynchronously."""
+    teachers = await find_available_teachers_for_slot(
         db,
         class_id=class_id,
         day_of_week=day_of_week,
@@ -122,16 +113,13 @@ def get_available_teachers_for_future_slot(
 
 
 @router.post("/", response_model=SubstituteAssignmentResponse)
-def create_substitute_assignment(
+async def create_substitute_assignment(
     req: SubstituteAssignRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    Assigns a substitute teacher for a specific date and period, leaving the original timetable intact
-    and sending an alert notification to the substitute.
-    """
-    assignment = assign_substitute(
+    """Assigns a substitute teacher for a specific date and period asynchronously."""
+    assignment = await assign_substitute(
         db=db,
         date=req.date,
         period_number=req.period_number,
@@ -161,17 +149,13 @@ def create_substitute_assignment(
 
 
 @router.post("/assign", response_model=List[SubstituteAssignmentResponse])
-def assign_future_substitutes_batch(
+async def assign_future_substitutes_batch(
     req: FutureSubstituteBatchRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    Batch-assigns substitute teachers for multiple future timetable slots.
-    Body: { original_teacher_id, assignments: [{ class_id, subject_id, day_of_week, period_number, substitute_teacher_id }] }
-    Validates no conflicts, saves to substitute_assignments, creates notifications.
-    """
-    created = assign_future_substitutes(
+    """Batch-assigns substitute teachers for multiple future timetable slots asynchronously."""
+    created = await assign_future_substitutes(
         db=db,
         original_teacher_id=req.original_teacher_id,
         assignments=req.assignments,
@@ -200,19 +184,18 @@ def assign_future_substitutes_batch(
 
 
 @router.post("/cleanup")
-def cleanup_historical_substitute_assignments(
-    db: Session = Depends(get_db)
+async def cleanup_historical_substitute_assignments(
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    Data archival routine: deletes dated substitute assignments older than the
-    current academic term start so the append-only log stays bounded.
+    """Data archival routine: deletes dated substitute assignments older than the
+    current academic term start asynchronously.
     """
     from datetime import datetime
     from app.config import settings
     from app.services.substitute_service import purge_historical_substitute_assignments
 
     cutoff = datetime.strptime(settings.ACADEMIC_TERM_START, "%Y-%m-%d").date()
-    deleted = purge_historical_substitute_assignments(db, cutoff)
+    deleted = await purge_historical_substitute_assignments(db, cutoff)
 
     return {
         "success": True,
