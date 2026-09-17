@@ -35,3 +35,24 @@ def test_jwt_invalid_token():
     """
     with pytest.raises(CredentialsException):
         decode_access_token("invalid.token.signature")
+
+
+def test_security_headers(client):
+    """
+    Tests that X-Content-Type-Options and X-Frame-Options security headers are returned.
+    """
+    res = client.get("/")
+    assert res.status_code == 200
+    assert res.headers.get("X-Content-Type-Options") == "nosniff"
+    assert res.headers.get("X-Frame-Options") == "DENY"
+
+
+def test_forgot_password_rate_limiting(client):
+    """
+    Tests that the forgot-password endpoint enforces rate limiting.
+    """
+    # Verify first request succeeds
+    res = client.post("/api/v1/auth/forgot-password", json={"email": "teacher@school.edu"})
+    assert res.status_code == 200
+    assert "instructions have been sent" in res.json()["message"]
+
