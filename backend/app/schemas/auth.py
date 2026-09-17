@@ -52,3 +52,10 @@ class RegisterRequest(BaseModel):
     name: str = Field(..., max_length=100)
     email: EmailStr
     password: str = Field(..., min_length=6)
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6)
