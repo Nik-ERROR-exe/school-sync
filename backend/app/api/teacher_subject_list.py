@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import List, Optional
 from app.database import get_db
@@ -18,16 +18,16 @@ router = APIRouter(
 
 @router.get("/")
 @router.get("")
-def list_all_subjects(
+async def list_all_subjects(
     current_user: Teacher = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Returns all subjects (read-only list).
     Teachers need this to look up subject names for their timetable grid display.
     """
     stmt = select(Subject).order_by(Subject.id)
-    result = db.execute(stmt)
+    result = await db.execute(stmt)
     subjects = result.scalars().all()
     return [
         {"id": s.id, "subject_name": s.subject_name, "code": s.code}
@@ -36,11 +36,11 @@ def list_all_subjects(
 
 
 @router.get("/by-class/{class_id}")
-def get_teacher_subjects_by_class(
+async def get_teacher_subjects_by_class(
     class_id: int,
     exam_type_id: Optional[int] = Query(None),
     current_user: Teacher = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Returns subjects taught by the current teacher in a specific class.
@@ -48,12 +48,12 @@ def get_teacher_subjects_by_class(
     Raises 403 Forbidden if teacher is not assigned to the class in TeacherClass.
     """
     # 1. Verify teacher assignment to this class
-    is_assigned_class = db.execute(
+    is_assigned_class = (await db.execute(
         select(TeacherClass.id).where(
             TeacherClass.teacher_id == current_user.id,
             TeacherClass.class_id == class_id
         ).limit(1)
-    ).scalar_one_or_none()
+    )).scalar_one_or_none()
 
     if not is_assigned_class:
         raise HTTPException(
@@ -62,34 +62,34 @@ def get_teacher_subjects_by_class(
         )
 
     # 2. Get subjects taught by teacher in this class
-    subject_ids = db.scalars(
+    subject_ids = (await db.scalars(
         select(TeacherClassSubject.subject_id).where(
             TeacherClassSubject.teacher_id == current_user.id,
             TeacherClassSubject.class_id == class_id
         )
-    ).all()
+    )).all()
 
     if not subject_ids:
         return []
 
-    subjects = db.scalars(
+    subjects = (await db.scalars(
         select(Subject)
         .where(Subject.id.in_(subject_ids))
         .order_by(Subject.subject_name)
-    ).all()
+    )).all()
 
     # 3. If exam_type_id is provided, look up max marks for this class's standard (class_name)
     max_marks_map = {}
     if exam_type_id:
-        school_class = db.get(SchoolClass, class_id)
+        school_class = await db.get(SchoolClass, class_id)
         if school_class:
-            records = db.scalars(
+            records = (await db.scalars(
                 select(SubjectMaxMarks).where(
                     SubjectMaxMarks.class_name == school_class.class_name,
                     SubjectMaxMarks.exam_type_id == exam_type_id,
                     SubjectMaxMarks.subject_id.in_(subject_ids)
                 )
-            ).all()
+            )).all()
             max_marks_map = {r.subject_id: float(r.max_marks) for r in records}
 
     response = []
@@ -113,5 +113,3 @@ def get_teacher_subjects_by_class(
             })
 
     return response
-
-
