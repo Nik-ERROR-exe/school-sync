@@ -1,7 +1,7 @@
 import json
 from fastapi import APIRouter, Depends
 from sqlalchemy.future import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.teacher import Teacher
@@ -18,16 +18,16 @@ router = APIRouter(
 )
 
 @router.get("/settings")
-def get_timetable_settings_public(
+async def get_timetable_settings_public(
     current_user: Teacher = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Returns saved timetable display settings (school days, period times, etc.).
     Accessible by any authenticated user (admin or teacher) since these are
     read-only display parameters needed to render the timetable grid.
     """
-    existing = db.execute(select(TimetableSettingsModel)).scalar_one_or_none()
+    existing = (await db.execute(select(TimetableSettingsModel))).scalar_one_or_none()
     if not existing:
         return {"success": False, "message": "No settings saved yet"}
 
