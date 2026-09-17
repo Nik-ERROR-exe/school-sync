@@ -2,7 +2,8 @@ from datetime import date as pydate, datetime
 from typing import List, Optional, Tuple, Any
 from sqlalchemy import func, or_, delete
 from sqlalchemy.future import select
-from sqlalchemy.orm import joinedload, Session
+from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.teacher import Teacher
 from app.models.timetable import TimetableSlot
 from app.models.substitute_assignment import SubstituteAssignment
@@ -19,7 +20,7 @@ from app.core.exceptions import ValidationException, ResourceNotFoundException
 from app.services.notification_service import send_notification_email
 
 
-def get_all_assignments(db: Session) -> List[SubstituteAssignmentResponse]:
+async def get_all_assignments(db: AsyncSession) -> List[SubstituteAssignmentResponse]:
     """Returns all substitute assignments ordered by date descending."""
     stmt = (
         select(SubstituteAssignment)
@@ -31,7 +32,8 @@ def get_all_assignments(db: Session) -> List[SubstituteAssignmentResponse]:
         )
         .order_by(SubstituteAssignment.date.desc(), SubstituteAssignment.period_number)
     )
-    assignments = db.execute(stmt).scalars().all()
+    result = await db.execute(stmt)
+    assignments = result.scalars().unique().all()
 
     return [
         SubstituteAssignmentResponse(
@@ -53,10 +55,11 @@ def get_all_assignments(db: Session) -> List[SubstituteAssignmentResponse]:
     ]
 
 
-def get_active_teachers(db: Session) -> List[TeacherListResponse]:
+async def get_active_teachers(db: AsyncSession) -> List[TeacherListResponse]:
     """Returns all active teachers for the absent teacher dropdown."""
     stmt = select(Teacher).where(Teacher.status == "ACTIVE").order_by(Teacher.name)
-    teachers = db.execute(stmt).scalars().all()
+    result = await db.execute(stmt)
+    teachers = result.scalars().all()
 
     return [
         TeacherListResponse(
@@ -70,8 +73,8 @@ def get_active_teachers(db: Session) -> List[TeacherListResponse]:
     ]
 
 
-def get_affected_periods(
-    db: Session,
+async def get_affected_periods(
+    db: AsyncSession,
     absent_date: pydate,
     absent_teacher_id: int
 ) -> List[AffectedPeriodResponse]:
@@ -99,19 +102,20 @@ def get_affected_periods(
         )
         .order_by(TimetableSlot.period_number)
     )
-    slots = db.execute(stmt).scalars().all()
+    result = await db.execute(stmt)
+    slots = result.scalars().all()
 
     results = []
     for slot in slots:
         # skip periods that already have a substitute assigned
-        existing = db.execute(
+        existing_result = await db.execute(
             select(SubstituteAssignment).where(
                 SubstituteAssignment.date == absent_date,
                 SubstituteAssignment.period_number == slot.period_number,
                 SubstituteAssignment.original_teacher_id == absent_teacher_id
             )
-        ).scalar_one_or_none()
-        if existing:
+        )
+        if existing_result.scalar_one_or_none():
             continue
 
         results.append(
@@ -127,8 +131,9 @@ def get_affected_periods(
 
     return results
 
-def find_available_substitutes(
-    db: Session,
+
+async def find_available_substitutes(
+    db: AsyncSession,
     absent_date: pydate,
     period_number: int,
     absent_teacher_id: int
@@ -150,7 +155,7 @@ def find_available_substitutes(
         TimetableSlot.period_number == period_number
     )
 
-    slot_res = db.execute(slot_stmt)
+    slot_res = await db.execute(slot_stmt)
     slot_to_sub = slot_res.scalar_one_or_none()
 
     if not slot_to_sub:
@@ -158,12 +163,14 @@ def find_available_substitutes(
 
     subject_id = slot_to_sub.subject_id
 
-    # 2. Query other ACTIVE teachers who can serve as candidates
-    teachers_stmt = select(Teacher).where(
+    # 2. Query other ACTIVE teachers who can serve as candidates (eagerly load subjects_expertise)
+    teachers_stmt = select(Teacher).options(
+        selectinload(Teacher.subjects_expertise)
+    ).where(
         Teacher.id != absent_teacher_id,
         Teacher.status == "ACTIVE"
     )
-    teachers_res = db.execute(teachers_stmt)
+    teachers_res = await db.execute(teachers_stmt)
     candidates = teachers_res.scalars().all()
 
     available_teachers = []
@@ -175,7 +182,7 @@ def find_available_substitutes(
             TimetableSlot.day_of_week == day_int,
             TimetableSlot.period_number == period_number
         )
-        master_slot = db.execute(master_slot_stmt).scalar_one_or_none()
+        master_slot = (await db.execute(master_slot_stmt)).scalar_one_or_none()
 
         # Check if they are already subbing in another class at this exact time
         sub_slot_stmt = select(SubstituteAssignment).where(
@@ -183,7 +190,7 @@ def find_available_substitutes(
             SubstituteAssignment.date == absent_date,
             SubstituteAssignment.period_number == period_number
         )
-        is_subbing = db.execute(sub_slot_stmt).scalar_one_or_none() is not None
+        is_subbing = (await db.execute(sub_slot_stmt)).scalar_one_or_none() is not None
 
         # If they have a timetable class OR are subbing, they are busy
         if master_slot or is_subbing:
@@ -202,21 +209,21 @@ def find_available_substitutes(
             TimetableSlot.teacher_id == candidate.id,
             TimetableSlot.day_of_week == day_int
         )
-        master_count = db.execute(master_count_stmt).scalar() or 0
+        master_count = (await db.execute(master_count_stmt)).scalar() or 0
 
         # b. Absences on this date
         absences_count_stmt = select(func.count(SubstituteAssignment.id)).where(
             SubstituteAssignment.original_teacher_id == candidate.id,
             SubstituteAssignment.date == absent_date
         )
-        absences_count = db.execute(absences_count_stmt).scalar() or 0
+        absences_count = (await db.execute(absences_count_stmt)).scalar() or 0
 
         # c. Substitutions on this date
         subs_count_stmt = select(func.count(SubstituteAssignment.id)).where(
             SubstituteAssignment.substitute_teacher_id == candidate.id,
             SubstituteAssignment.date == absent_date
         )
-        subs_count = db.execute(subs_count_stmt).scalar() or 0
+        subs_count = (await db.execute(subs_count_stmt)).scalar() or 0
 
         actual_lectures = master_count - absences_count + subs_count
 
@@ -238,8 +245,9 @@ def find_available_substitutes(
 
     return slot_to_sub, available_teachers
 
-def assign_substitute(
-    db: Session,
+
+async def assign_substitute(
+    db: AsyncSession,
     date: pydate,
     period_number: int,
     class_id: int,
@@ -250,7 +258,7 @@ def assign_substitute(
 ) -> SubstituteAssignment:
     """
     Creates a substitute assignment, writes it to the database, and fires a notification
-    to the chosen substitute teacher.
+    to the chosen substitute teacher asynchronously.
     """
     # Verify candidate is not already assigned as a sub for this period
     existing_sub_stmt = select(SubstituteAssignment).where(
@@ -258,7 +266,7 @@ def assign_substitute(
         SubstituteAssignment.period_number == period_number,
         SubstituteAssignment.substitute_teacher_id == substitute_teacher_id
     )
-    existing_sub = db.execute(existing_sub_stmt).scalar_one_or_none()
+    existing_sub = (await db.execute(existing_sub_stmt)).scalar_one_or_none()
     if existing_sub:
         raise ValidationException("The selected substitute teacher is already subbing at this period.")
 
@@ -273,7 +281,7 @@ def assign_substitute(
         status="notified"
     )
     db.add(assignment)
-    db.commit()
+    await db.commit()
 
     # Reload with details for notifications and response
     stmt = select(SubstituteAssignment).options(
@@ -283,7 +291,7 @@ def assign_substitute(
         joinedload(SubstituteAssignment.substitute_teacher)
     ).where(SubstituteAssignment.id == assignment.id)
 
-    assignment_loaded = db.execute(stmt).scalar()
+    assignment_loaded = (await db.execute(stmt)).scalar()
     if not assignment_loaded:
         raise ResourceNotFoundException("SubstituteAssignment", str(assignment.id))
 
@@ -296,7 +304,7 @@ def assign_substitute(
         f"for absent teacher {assignment_loaded.original_teacher.name}."
     )
 
-    send_notification_email(
+    await send_notification_email(
         db=db,
         user_id=substitute_teacher_id,
         message=message,
@@ -307,8 +315,8 @@ def assign_substitute(
     return assignment_loaded
 
 
-def assign_substitutes_batch(
-    db: Session,
+async def assign_substitutes_batch(
+    db: AsyncSession,
     original_teacher_id: int,
     date: pydate,
     assignments: List[dict],
@@ -329,7 +337,7 @@ def assign_substitutes_batch(
             SubstituteAssignment.period_number == period_number,
             SubstituteAssignment.substitute_teacher_id == substitute_teacher_id
         )
-        existing_sub = db.execute(existing_sub_stmt).scalar_one_or_none()
+        existing_sub = (await db.execute(existing_sub_stmt)).scalar_one_or_none()
         if existing_sub:
             raise ValidationException(
                 f"Assignment {idx + 1}: Substitute teacher is already subbing at period {period_number}."
@@ -341,7 +349,7 @@ def assign_substitutes_batch(
             SubstituteAssignment.period_number == period_number,
             SubstituteAssignment.original_teacher_id == original_teacher_id
         )
-        existing_orig = db.execute(existing_orig_stmt).scalar_one_or_none()
+        existing_orig = (await db.execute(existing_orig_stmt)).scalar_one_or_none()
         if existing_orig:
             raise ValidationException(
                 f"Assignment {idx + 1}: A substitute is already assigned for this period."
@@ -362,7 +370,7 @@ def assign_substitutes_batch(
         db.add(assignment)
         created_assignments.append(assignment)
 
-    db.commit()
+    await db.commit()
 
     # Reload with details and send notifications
     result = []
@@ -374,7 +382,7 @@ def assign_substitutes_batch(
             joinedload(SubstituteAssignment.substitute_teacher)
         ).where(SubstituteAssignment.id == assignment.id)
 
-        assignment_loaded = db.execute(stmt).scalar()
+        assignment_loaded = (await db.execute(stmt)).scalar()
         if not assignment_loaded:
             raise ResourceNotFoundException("SubstituteAssignment", str(assignment.id))
 
@@ -387,7 +395,7 @@ def assign_substitutes_batch(
             f"for absent teacher {assignment_loaded.original_teacher.name}."
         )
 
-        send_notification_email(
+        await send_notification_email(
             db=db,
             user_id=assignment_loaded.substitute_teacher_id,
             message=message,
@@ -400,8 +408,8 @@ def assign_substitutes_batch(
     return result
 
 
-def get_future_affected_periods(
-    db: Session,
+async def get_future_affected_periods(
+    db: AsyncSession,
     absent_teacher_id: int,
     day_of_week: str
 ) -> List[AffectedPeriodResponse]:
@@ -423,11 +431,12 @@ def get_future_affected_periods(
         )
         .order_by(TimetableSlot.period_number)
     )
-    slots = db.execute(stmt).scalars().all()
+    result = await db.execute(stmt)
+    slots = result.scalars().all()
 
     results = []
     for slot in slots:
-        existing = db.execute(
+        existing = (await db.execute(
             select(SubstituteAssignment).where(
                 SubstituteAssignment.class_id == slot.class_id,
                 SubstituteAssignment.period_number == slot.period_number,
@@ -435,7 +444,7 @@ def get_future_affected_periods(
                 SubstituteAssignment.day_of_week == day_int,
                 SubstituteAssignment.status.in_(["pending", "notified", "accepted"])
             )
-        ).scalar_one_or_none()
+        )).scalar_one_or_none()
         if existing:
             continue
 
@@ -454,8 +463,8 @@ def get_future_affected_periods(
     return results
 
 
-def find_available_teachers_for_slot(
-    db: Session,
+async def find_available_teachers_for_slot(
+    db: AsyncSession,
     class_id: int,
     day_of_week: str,
     period_number: int,
@@ -469,11 +478,13 @@ def find_available_teachers_for_slot(
     """
     day_int = day_to_int(day_of_week)
 
-    teachers_stmt = select(Teacher).where(
+    teachers_stmt = select(Teacher).options(
+        selectinload(Teacher.subjects_expertise)
+    ).where(
         Teacher.id != exclude_teacher_id,
         Teacher.status == "ACTIVE"
     )
-    teachers_res = db.execute(teachers_stmt)
+    teachers_res = await db.execute(teachers_stmt)
     candidates = teachers_res.scalars().all()
 
     available_teachers = []
@@ -484,7 +495,7 @@ def find_available_teachers_for_slot(
             TimetableSlot.day_of_week == day_int,
             TimetableSlot.period_number == period_number
         )
-        master_slot = db.execute(master_slot_stmt).scalar_one_or_none()
+        master_slot = (await db.execute(master_slot_stmt)).scalar_one_or_none()
 
         sub_slot_stmt = select(SubstituteAssignment).where(
             SubstituteAssignment.substitute_teacher_id == candidate.id,
@@ -492,7 +503,7 @@ def find_available_teachers_for_slot(
             SubstituteAssignment.period_number == period_number,
             SubstituteAssignment.status.in_(["pending", "notified", "accepted"])
         )
-        is_subbing = db.execute(sub_slot_stmt).scalar_one_or_none() is not None
+        is_subbing = (await db.execute(sub_slot_stmt)).scalar_one_or_none() is not None
 
         if master_slot or is_subbing:
             continue
@@ -518,8 +529,8 @@ def find_available_teachers_for_slot(
     return available_teachers
 
 
-def assign_future_substitutes(
-    db: Session,
+async def assign_future_substitutes(
+    db: AsyncSession,
     original_teacher_id: int,
     assignments: List[FutureSubstituteAssignRequest],
     background_tasks: Optional[Any] = None
@@ -550,7 +561,7 @@ def assign_future_substitutes(
             SubstituteAssignment.substitute_teacher_id == substitute_teacher_id,
             SubstituteAssignment.status.in_(["pending", "notified", "accepted"])
         )
-        existing_sub = db.execute(existing_sub_stmt).scalar_one_or_none()
+        existing_sub = (await db.execute(existing_sub_stmt)).scalar_one_or_none()
         if existing_sub:
             raise ValidationException(
                 f"Assignment {idx + 1}: The selected substitute teacher is already assigned for {day_of_week} Period {period_number}."
@@ -563,7 +574,7 @@ def assign_future_substitutes(
             SubstituteAssignment.class_id == assignment_data.class_id,
             SubstituteAssignment.status.in_(["pending", "notified", "accepted"])
         )
-        existing_orig = db.execute(existing_orig_stmt).scalar_one_or_none()
+        existing_orig = (await db.execute(existing_orig_stmt)).scalar_one_or_none()
         if existing_orig:
             raise ValidationException(
                 f"Assignment {idx + 1}: A substitute is already assigned for this slot."
@@ -584,7 +595,7 @@ def assign_future_substitutes(
         db.add(assignment)
         created_assignments.append(assignment)
 
-    db.commit()
+    await db.commit()
 
     result = []
     for assignment in created_assignments:
@@ -595,7 +606,7 @@ def assign_future_substitutes(
             joinedload(SubstituteAssignment.substitute_teacher)
         ).where(SubstituteAssignment.id == assignment.id)
 
-        assignment_loaded = db.execute(stmt).scalar()
+        assignment_loaded = (await db.execute(stmt)).scalar()
         if not assignment_loaded:
             raise ResourceNotFoundException("SubstituteAssignment", str(assignment.id))
 
@@ -609,7 +620,7 @@ def assign_future_substitutes(
             f"Period {assignment_loaded.period_number}."
         )
 
-        send_notification_email(
+        await send_notification_email(
             db=db,
             user_id=assignment_loaded.substitute_teacher_id,
             message=message,
@@ -622,7 +633,7 @@ def assign_future_substitutes(
     return result
 
 
-def purge_historical_substitute_assignments(db: Session, cutoff_date: pydate) -> int:
+async def purge_historical_substitute_assignments(db: AsyncSession, cutoff_date: pydate) -> int:
     """
     Deletes dated substitute assignments older than the current academic term start
     (data archival to keep the append-only table bounded).
@@ -634,8 +645,8 @@ def purge_historical_substitute_assignments(db: Session, cutoff_date: pydate) ->
         SubstituteAssignment.date.isnot(None),
         SubstituteAssignment.date < cutoff_date
     )
-    result = db.execute(stmt)
-    db.commit()
+    result = await db.execute(stmt)
+    await db.commit()
     return result.rowcount or 0
 
 
