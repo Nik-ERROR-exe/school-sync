@@ -1,11 +1,9 @@
 import pytest
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.database import Base, get_db
+from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.teacher import Teacher
 from app.models.school_class import SchoolClass
@@ -16,22 +14,8 @@ from app.api.teacher_classes import router as teacher_classes_router
 from app.api.teacher_subject_list import router as teacher_subjects_router
 
 
-@pytest.fixture()
-def db():
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool
-    )
-    Base.metadata.create_all(bind=engine)
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    yield session
-    session.close()
-    engine.dispose()
-
-
-def test_teacher_classes_and_subjects_without_timetable(db):
+@pytest.mark.asyncio
+async def test_teacher_classes_and_subjects_without_timetable(db: AsyncSession):
     teacher1 = Teacher(
         teacher_id="T100",
         name="Assigned Teacher",
@@ -57,28 +41,28 @@ def test_teacher_classes_and_subjects_without_timetable(db):
     s1 = Subject(subject_name="Mathematics", code="MATH")
     s2 = Subject(subject_name="Science", code="SCI")
     db.add_all([s1, s2])
-    db.commit()
+    await db.commit()
 
-    db.refresh(teacher1)
-    db.refresh(teacher2)
-    db.refresh(klass1)
-    db.refresh(klass2)
-    db.refresh(s1)
-    db.refresh(s2)
+    await db.refresh(teacher1)
+    await db.refresh(teacher2)
+    await db.refresh(klass1)
+    await db.refresh(klass2)
+    await db.refresh(s1)
+    await db.refresh(s2)
 
     # Teacher 1 assigned to Class 1 and Class 2, but only has subjects mapped for Class 1
     db.add(TeacherClass(teacher_id=teacher1.id, class_id=klass1.id))
     db.add(TeacherClass(teacher_id=teacher1.id, class_id=klass2.id))
     db.add(TeacherClassSubject(teacher_id=teacher1.id, class_id=klass1.id, subject_id=s1.id))
     db.add(TeacherClassSubject(teacher_id=teacher1.id, class_id=klass1.id, subject_id=s2.id))
-    db.commit()
+    await db.commit()
 
     app = FastAPI()
     app.include_router(teacher_classes_router)
     app.include_router(teacher_subjects_router)
 
     def get_client(user):
-        def _get_db_override():
+        async def _get_db_override():
             yield db
         app.dependency_overrides[get_db] = _get_db_override
         app.dependency_overrides[get_current_user] = lambda: user
