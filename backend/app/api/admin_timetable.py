@@ -1,10 +1,12 @@
+import asyncio
 import json
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import delete
 from sqlalchemy.future import select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import joinedload
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.api.deps import require_admin
 from app.schemas.timetable import TimetableGenerateRequest, TimetableResponse, TimetableSaveRequest, TimetableSettingsSchema
@@ -37,16 +39,14 @@ router = APIRouter(
 
 
 @router.post("/generate", response_model=TimetableResponse)
-def generate_timetable(
+async def generate_timetable(
     req: TimetableGenerateRequest,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    Triggers the constraint satisfaction problem solver to generate a valid, complete school timetable.
-    """
-    solver_input = build_solver_input(req, db)
+    """Triggers CSP solver to generate a timetable asynchronously (solver CPU offloaded to thread)."""
+    solver_input = await build_solver_input(req, db)
     solver = TimetableSolver(solver_input)
-    schedule = solver.solve()
+    schedule = await asyncio.to_thread(solver.solve)
 
     return {
         "schedule": schedule,
@@ -56,13 +56,14 @@ def generate_timetable(
 
 
 @router.put("/", response_model=TimetableResponse)
-def save_timetable(
+async def save_timetable(
     req: TimetableSaveRequest,
     pt_subject_id: int = Query(..., description="ID representing Physical Training (PT)"),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
+    """Save generated timetable slots to database asynchronously."""
     # 1. Fetch all teachers for daily limit checks
-    teachers_res = db.execute(select(Teacher))
+    teachers_res = await db.execute(select(Teacher))
     teachers_list = list(teachers_res.scalars().all())
 
     # 2. Run application-level validations BEFORE touching the database
@@ -81,7 +82,7 @@ def save_timetable(
         if s.subject_id > 0 and s.teacher_id > 0
     ]
 
-    # Also save lunch period marker (subject_id=0) so each timetable remembers its own lunch
+    # Also save lunch period marker (subject_id=0)
     for s in req.slots:
         if s.period_number == LUNCH_PERIOD and s.subject_id == 0:
             new_slots.append(
@@ -94,15 +95,14 @@ def save_timetable(
                 )
             )
 
-    # 4. Atomic replace: delete old for these classes only → insert new
+    # 4. Atomic replace: delete old for these classes only -> insert new
     class_ids = list(set(s.class_id for s in req.slots))
     try:
-        db.execute(delete(TimetableSlot).where(TimetableSlot.class_id.in_(class_ids)))
+        await db.execute(delete(TimetableSlot).where(TimetableSlot.class_id.in_(class_ids)))
         db.add_all(new_slots)
-        db.flush()
-        db.commit()
+        await db.commit()
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         raise ValidationException(
             f"Failed to save timetable due to a database constraint violation: {str(e)}"
         )
@@ -115,8 +115,10 @@ def save_timetable(
 
 
 @router.get("/", response_model=TimetableResponse)
-def get_saved_timetable(db: Session = Depends(get_db)):
-    slots = db.execute(select(TimetableSlot)).scalars().all()
+async def get_saved_timetable(db: AsyncSession = Depends(get_db)):
+    """Retrieve saved master timetable asynchronously."""
+    res = await db.execute(select(TimetableSlot))
+    slots = res.scalars().all()
     schedule = [
         {
             "class_id": s.class_id,
@@ -131,13 +133,13 @@ def get_saved_timetable(db: Session = Depends(get_db)):
 
 
 @router.get("/export")
-def export_timetable(
+async def export_timetable(
     format: str = Query("excel", description="Export format: 'pdf' or 'excel'"),
     class_id: Optional[int] = Query(None, description="Single class to export; omit for all classes"),
     school_name: str = Query("SchoolSync Academy", description="School name header shown on the exported file"),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Download the saved master timetable as a PDF or Excel file."""
+    """Download the saved master timetable as a PDF or Excel file asynchronously."""
     stmt = (
         select(TimetableSlot)
         .options(
@@ -150,20 +152,22 @@ def export_timetable(
     if class_id is not None:
         stmt = stmt.where(TimetableSlot.class_id == class_id)
 
-    slots = db.execute(stmt).scalars().all()
+    res = await db.execute(stmt)
+    slots = res.scalars().all()
     if not slots:
         raise ValidationException(
             "No saved timetable found. Generate and save a timetable before downloading."
         )
 
-    settings = db.execute(select(TimetableSettingsModel)).scalar_one_or_none()
+    settings_res = await db.execute(select(TimetableSettingsModel))
+    settings = settings_res.scalar_one_or_none()
     grids = build_timetable_grids(slots, settings)
 
     fmt = format.lower()
     base_filename = f"timetable_class_{class_id}" if class_id is not None else "master_timetable"
 
     if fmt == "pdf":
-        pdf_buffer = generate_timetable_pdf(grids, settings, school_name)
+        pdf_buffer = await asyncio.to_thread(generate_timetable_pdf, grids, settings, school_name)
         return StreamingResponse(
             pdf_buffer,
             media_type="application/pdf",
@@ -171,7 +175,7 @@ def export_timetable(
         )
 
     if fmt == "excel":
-        excel_buffer = generate_timetable_excel(grids, settings, school_name)
+        excel_buffer = await asyncio.to_thread(generate_timetable_excel, grids, settings, school_name)
         return StreamingResponse(
             excel_buffer,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -182,11 +186,13 @@ def export_timetable(
 
 
 @router.post("/settings")
-def save_timetable_settings(
+async def save_timetable_settings(
     body: TimetableSettingsSchema,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    existing = db.execute(select(TimetableSettingsModel)).scalar_one_or_none()
+    """Save timetable display settings asynchronously."""
+    res = await db.execute(select(TimetableSettingsModel))
+    existing = res.scalar_one_or_none()
     if existing:
         existing.school_days = json.dumps(body.school_days)
         existing.saturday_periods = body.saturday_periods
@@ -198,13 +204,15 @@ def save_timetable_settings(
             pt_subject_id=body.pt_subject_id,
         )
         db.add(new_settings)
-    db.commit()
+    await db.commit()
     return {"success": True, "message": "Settings saved."}
 
 
 @router.get("/settings")
-def get_timetable_settings(db: Session = Depends(get_db)):
-    existing = db.execute(select(TimetableSettingsModel)).scalar_one_or_none()
+async def get_timetable_settings(db: AsyncSession = Depends(get_db)):
+    """Retrieve saved timetable display settings asynchronously."""
+    res = await db.execute(select(TimetableSettingsModel))
+    existing = res.scalar_one_or_none()
     if not existing:
         return {"success": False, "message": "No settings saved yet"}
 
