@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import List
 from app.database import get_db
@@ -17,28 +17,24 @@ router = APIRouter(
     dependencies=[Depends(require_admin)]
 )
 
+
 @router.get("/", response_model=List[SubjectResponse])
-def list_subjects(db: Session = Depends(get_db)):
-    """
-    Returns all subjects from the database.
-    Used by the timetable wizard to select the PT subject.
-    """
+async def list_subjects(db: AsyncSession = Depends(get_db)):
+    """Returns all subjects from the database asynchronously."""
     stmt = select(Subject).order_by(Subject.id)
-    result = db.execute(stmt)
+    result = await db.execute(stmt)
     return list(result.scalars().all())
 
+
 @router.post("/", response_model=SubjectResponse, status_code=status.HTTP_201_CREATED)
-def create_subject(
+async def create_subject(
     data: SubjectCreate,
     current_admin: Teacher = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    Creates a new subject. Check for duplicate code (409 if exists).
-    """
-    existing = db.execute(
-        select(Subject).where(Subject.code == data.code)
-    ).scalar_one_or_none()
+    """Creates a new subject asynchronously. Checks for duplicate code."""
+    res = await db.execute(select(Subject).where(Subject.code == data.code))
+    existing = res.scalar_one_or_none()
     if existing:
         raise ConflictException(f"Subject with code '{data.code}' already exists.")
         
@@ -47,35 +43,32 @@ def create_subject(
         code=data.code
     )
     db.add(db_subj)
-    db.commit()
-    db.refresh(db_subj)
+    await db.commit()
+    await db.refresh(db_subj)
     return db_subj
 
+
 @router.delete("/{subject_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_subject(subject_id: int, db: Session = Depends(get_db)):
-    """
-    Deletes a subject.
-    Check: if any class_subjects or weekly_requirements reference this subject,
-    return 400 "Cannot delete subject assigned to classes or weekly requirements."
-    """
-    db_subj = db.get(Subject, subject_id)
+async def delete_subject(subject_id: int, db: AsyncSession = Depends(get_db)):
+    """Deletes a subject asynchronously. Verifies no dependencies in class_subjects or weekly_requirements."""
+    db_subj = await db.get(Subject, subject_id)
     if not db_subj:
         raise ResourceNotFoundException("Subject", str(subject_id))
         
     # Check if assigned to any class in class_subjects
-    has_class_subject = db.execute(
+    res_cs = await db.execute(
         select(class_subjects.c.subject_id).where(class_subjects.c.subject_id == subject_id).limit(1)
-    ).scalar_one_or_none()
-    if has_class_subject:
+    )
+    if res_cs.scalar_one_or_none():
         raise ValidationException("Cannot delete subject assigned to classes or weekly requirements.")
         
     # Check if referenced in weekly_requirements
-    has_weekly_req = db.execute(
+    res_wr = await db.execute(
         select(WeeklyRequirement.id).where(WeeklyRequirement.subject_id == subject_id).limit(1)
-    ).scalar_one_or_none()
-    if has_weekly_req:
+    )
+    if res_wr.scalar_one_or_none():
         raise ValidationException("Cannot delete subject assigned to classes or weekly requirements.")
         
-    db.delete(db_subj)
-    db.commit()
+    await db.delete(db_subj)
+    await db.commit()
     return None
