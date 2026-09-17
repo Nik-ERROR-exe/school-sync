@@ -7,17 +7,31 @@ from app.services.timetable.constraints import (
 
 
 def test_back_to_back_prev_period():
-    assignments = {(1, "Monday", 1): (10, 5)}  # teacher 5 at period 1
-    # Period 2 is adjacent to period 1 -> reject
-    assert check_teacher_back_to_back(5, "Monday", 2, assignments) is False
-    # Period 3 is not adjacent -> allow
-    assert check_teacher_back_to_back(5, "Monday", 3, assignments) is True
+    # 4 consecutive periods assigned (1, 2, 3, 4)
+    assignments = {
+        (1, "Monday", 1): (10, 5),
+        (1, "Monday", 2): (10, 5),
+        (1, "Monday", 3): (10, 5),
+        (1, "Monday", 4): (10, 5),
+    }
+    # Period 5 would create 5 consecutive periods -> reject (>4 consecutive disallowed)
+    assert check_teacher_back_to_back(5, "Monday", 5, assignments) is False
+    # Period 6 leaves a gap (periods 1-4 and 6), max consecutive run = 4 -> allow
+    assert check_teacher_back_to_back(5, "Monday", 6, assignments) is True
 
 
 def test_back_to_back_next_period():
-    assignments = {(1, "Monday", 3): (10, 5)}  # teacher 5 at period 3
-    # Period 2 is adjacent to period 3 -> reject
-    assert check_teacher_back_to_back(5, "Monday", 2, assignments) is False
+    # 4 consecutive periods assigned (2, 3, 4, 5)
+    assignments = {
+        (1, "Monday", 2): (10, 5),
+        (1, "Monday", 3): (10, 5),
+        (1, "Monday", 4): (10, 5),
+        (1, "Monday", 5): (10, 5),
+    }
+    # Period 1 would create 5 consecutive periods (1, 2, 3, 4, 5) -> reject
+    assert check_teacher_back_to_back(5, "Monday", 1, assignments) is False
+    # Period 7 leaves a gap -> allow
+    assert check_teacher_back_to_back(5, "Monday", 7, assignments) is True
 
 
 def test_back_to_back_other_teacher_unaffected():
