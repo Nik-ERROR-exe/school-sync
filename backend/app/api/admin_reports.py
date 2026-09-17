@@ -1,6 +1,7 @@
+import asyncio
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.api.deps import require_admin
 from app.services.result_service import get_results_by_status
@@ -14,27 +15,27 @@ router = APIRouter(
 )
 
 @router.get("/results")
-def export_results(
+async def export_results(
     format: str = Query(..., description="Export format: 'pdf' or 'excel'"),
     school_name: str = Query("Amarkor Vidyalaya", description="School name header to show on reports"),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Downloads a compiled report of all approved student results in PDF or Excel format.
     """
     # Fetch only approved results for reporting
-    results = get_results_by_status(db, "approved")
+    results = await get_results_by_status(db, "approved")
     
     fmt = format.lower()
     if fmt == "pdf":
-        pdf_buffer = generate_results_pdf(results, school_name)
+        pdf_buffer = await asyncio.to_thread(generate_results_pdf, results, school_name)
         headers = {
             'Content-Disposition': 'attachment; filename="approved_results_report.pdf"'
         }
         return StreamingResponse(pdf_buffer, media_type="application/pdf", headers=headers)
         
     elif fmt == "excel":
-        excel_buffer = generate_results_excel(results, school_name)
+        excel_buffer = await asyncio.to_thread(generate_results_excel, results, school_name)
         headers = {
             'Content-Disposition': 'attachment; filename="approved_results_report.xlsx"'
         }
