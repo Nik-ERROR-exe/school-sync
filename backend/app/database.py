@@ -1,40 +1,70 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+import sys
+from typing import AsyncGenerator
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.orm import declarative_base
 from app.config import settings
 
-# Build the database URL for psycopg2
+# Build the async database URL
 _db_url = settings.DATABASE_URL
 
-# Strip ssl parameters from the URL since we pass them in connect_args (to avoid conflict)
+# Clean SSL parameters from the URL since we manage SSL explicitly via connect_args
 for term in ["?ssl=require", "&ssl=require", "?sslmode=require", "&sslmode=require"]:
     _db_url = _db_url.replace(term, "")
 
 is_local = "localhost" in _db_url or "127.0.0.1" in _db_url
+is_sqlite = _db_url.startswith("sqlite")
 
-# Use sync engine with psycopg2 and Render-safe settings
-engine = create_engine(
-    _db_url,
-    pool_pre_ping=True,       # Test connection before using — detects dead connections
-    pool_recycle=280,         # Recycle connections every 280 seconds (Render kills at ~300s)
-    pool_size=15,             # Keep pool ready for concurrent queries
-    max_overflow=10,          # Allow extra connections on burst
-    connect_args={
-        "sslmode": "prefer" if is_local else "require",         # Prefer for local, require for Render
-        "connect_timeout": 10,        # Don't wait forever if connection fails
-        "keepalives": 1,              # Enable TCP keepalives
-        "keepalives_idle": 30,        # Start keepalives after 30s idle
-        "keepalives_interval": 10,    # Send keepalive every 10s
-        "keepalives_count": 5,        # Give up after 5 failed keepalives
-    },
-    echo=False,
+# Configure driver-specific engine parameters
+engine_kwargs = {
+    "echo": False,
+}
+
+if is_sqlite:
+    # SQLite async settings (for tests and local dev)
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    # PostgreSQL asyncpg settings with connection pooling & Render/Neon keepalive
+    engine_kwargs.update({
+        "pool_pre_ping": True,       # Test connection before using — detects dead connections
+        "pool_recycle": 280,         # Recycle connections every 280s (Render kills at ~300s)
+        "pool_size": 15,             # Active connection pool size
+        "max_overflow": 10,          # Extra burst connections
+        "connect_args": {
+            "ssl": "prefer" if is_local else "require",  # SSL mode for asyncpg
+            "timeout": 10,                               # Connection timeout in seconds
+        }
+    })
+
+# Asynchronous SQLAlchemy Engine
+engine = create_async_engine(_db_url, **engine_kwargs)
+
+# Asynchronous Session factory
+# expire_on_commit=False prevents lazy-load errors on committed model instances
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    autocommit=False,
+    autoflush=False,
+    expire_on_commit=False,
 )
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Backward-compatibility alias
+SessionLocal = AsyncSessionLocal
+
 Base = declarative_base()
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """FastAPI dependency that yields an asynchronous database session.
+
+    Usage:
+        @router.get('/endpoint')
+        async def my_endpoint(db: AsyncSession = Depends(get_db)):
+            result = await db.execute(select(Model))
+            return result.scalars().all()
+    """
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
