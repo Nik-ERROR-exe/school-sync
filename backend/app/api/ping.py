@@ -10,5 +10,5 @@ router = APIRouter(tags=["Ping"])
 
 
 @router.get("/ping")
-def ping():
+async def ping():
     return {"status": "ok"}
