@@ -1,7 +1,11 @@
+import asyncio
+import csv
+import io
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, cast, Integer
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import joinedload
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from app.database import get_db
 from app.api.deps import require_admin
@@ -16,10 +20,9 @@ from app.services.result_service import (
     calculate_grade_and_percentage,
     create_result_batch,
     calculate_class_overall_results,
+    update_result as service_update_result,
 )
 from app.services.report_service import generate_results_excel
-import csv
-import io
 
 router = APIRouter(
     prefix="/admin/results",
@@ -29,11 +32,11 @@ router = APIRouter(
 
 
 @router.get("/", response_model=List[ResultResponse])
-def list_results(
+async def list_results(
     status: Optional[str] = Query(None),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """Flat list of all results, filterable by status."""
+    """Flat list of all results, filterable by status asynchronously."""
     stmt = (
         select(Result)
         .options(
@@ -45,7 +48,8 @@ def list_results(
     if status:
         stmt = stmt.where(Result.status == status)
 
-    results = db.execute(stmt).scalars().unique().all()
+    res = await db.execute(stmt)
+    results = res.scalars().unique().all()
     return [
         ResultResponse(
             id=r.id,
@@ -72,18 +76,13 @@ def list_results(
 
 
 @router.post("/", response_model=List[ResultResponse], status_code=201)
-def create_or_update_results(
+async def create_or_update_results(
     req: ResultBatchCreate,
     admin: Teacher = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    Create or update results directly as an admin.
-
-    Allows the admin to enter marks for any student/subject even when no
-    teacher submission exists yet. Upserts on (student_id, subject_id, exam_type_id).
-    """
-    results = create_result_batch(db, req.results, admin.id, is_admin=True)
+    """Create or update results directly as an admin asynchronously."""
+    results = await create_result_batch(db, req.results, admin.id, is_admin=True)
     return [
         ResultResponse(
             id=r.id,
@@ -110,16 +109,12 @@ def create_or_update_results(
 
 
 @router.get("/class/{class_id}/exam/{exam_type_id}")
-def get_results_by_class_and_exam(
+async def get_results_by_class_and_exam(
     class_id: int,
     exam_type_id: int,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    Returns results grouped by student for a given class and exam type.
-    Format: { students: [...], subjects: [...] }
-    Includes student overall total marks, percentage, grade, and rank.
-    """
+    """Returns results grouped by student for a given class and exam type asynchronously."""
     # 1. Fetch subjects assigned to this class
     subjects_stmt = (
         select(Subject)
@@ -127,7 +122,8 @@ def get_results_by_class_and_exam(
         .where(class_subjects.c.class_id == class_id)
         .order_by(Subject.subject_name)
     )
-    subjects = list(db.execute(subjects_stmt).scalars().all())
+    subj_res = await db.execute(subjects_stmt)
+    subjects = list(subj_res.scalars().all())
     subject_map = {s.id: s for s in subjects}
 
     # 2. Fetch existing results for this class and exam type
@@ -143,7 +139,8 @@ def get_results_by_class_and_exam(
             Result.exam_type_id == exam_type_id,
         )
     )
-    results = db.execute(results_stmt).scalars().unique().all()
+    res_results = await db.execute(results_stmt)
+    results = res_results.scalars().unique().all()
 
     # Also include any subjects present in results that might not be in class_subjects mapping
     for r in results:
@@ -158,7 +155,7 @@ def get_results_by_class_and_exam(
     results_lookup = {(r.student_id, r.subject_id): r for r in results}
 
     # 3. Compute overall class summary (totals, percentage, overall grade, rank)
-    overall_summary = calculate_class_overall_results(db, class_id, exam_type_id)
+    overall_summary = await calculate_class_overall_results(db, class_id, exam_type_id)
 
     # 4. Fetch all students in this class
     students_stmt = (
@@ -166,7 +163,8 @@ def get_results_by_class_and_exam(
         .where(Student.class_id == class_id)
         .order_by(cast(Student.roll_no, Integer), Student.id)
     )
-    students = db.execute(students_stmt).scalars().all()
+    std_res = await db.execute(students_stmt)
+    students = std_res.scalars().all()
 
     # 5. Construct response for each student
     students_list = []
@@ -220,21 +218,17 @@ def get_results_by_class_and_exam(
     return {"students": students_list, "subjects": subject_list}
 
 
-
 @router.put("/{result_id}", response_model=ResultResponse)
-def update_result(
+async def update_result(
     result_id: int,
     data: ResultUpdate,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """Update marks for a single result record (admin override)."""
-    from app.services.result_service import update_result as service_update_result
-
-    # Convert Pydantic model to dict, excluding None values
+    """Update marks for a single result record (admin override) asynchronously."""
     update_data = data.model_dump(exclude_unset=True)
 
     try:
-        result = service_update_result(db, result_id, update_data)
+        result = await service_update_result(db, result_id, update_data)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -261,16 +255,13 @@ def update_result(
 
 
 @router.get("/export")
-def export_results(
+async def export_results(
     class_id: int = Query(...),
     exam_type_id: int = Query(...),
     format: str = Query("csv"),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """Export results for a class and exam type as CSV or Excel (.xlsx)."""
-    # Fetch results similar to the class/exam endpoint. Subject is loaded via
-    # joinedload (aliased to subjects_1 in SQL), so it must NOT be referenced
-    # in ORDER BY — sorting by subject is done in Python instead.
+    """Export results for a class and exam type as CSV or Excel (.xlsx) asynchronously."""
     stmt = (
         select(Result)
         .options(
@@ -285,10 +276,10 @@ def export_results(
         )
         .order_by(cast(Student.roll_no, Integer))
     )
-    results = db.execute(stmt).scalars().unique().all()
+    res = await db.execute(stmt)
+    results = res.scalars().unique().all()
 
-    # Sort by roll number, then subject name (avoid UndefinedColumn on the
-    # joinedload-aliased subjects table).
+    # Sort in Python
     results = sorted(
         results,
         key=lambda r: (
@@ -298,7 +289,7 @@ def export_results(
     )
 
     if format == "excel":
-        buffer = generate_results_excel(results)
+        buffer = await asyncio.to_thread(generate_results_excel, results)
         return StreamingResponse(
             iter([buffer.getvalue()]),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -308,7 +299,6 @@ def export_results(
     # Build CSV (default)
     output = io.StringIO()
     writer = csv.writer(output)
-    # Header
     writer.writerow(["Roll No", "Student Name", "Subject", "Marks Obtained", "Total Marks", "Percentage", "Grade", "Status"])
     for r in results:
         writer.writerow([
