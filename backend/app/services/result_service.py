@@ -1,5 +1,6 @@
 from sqlalchemy import cast, Integer
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import joinedload
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.models.result import Result
 from app.models.student import Student
@@ -58,45 +59,43 @@ def calculate_overall_grade(percentage: float, scale_group: str) -> str:
     P <= 20 -> '[ 1' (unreachable per official Excel formula ordering, preserved per spec)
     
     Std 9-10 (5-tier scale):
-    P >= 75 -> 'A ' (trailing space)
-    P >= 60 -> 'ba'
-    P >= 49 -> 'k'
-    P >= 35 -> 'D'
-    P < 35  -> '['
+    P >= 80 -> 'A'
+    P >= 60 -> 'B'
+    P >= 40 -> 'C'
+    P < 40  -> 'D'
     """
-    if scale_group == "STD_9_10":
-        if percentage >= 75:
-            return "A "
-        elif percentage >= 60:
-            return "ba"
-        elif percentage >= 49:
-            return "k"
-        elif percentage >= 35:
-            return "D"
-        else:
-            return "["
-    else:  # STD_1_8
-        if percentage >= 91:
+    p = round(percentage, 2)
+    if scale_group == "STD_1_8":
+        if p >= 91:
             return "A 1"
-        elif percentage >= 81:
+        elif p >= 81:
             return "A 2"
-        elif percentage >= 71:
+        elif p >= 71:
             return "ba 1"
-        elif percentage >= 61:
+        elif p >= 61:
             return "ba 2"
-        elif percentage >= 51:
+        elif p >= 51:
             return "k  1"
-        elif percentage >= 41:
+        elif p >= 41:
             return "k  2"
-        elif percentage <= 40:
+        elif p <= 20:
             return "D"
-        elif percentage <= 20:
-            return "[ 1"
+        elif p <= 40:
+            return "D"
+        else:
+            return "D"
+    else:  # STD_9_10
+        if p >= 80:
+            return "A"
+        elif p >= 60:
+            return "B"
+        elif p >= 40:
+            return "C"
         else:
             return "D"
 
 
-def calculate_class_overall_results(db: Session, class_id: int, exam_type_id: int) -> dict:
+async def calculate_class_overall_results(db: AsyncSession, class_id: int, exam_type_id: int) -> dict:
     """Compute overall totals, percentage, grade, and rank for every student in a class for a given exam type.
     
     Returns a dictionary mapping student_id to:
@@ -108,28 +107,28 @@ def calculate_class_overall_results(db: Session, class_id: int, exam_type_id: in
         "rank": int | None
     }
     """
-    school_class = db.scalars(select(SchoolClass).where(SchoolClass.id == class_id)).first()
+    school_class = (await db.scalars(select(SchoolClass).where(SchoolClass.id == class_id))).first()
     class_name = school_class.class_name if school_class else ""
     scale_group = get_grading_scale_group(class_name)
 
-    students = db.scalars(
+    students = (await db.scalars(
         select(Student)
         .where(Student.class_id == class_id)
         .order_by(cast(Student.roll_no, Integer), Student.id)
-    ).all()
+    )).all()
 
     if not students:
         return {}
 
     student_ids = [s.id for s in students]
 
-    results = db.scalars(
+    results = (await db.scalars(
         select(Result)
         .where(
             Result.student_id.in_(student_ids),
             Result.exam_type_id == exam_type_id
         )
-    ).all()
+    )).all()
 
     student_results = {}
     for r in results:
@@ -179,9 +178,8 @@ def calculate_class_overall_results(db: Session, class_id: int, exam_type_id: in
     return overall_summary
 
 
-
-def _check_teacher_authorized(
-    db: Session,
+async def _check_teacher_authorized(
+    db: AsyncSession,
     results_data: List[ResultCreate],
     student_ids: set,
     teacher_id: int,
@@ -190,17 +188,17 @@ def _check_teacher_authorized(
     referenced by the batch. Authority comes from the explicit
     teacher_class_subjects mapping."""
     authorized_pairs = set(
-        db.execute(
+        (await db.execute(
             select(TeacherClassSubject.class_id, TeacherClassSubject.subject_id).where(
                 TeacherClassSubject.teacher_id == teacher_id
             )
-        ).all()
+        )).all()
     )
 
     student_class_map = dict(
-        db.execute(
+        (await db.execute(
             select(Student.id, Student.class_id).where(Student.id.in_(student_ids))
-        ).all()
+        )).all()
     )
 
     unauthorized = []
@@ -216,8 +214,8 @@ def _check_teacher_authorized(
         )
 
 
-def create_result_batch(
-    db: Session,
+async def create_result_batch(
+    db: AsyncSession,
     results_data: List[ResultCreate],
     teacher_id: int,
     is_admin: bool = False
@@ -236,34 +234,31 @@ def create_result_batch(
     subject_ids = {data.subject_id for data in results_data}
     exam_type_ids = {data.exam_type_id for data in results_data}
 
-    found_student_ids = set(db.scalars(select(Student.id).where(Student.id.in_(student_ids))).all())
+    found_student_ids = set((await db.scalars(select(Student.id).where(Student.id.in_(student_ids)))).all())
     missing_students = student_ids - found_student_ids
     if missing_students:
         raise ResourceNotFoundException("Student", str(next(iter(missing_students))))
 
-    found_subject_ids = set(db.scalars(select(Subject.id).where(Subject.id.in_(subject_ids))).all())
+    found_subject_ids = set((await db.scalars(select(Subject.id).where(Subject.id.in_(subject_ids)))).all())
     missing_subjects = subject_ids - found_subject_ids
     if missing_subjects:
         raise ResourceNotFoundException("Subject", str(next(iter(missing_subjects))))
 
-    found_exam_type_ids = set(db.scalars(select(ExamType.id).where(ExamType.id.in_(exam_type_ids))).all())
+    found_exam_type_ids = set((await db.scalars(select(ExamType.id).where(ExamType.id.in_(exam_type_ids)))).all())
     missing_exam_types = exam_type_ids - found_exam_type_ids
     if missing_exam_types:
         raise ResourceNotFoundException("ExamType", str(next(iter(missing_exam_types))))
 
-    # 1b. Authorization: the submitting teacher may only record results for
-    # students in classes where they actually teach the subject. Authority comes
-    # from the explicit teacher_class_subjects mapping. Without this, any teacher
-    # could edit any student's marks."""
+    # 1b. Authorization check
     if not is_admin:
-        _check_teacher_authorized(db, results_data, student_ids, teacher_id)
+        await _check_teacher_authorized(db, results_data, student_ids, teacher_id)
 
     # 1c. Fetch students with school_class to determine class_name for max_marks lookup
-    students = db.scalars(
+    students = (await db.scalars(
         select(Student)
         .options(joinedload(Student.school_class))
         .where(Student.id.in_(student_ids))
-    ).all()
+    )).all()
     student_class_name_map = {
         s.id: s.school_class.class_name for s in students if s.school_class
     }
@@ -275,13 +270,13 @@ def create_result_batch(
             required_configs.add((c_name, data.subject_id, data.exam_type_id))
 
     class_names = {c[0] for c in required_configs}
-    max_marks_records = db.scalars(
+    max_marks_records = (await db.scalars(
         select(SubjectMaxMarks).where(
             SubjectMaxMarks.class_name.in_(class_names),
             SubjectMaxMarks.subject_id.in_(subject_ids),
             SubjectMaxMarks.exam_type_id.in_(exam_type_ids)
         )
-    ).all() if class_names else []
+    )).all() if class_names else []
 
     max_marks_lookup = {
         (r.class_name, r.subject_id, r.exam_type_id): float(r.max_marks)
@@ -289,13 +284,13 @@ def create_result_batch(
     }
 
     # 2. Bulk fetch existing results matching the batch criteria
-    existing_results = db.scalars(
+    existing_results = (await db.scalars(
         select(Result).where(
             Result.student_id.in_(student_ids),
             Result.subject_id.in_(subject_ids),
             Result.exam_type_id.in_(exam_type_ids)
         )
-    ).all()
+    )).all()
     existing_map = {(r.student_id, r.subject_id, r.exam_type_id): r for r in existing_results}
 
     # 3. Create or update result records in memory
@@ -357,22 +352,22 @@ def create_result_batch(
             db.add(db_result)
             results.append(db_result)
 
-
-    db.commit()
+    await db.commit()
 
     # 4. Fetch all refreshed results with joined relationships in a single bulk query
     result_ids = [r.id for r in results]
-    final_results = db.scalars(
+    final_results = (await db.scalars(
         select(Result).options(
             joinedload(Result.student).joinedload(Student.school_class),
             joinedload(Result.subject),
             joinedload(Result.exam_type)
         ).where(Result.id.in_(result_ids))
-    ).unique().all()
+    )).unique().all()
 
     return list(final_results)
 
-def get_results_by_status(db: Session, status: Optional[str] = None) -> List[Result]:
+
+async def get_results_by_status(db: AsyncSession, status: Optional[str] = None) -> List[Result]:
     """Retrieve all results filtered by status, including nested relationships."""
     stmt = select(Result).options(
         joinedload(Result.student).joinedload(Student.school_class),
@@ -382,10 +377,11 @@ def get_results_by_status(db: Session, status: Optional[str] = None) -> List[Res
     if status:
         stmt = stmt.where(Result.status == status)
         
-    result = db.execute(stmt)
-    return list(result.scalars().all())
+    result = await db.execute(stmt)
+    return list(result.scalars().unique().all())
 
-def approve_result(db: Session, result_id: int, admin_id: int, approved: bool) -> Result:
+
+async def approve_result(db: AsyncSession, result_id: int, admin_id: int, approved: bool) -> Result:
     """Approve or reject a submitted result."""
     stmt = select(Result).options(
         joinedload(Result.student).joinedload(Student.school_class),
@@ -393,7 +389,8 @@ def approve_result(db: Session, result_id: int, admin_id: int, approved: bool) -
         joinedload(Result.exam_type)
     ).where(Result.id == result_id)
     
-    db_result = db.execute(stmt).scalar_one_or_none()
+    result = await db.execute(stmt)
+    db_result = result.scalar_one_or_none()
     if not db_result:
         raise ResourceNotFoundException("Result", str(result_id))
         
@@ -404,11 +401,12 @@ def approve_result(db: Session, result_id: int, admin_id: int, approved: bool) -
         
     db_result.approved_by_id = admin_id
     db_result.approved_at = datetime.utcnow()
-    db.commit()
-    db.refresh(db_result)
+    await db.commit()
+    await db.refresh(db_result)
     return db_result
 
-def update_result(db: Session, result_id: int, data: dict) -> Result:
+
+async def update_result(db: AsyncSession, result_id: int, data: dict) -> Result:
     """Update an existing result (admin override)."""
     stmt = select(Result).options(
         joinedload(Result.student).joinedload(Student.school_class),
@@ -416,7 +414,8 @@ def update_result(db: Session, result_id: int, data: dict) -> Result:
         joinedload(Result.exam_type)
     ).where(Result.id == result_id)
 
-    db_result = db.execute(stmt).scalar_one_or_none()
+    result = await db.execute(stmt)
+    db_result = result.scalar_one_or_none()
     if not db_result:
         raise ResourceNotFoundException("Result", str(result_id))
 
@@ -428,13 +427,14 @@ def update_result(db: Session, result_id: int, data: dict) -> Result:
         raise ValidationException("Student class not found for max marks lookup")
 
     # Lookup configured max marks for this subject/class/exam
-    max_marks_record = db.execute(
+    max_marks_result = await db.execute(
         select(SubjectMaxMarks).where(
             SubjectMaxMarks.class_name == class_name,
             SubjectMaxMarks.subject_id == db_result.subject_id,
             SubjectMaxMarks.exam_type_id == db_result.exam_type_id
         )
-    ).scalar_one_or_none()
+    )
+    max_marks_record = max_marks_result.scalar_one_or_none()
 
     if not max_marks_record:
         raise ValidationException(
@@ -456,7 +456,6 @@ def update_result(db: Session, result_id: int, data: dict) -> Result:
             )
         db_result.marks_obtained = marks_obtained
 
-    # total_marks is now always from config, not client-supplied
     db_result.total_marks = configured_max
 
     percentage, grade = calculate_grade_and_percentage(
@@ -469,6 +468,6 @@ def update_result(db: Session, result_id: int, data: dict) -> Result:
     if 'status' in data:
         db_result.status = data['status']
 
-    db.commit()
-    db.refresh(db_result)
+    await db.commit()
+    await db.refresh(db_result)
     return db_result
