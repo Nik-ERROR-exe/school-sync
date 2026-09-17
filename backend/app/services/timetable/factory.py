@@ -1,4 +1,5 @@
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import selectinload
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.services.timetable.models_internal import (
@@ -20,8 +21,8 @@ from app.core.date_utils import int_to_day
 from app.core.exceptions import ValidationException
 
 
-def build_solver_input(req: TimetableGenerateRequest, db: Session) -> SolverInput:
-    """Build SolverInput from request data and database lookups."""
+async def build_solver_input(req: TimetableGenerateRequest, db: AsyncSession) -> SolverInput:
+    """Build SolverInput from request data and asynchronous database lookups."""
 
     # --- Resolve Teachers ---
     if req.teachers is not None:
@@ -35,11 +36,12 @@ def build_solver_input(req: TimetableGenerateRequest, db: Session) -> SolverInpu
             ) for t in req.teachers
         ]
     else:
-        db_teachers = db.execute(
+        teachers_res = await db.execute(
             select(Teacher)
-            .options(joinedload(Teacher.subjects_expertise))
+            .options(selectinload(Teacher.subjects_expertise))
             .where(Teacher.status == "ACTIVE")
-        ).scalars().unique().all()
+        )
+        db_teachers = teachers_res.scalars().unique().all()
 
         if not db_teachers:
             raise ValidationException("No active teachers found in the database. Create teachers first.")
@@ -62,7 +64,8 @@ def build_solver_input(req: TimetableGenerateRequest, db: Session) -> SolverInpu
             for c in req.classes
         ]
     else:
-        db_classes = list(db.execute(select(SchoolClass)).scalars().all())
+        classes_res = await db.execute(select(SchoolClass))
+        db_classes = list(classes_res.scalars().all())
 
         if not db_classes:
             raise ValidationException("No classes found in the database. Create classes first.")
@@ -81,9 +84,10 @@ def build_solver_input(req: TimetableGenerateRequest, db: Session) -> SolverInpu
             for r in req.weekly_requirements
         ]
     else:
-        db_reqs = db.execute(
+        reqs_res = await db.execute(
             select(WeeklyRequirement).where(WeeklyRequirement.class_id.in_(generating_class_ids))
-        ).scalars().all()
+        )
+        db_reqs = reqs_res.scalars().all()
 
         if db_reqs:
             solver_reqs = [
@@ -97,9 +101,10 @@ def build_solver_input(req: TimetableGenerateRequest, db: Session) -> SolverInpu
             )
 
     # Load existing slots for other classes (to preserve manually edited slots & prevent teacher clashes)
-    existing_slots_db = db.execute(
+    existing_slots_res = await db.execute(
         select(TimetableSlot).where(TimetableSlot.class_id.notin_(generating_class_ids))
-    ).scalars().all()
+    )
+    existing_slots_db = existing_slots_res.scalars().all()
 
     solver_existing_slots = [
         SolverSlot(
@@ -113,7 +118,8 @@ def build_solver_input(req: TimetableGenerateRequest, db: Session) -> SolverInpu
     ]
 
     # Load 3-way teacher-class-subject mappings from DB
-    tcs_rows = db.execute(select(TeacherClassSubject)).scalars().all()
+    tcs_res = await db.execute(select(TeacherClassSubject))
+    tcs_rows = tcs_res.scalars().all()
     class_subject_teachers: dict[tuple[int, int], list[int]] = {}
     for row in tcs_rows:
         key = (row.class_id, row.subject_id)
@@ -137,9 +143,10 @@ def build_solver_input(req: TimetableGenerateRequest, db: Session) -> SolverInpu
                     class_subject_teachers[key] = [teacher_id]
 
     # Subject display names for human-readable diagnostics
+    subjects_res = await db.execute(select(Subject))
     subject_names = {
         s.id: s.subject_name
-        for s in db.execute(select(Subject)).scalars().all()
+        for s in subjects_res.scalars().all()
     }
 
     return SolverInput(
