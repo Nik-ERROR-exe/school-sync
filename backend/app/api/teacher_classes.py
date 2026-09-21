@@ -9,6 +9,8 @@ from app.models.timetable import TimetableSlot
 from app.models.subject import Subject
 from app.models.student import Student
 
+from app.models.teacher_class_subject import TeacherClassSubject
+
 router = APIRouter(prefix="/teacher/classes", tags=["Teacher - Classes"])
 
 @router.get("")
@@ -18,12 +20,25 @@ def get_my_classes(
     current_user: Teacher = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    if current_user.role == "ADMIN":
+        classes = db.execute(
+            select(SchoolClass).order_by(SchoolClass.class_name, SchoolClass.division)
+        ).scalars().all()
+        return [{"id": c.id, "class_name": c.class_name, "division": c.division} for c in classes]
+
     current_teacher_id = current_user.id
     
-    stmt = select(TimetableSlot.class_id).where(
-        TimetableSlot.teacher_id == current_teacher_id
-    ).distinct()
-    class_ids = [row[0] for row in db.execute(stmt).all()]
+    timetable_class_ids = [
+        row[0] for row in db.execute(
+            select(TimetableSlot.class_id).where(TimetableSlot.teacher_id == current_teacher_id).distinct()
+        ).all()
+    ]
+    tcs_class_ids = [
+        row[0] for row in db.execute(
+            select(TeacherClassSubject.class_id).where(TeacherClassSubject.teacher_id == current_teacher_id).distinct()
+        ).all()
+    ]
+    class_ids = list(set(timetable_class_ids + tcs_class_ids))
     
     if not class_ids:
         return []

@@ -9,6 +9,9 @@ from app.models.student import Student
 from app.models.subject import Subject
 from app.models.timetable import TimetableSlot
 
+from app.models.teacher_class_subject import TeacherClassSubject
+from app.models.school_class import class_subjects
+
 router = APIRouter(prefix="/teacher/students", tags=["Teacher - Students"])
 
 @router.get("/by-class/{class_id}")
@@ -26,41 +29,56 @@ def get_students_by_class(
     stmt = select(Student).where(Student.class_id == class_id).order_by(Student.roll_no)
     students = db.execute(stmt).scalars().all()
 
-    # 3. Subjects taught by THIS teacher in THIS class according to the timetable
-    timetable_subject_ids_result = db.execute(
-        select(TimetableSlot.subject_id)
-        .where(
-            TimetableSlot.teacher_id == current_user.id,
-            TimetableSlot.class_id == class_id,
-            TimetableSlot.subject_id > 0  # exclude free periods (subject_id = 0)
-        )
-        .distinct()
-    ).scalars().all()
+    # 3. Subjects taught by this teacher in this class
+    if current_user.role == "ADMIN":
+        subjects_result = db.execute(
+            select(Subject)
+            .join(class_subjects, class_subjects.c.subject_id == Subject.id)
+            .where(class_subjects.c.class_id == class_id)
+            .order_by(Subject.subject_name)
+        ).scalars().all()
+    else:
+        timetable_subject_ids = set(db.execute(
+            select(TimetableSlot.subject_id)
+            .where(
+                TimetableSlot.teacher_id == current_user.id,
+                TimetableSlot.class_id == class_id,
+                TimetableSlot.subject_id > 0
+            )
+            .distinct()
+        ).scalars().all())
 
-    timetable_subject_ids = set(timetable_subject_ids_result)
+        tcs_subject_ids = set(db.execute(
+            select(TeacherClassSubject.subject_id)
+            .where(
+                TeacherClassSubject.teacher_id == current_user.id,
+                TeacherClassSubject.class_id == class_id
+            )
+            .distinct()
+        ).scalars().all())
 
-    if not timetable_subject_ids:
-        # No timetable slots for this teacher in this class
-        return {
-            "students": [
-                {
-                    "id": s.id,
-                    "roll_no": s.roll_no,
-                    "name": s.name,
-                    "class_id": s.class_id,
-                }
-                for s in students
-            ],
-            "subjects": [],
-            "message": "No timetable assignments found for this class. Generate and save the timetable first."
-        }
+        all_subject_ids = timetable_subject_ids.union(tcs_subject_ids)
 
-    # Load subject details for the filtered IDs
-    subjects_result = db.execute(
-        select(Subject)
-        .where(Subject.id.in_(timetable_subject_ids))
-        .order_by(Subject.subject_name)
-    ).scalars().all()
+        if not all_subject_ids:
+            return {
+                "students": [
+                    {
+                        "id": s.id,
+                        "roll_no": s.roll_no,
+                        "name": s.name,
+                        "class_id": s.class_id,
+                    }
+                    for s in students
+                ],
+                "subjects": [],
+                "message": "No teaching assignments found for this class. Contact your administrator."
+            }
+
+        subjects_result = db.execute(
+            select(Subject)
+            .where(Subject.id.in_(all_subject_ids))
+            .order_by(Subject.subject_name)
+        ).scalars().all()
 
     return {
         "students": [

@@ -187,7 +187,7 @@ const DashboardHome: React.FC = () => {
               <div className="grid max-w-md grid-cols-3 gap-3 pt-1">
                 {[
                   { label: 'Teachers', value: user.stats.teachers_count },
-                  { label: 'Classes',  value: user.stats.classes_count  },
+                  { label: 'Classes', value: user.stats.classes_count },
                   { label: 'Students', value: user.stats.students_count },
                 ].map((s) => (
                   <div

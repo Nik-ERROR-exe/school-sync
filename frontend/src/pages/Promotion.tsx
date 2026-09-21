@@ -1,184 +1,334 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { PromotionService } from "../features/promotion/services";
+import { PromotionService } from '../features/promotion/services';
 import { PromotionPreview } from '../features/promotion/types';
 import { toast } from 'react-hot-toast';
 import {
   ArrowUpCircle,
   ArrowRight,
-  CheckSquare,
   GraduationCap,
-  HelpCircle,
+  Users,
+  CheckCircle,
+  AlertCircle,
   X,
+  Search,
+  Loader2,
+  Calendar,
 } from 'lucide-react';
 
 const Promotion: React.FC = () => {
   const { t } = useTranslation();
 
-  // State
   const [previews, setPreviews] = useState<PromotionPreview[]>([]);
-
-  // Preview / Confirm Modal
-  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [showModal, setShowModal] = useState(false);
   const [isPromoting, setIsPromoting] = useState(false);
 
-  const loadPromotionData = async () => {
-    const previewData = await PromotionService.getPromotionPreview();
-    setPreviews(previewData);
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const data = await PromotionService.getPromotionPreview();
+      setPreviews(data);
+    } catch {
+      toast.error('Failed to load student promotion data');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    const load = async () => {
-      await loadPromotionData();
-    };
-    load();
+    loadData();
   }, []);
 
-  // Students graduating out of Standard 10, across all divisions
-  const graduatingCount = previews.filter(p => p.action === 'graduate').length;
+  // Counts
+  const totalCount = previews.length;
+  const graduatingCount = useMemo(
+    () => previews.filter((p) => p.action === 'graduate').length,
+    [previews]
+  );
+  const advancingCount = totalCount - graduatingCount;
 
-  const handlePromoteSubmit = async () => {
+  // Filtered list for search
+  const filteredList = useMemo(() => {
+    if (!search.trim()) return previews;
+    const q = search.toLowerCase();
+    return previews.filter(
+      (p) =>
+        p.studentName.toLowerCase().includes(q) ||
+        p.rollNo.toLowerCase().includes(q) ||
+        p.currentClassName.toLowerCase().includes(q)
+    );
+  }, [previews, search]);
+
+  const handlePromote = async () => {
     setIsPromoting(true);
-    const loadingToast = toast.loading('Promoting cohorts to next standards...');
+    const toastId = toast.loading('Promoting students...');
     try {
       const success = await PromotionService.promoteStudents(previews);
       if (success) {
-        toast.dismiss(loadingToast);
-        toast.success(t('promotion.success_toast'));
-        setShowPreviewModal(false);
-
-        // Reload new state
-        await loadPromotionData();
+        toast.dismiss(toastId);
+        toast.success(t('promotion.success_toast') || 'Students successfully promoted!');
+        setShowModal(false);
+        await loadData();
+      } else {
+        toast.dismiss(toastId);
+        toast.error('Promotion failed. Please try again.');
       }
     } catch {
-      toast.dismiss(loadingToast);
-      toast.error('Student promotion failed');
+      toast.dismiss(toastId);
+      toast.error('Promotion failed');
     } finally {
       setIsPromoting(false);
     }
   };
 
   return (
-    <div className="mx-auto max-w-xl space-y-6 font-body">
-      {/* Page header */}
-      <div className="text-center">
-        <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-bold tracking-wide text-amber-700">
-          <GraduationCap className="h-3.5 w-3.5" />
-          <span>Academic Year 2026–27 · Year-End</span>
+    <div className="max-w-4xl mx-auto space-y-6 font-body text-[#0F172A] dark:text-[#F8FAFC]">
+      {/* ── Page Header ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E2E8F0] dark:border-[#253044] pb-4">
+        <div>
+          <h1 className="font-heading text-2xl font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">
+            {t('promotion.title') || 'Student Promotion'}
+          </h1>
+          <p className="text-sm text-[#64748B] dark:text-[#94A3B8] mt-0.5">
+            Promote students to their next standard for the upcoming academic year.
+          </p>
         </div>
-        <h1 className="mt-3 font-heading text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
-          Promote Students
-        </h1>
+
+        {/* Academic Year Pill */}
+        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-[#10151F] text-[#64748B] dark:text-[#94A3B8] border border-[#E2E8F0] dark:border-[#253044] self-start sm:self-auto shadow-xs">
+          <Calendar className="w-3.5 h-3.5 text-[#1769FF] dark:text-[#3B82F6]" />
+          <span>AY 2026–27 → 2027–28</span>
+        </div>
       </div>
 
-      {/* Standard 10 graduating count */}
-      <div className="rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 p-6 text-center text-white shadow-premium">
-        <div className="mx-auto inline-flex rounded-xl bg-white/15 p-3">
-          <GraduationCap className="h-7 w-7" />
+      {/* ── Summary Stats (3 Simple Cards) ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Card 1: Total Students */}
+        <div className="rounded-2xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] p-5 shadow-xs">
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#64748B] dark:text-[#94A3B8]">
+            <Users className="w-4 h-4 text-[#1769FF] dark:text-[#3B82F6]" />
+            <span>Total Students</span>
+          </div>
+          <p className="mt-2 text-3xl font-heading font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">
+            {loading ? '...' : totalCount}
+          </p>
+          <p className="mt-1 text-xs text-[#64748B] dark:text-[#94A3B8]">
+            Enrolled across all classes
+          </p>
         </div>
-        <div className="mt-4">
-          <span className="text-5xl font-extrabold tracking-tight">{graduatingCount}</span>
-          <span className="ml-2 text-sm font-bold text-amber-50">students</span>
+
+        {/* Card 2: Advancing */}
+        <div className="rounded-2xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] p-5 shadow-xs">
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#64748B] dark:text-[#94A3B8]">
+            <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span>Moving to Next Class</span>
+          </div>
+          <p className="mt-2 text-3xl font-heading font-extrabold text-emerald-600 dark:text-emerald-400">
+            {loading ? '...' : advancingCount}
+          </p>
+          <p className="mt-1 text-xs text-[#64748B] dark:text-[#94A3B8]">
+            Standard 1 to 9 students
+          </p>
         </div>
-        <p className="mt-2 text-xs font-bold uppercase tracking-wider text-amber-50/90">
-          Graduating · Standard 10, all divisions
-        </p>
+
+        {/* Card 3: Graduating */}
+        <div className="rounded-2xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] p-5 shadow-xs">
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#64748B] dark:text-[#94A3B8]">
+            <GraduationCap className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            <span>Graduating</span>
+          </div>
+          <p className="mt-2 text-3xl font-heading font-extrabold text-amber-600 dark:text-amber-400">
+            {loading ? '...' : graduatingCount}
+          </p>
+          <p className="mt-1 text-xs text-[#64748B] dark:text-[#94A3B8]">
+            Standard 10 students
+          </p>
+        </div>
       </div>
 
-      {/* Promote action */}
-      <button
-        onClick={() => setShowPreviewModal(true)}
-        className="group flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-3.5 text-sm font-extrabold text-white shadow-md transition hover:shadow-lg"
-      >
-        <ArrowUpCircle className="h-4.5 w-4.5 transition group-hover:-translate-y-0.5" />
-        <span>Promote Students</span>
-      </button>
+      {/* ── What Happens Next & Promote Action ── */}
+      <div className="rounded-2xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+        <div className="space-y-1">
+          <h3 className="font-heading font-bold text-base text-[#0F172A] dark:text-[#F8FAFC]">
+            Ready to promote students?
+          </h3>
+          <p className="text-xs sm:text-sm text-[#64748B] dark:text-[#94A3B8] max-w-xl leading-relaxed">
+            Students in Standard 1–9 will advance to the next standard (e.g., Standard 1 → Standard 2).
+            Standard 10 students will be marked as graduated.
+          </p>
+        </div>
 
-      {/* Promotion Preview Modal */}
-      {showPreviewModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
-          <div className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-premium animate-fade-in">
-            {/* Header */}
-            <div className="flex items-center justify-between bg-gradient-to-r from-primary to-secondary px-6 py-4">
-              <div className="flex items-center gap-2">
-                <GraduationCap className="h-5 w-5 text-blue-200" />
-                <h3 className="font-heading text-sm font-bold text-white">
-                  {t('promotion.preview_title')}
-                </h3>
+        <button
+          type="button"
+          onClick={() => setShowModal(true)}
+          disabled={loading || totalCount === 0}
+          className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-heading text-sm font-bold text-white bg-[#1769FF] hover:bg-[#0F5AE6] dark:bg-[#3B82F6] dark:hover:bg-[#2563EB] transition-all shadow-xs hover:shadow-md cursor-pointer disabled:opacity-50 shrink-0"
+        >
+          <ArrowUpCircle className="w-4 h-4" />
+          <span>Promote Students</span>
+        </button>
+      </div>
+
+      {/* ── Student Preview Roster ── */}
+      <div className="rounded-2xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] shadow-xs overflow-hidden">
+        {/* Search header */}
+        <div className="p-4 border-b border-[#E2E8F0] dark:border-[#253044] flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#F8FAFC] dark:bg-[#161D29]">
+          <span className="font-heading font-bold text-sm text-[#0F172A] dark:text-[#F8FAFC]">
+            Student Preview List ({filteredList.length})
+          </span>
+
+          <div className="relative w-full sm:w-64">
+            <Search className="w-4 h-4 text-[#64748B] dark:text-[#94A3B8] absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search by name or roll no..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full h-9 pl-9 pr-3 rounded-xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] text-xs outline-none focus:border-[#1769FF] dark:focus:border-[#3B82F6]"
+            />
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-[#E2E8F0] dark:border-[#253044] text-[#64748B] dark:text-[#94A3B8] font-bold uppercase tracking-wider bg-[#F8FAFC]/50 dark:bg-[#161D29]/50">
+                <th className="px-5 py-3 w-24">Roll No</th>
+                <th className="px-5 py-3">Student Name</th>
+                <th className="px-5 py-3">Current Class</th>
+                <th className="px-5 py-3 text-center w-16"></th>
+                <th className="px-5 py-3">Next Class</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#E2E8F0] dark:divide-[#253044]">
+              {loading ? (
+                <tr>
+                  <td colSpan={5} className="py-10 text-center text-[#64748B] dark:text-[#94A3B8]">
+                    <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-[#1769FF] dark:text-[#3B82F6]" />
+                    <span>Loading student records...</span>
+                  </td>
+                </tr>
+              ) : filteredList.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-10 text-center text-[#64748B] dark:text-[#94A3B8]">
+                    No matching students found.
+                  </td>
+                </tr>
+              ) : (
+                filteredList.slice(0, 50).map((p, idx) => {
+                  const isGrad = p.action === 'graduate';
+                  return (
+                    <tr
+                      key={p.studentId || idx}
+                      className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
+                    >
+                      <td className="px-5 py-3 font-mono font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
+                        {p.rollNo}
+                      </td>
+                      <td className="px-5 py-3 font-medium text-[#0F172A] dark:text-[#F8FAFC]">
+                        {p.studentName}
+                      </td>
+                      <td className="px-5 py-3 text-[#64748B] dark:text-[#94A3B8]">
+                        Standard {p.currentClassName}{p.currentDivision}
+                      </td>
+                      <td className="px-5 py-3 text-center text-[#64748B] dark:text-[#94A3B8]">
+                        <ArrowRight className="w-3.5 h-3.5 mx-auto" />
+                      </td>
+                      <td className="px-5 py-3 font-semibold">
+                        {isGrad ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60">
+                            <GraduationCap className="w-3 h-3" />
+                            <span>Graduated</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 dark:bg-blue-950/40 text-[#1769FF] dark:text-[#3B82F6] border border-blue-200 dark:border-blue-800/60 font-mono">
+                            Standard {p.nextClassName}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer Note */}
+        {filteredList.length > 50 && (
+          <div className="p-3 text-center text-xs text-[#64748B] dark:text-[#94A3B8] border-t border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#161D29]">
+            Showing first 50 of {filteredList.length} students. Use search to find specific students.
+          </div>
+        )}
+      </div>
+
+      {/* ── Confirmation Modal ── */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="w-full max-w-md rounded-2xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] shadow-2xl p-6 space-y-4">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-[#1769FF] dark:text-[#3B82F6]">
+                  <ArrowUpCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-bold text-base text-[#0F172A] dark:text-[#F8FAFC]">
+                    Confirm Promotion
+                  </h3>
+                  <p className="text-xs text-[#64748B] dark:text-[#94A3B8]">
+                    AY 2026–27 → 2027–28
+                  </p>
+                </div>
               </div>
               <button
-                onClick={() => setShowPreviewModal(false)}
-                className="rounded-lg p-1 text-white/60 transition hover:bg-white/10 hover:text-white"
-                aria-label="Close preview"
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="p-1 text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] rounded-lg"
               >
-                <X className="h-5 w-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* List Preview */}
-            <div className="flex-1 space-y-4 overflow-y-auto p-6">
-              <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-xs leading-relaxed text-amber-800">
-                <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-                <span>
-                  <span className="font-bold">Review every movement before confirming.</span> This
-                  advances all listed students to their next class and archives Standard 10
-                  graduates. Applied in bulk — it cannot be undone.
-                </span>
-              </div>
-
-              {/* Table - Only Current Class, Movement, Next Class */}
-              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                <table className="w-full border-collapse text-left text-xs">
-                  <thead className="border-b border-slate-100 bg-slate-50 text-[9px] font-extrabold uppercase tracking-wider text-slate-700">
-                    <tr>
-                      <th className="px-6 py-3">Current Class</th>
-                      <th className="px-6 py-3 text-center">Movement</th>
-                      <th className="px-6 py-3">Next Class</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
-                    {previews.map(p => (
-                      <tr key={p.studentId} className="transition hover:bg-slate-50/50">
-                        <td className="px-6 py-3 font-medium text-slate-800">
-                          Standard {p.currentClassName}{p.currentDivision}
-                        </td>
-                        <td className="px-6 py-3 text-center">
-                          <ArrowRight className="mx-auto h-3.5 w-3.5 text-slate-400" />
-                        </td>
-                        <td className="px-6 py-3">
-                          <span
-                            className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${
-                              p.action === 'graduate'
-                                ? 'bg-amber-100 text-amber-700'
-                                : 'bg-blue-100 text-blue-700'
-                            }`}
-                          >
-                            {p.action === 'graduate' ? '🎓 Graduated' : p.nextClassName}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            {/* Explanation box */}
+            <div className="p-3.5 rounded-xl bg-[#F8FAFC] dark:bg-[#161D29] border border-[#E2E8F0] dark:border-[#253044] text-xs space-y-2 text-[#64748B] dark:text-[#94A3B8]">
+              <p>
+                • <strong className="text-emerald-600 dark:text-emerald-400">{advancingCount} students</strong> (Std 1–9) will advance to the next standard.
+              </p>
+              <p>
+                • <strong className="text-amber-600 dark:text-amber-400">{graduatingCount} students</strong> (Std 10) will graduate.
+              </p>
+              <p className="text-slate-500 dark:text-slate-400 pt-1 text-[11px]">
+                Note: This updates all student classes for the new academic year.
+              </p>
             </div>
 
             {/* Actions */}
-            <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-6 py-4">
+            <div className="flex items-center justify-end gap-2.5 pt-2">
               <button
-                onClick={() => setShowPreviewModal(false)}
-                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-100"
-              >
-                {t('common.cancel')}
-              </button>
-
-              <button
-                onClick={handlePromoteSubmit}
+                type="button"
+                onClick={() => setShowModal(false)}
                 disabled={isPromoting}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-2 text-xs font-extrabold text-white shadow-sm transition hover:shadow-md disabled:opacity-50"
+                className="px-4 py-2 rounded-xl border border-[#E2E8F0] dark:border-[#253044] text-xs font-semibold text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] cursor-pointer"
               >
-                <CheckSquare className="h-4 w-4" />
-                <span>{t('promotion.confirm_promotion')}</span>
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handlePromote}
+                disabled={isPromoting}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#1769FF] hover:bg-[#0F5AE6] dark:bg-[#3B82F6] dark:hover:bg-[#2563EB] cursor-pointer disabled:opacity-50"
+              >
+                {isPromoting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Promoting...</span>
+                  </>
+                ) : (
+                  <span>Confirm Promotion</span>
+                )}
               </button>
             </div>
           </div>

@@ -48,3 +48,28 @@ def submit_student_results(
             )
         )
     return response_data
+
+
+@router.get("/class/{class_id}/exam/{exam_type_id}")
+def get_teacher_results_by_class_and_exam(
+    class_id: int,
+    exam_type_id: int,
+    current_user: Teacher = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns existing marks as a dictionary { "studentId_subjectId": marks_obtained, ... }
+    """
+    results_stmt = (
+        db.query(Result)
+        .join(Student, Result.student_id == Student.id)
+        .filter(
+            Student.class_id == class_id,
+            Result.exam_type_id == exam_type_id,
+        )
+    )
+    results = results_stmt.all()
+    marks_map = {}
+    for r in results:
+        marks_map[f"{r.student_id}_{r.subject_id}"] = r.marks_obtained
+    return marks_map

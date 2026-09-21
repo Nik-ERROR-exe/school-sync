@@ -55,6 +55,11 @@ def _check_teacher_authorized(
     """Raise ForbiddenException unless the teacher teaches every (class, subject)
     referenced by the batch. Authority comes from the explicit
     teacher_class_subjects mapping and/or the generated timetable slots."""
+    from app.models.teacher import Teacher
+    teacher = db.get(Teacher, teacher_id)
+    if teacher and teacher.role == "ADMIN":
+        return
+
     authorized_pairs = set(
         db.execute(
             select(TeacherClassSubject.class_id, TeacherClassSubject.subject_id).where(
