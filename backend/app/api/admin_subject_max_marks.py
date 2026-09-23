@@ -33,7 +33,10 @@ def _to_response(record: SubjectMaxMarks) -> SubjectMaxMarksResponse:
         subject_code=record.subject.code if record.subject else None,
         exam_type_id=record.exam_type_id,
         exam_type_name=record.exam_type.name if record.exam_type else None,
-        max_marks=float(record.max_marks)
+        akarikh_max=float(record.akarikh_max),
+        oral_max=float(record.oral_max),
+        written_max=float(record.written_max),
+        max_marks=float(record.akarikh_max) + float(record.oral_max) + float(record.written_max),
     )
 
 
@@ -108,7 +111,10 @@ async def create_subject_max_marks(
         class_name=data.class_name,
         subject_id=data.subject_id,
         exam_type_id=data.exam_type_id,
-        max_marks=data.max_marks,
+        akarikh_max=data.akarikh_max,
+        oral_max=data.oral_max,
+        written_max=data.written_max,
+        max_marks=data.akarikh_max + data.oral_max + data.written_max,
     )
     db.add(record)
     await db.commit()
@@ -145,7 +151,10 @@ async def update_subject_max_marks(
     if not record:
         raise HTTPException(status_code=404, detail="Subject max marks configuration not found")
 
-    record.max_marks = data.max_marks
+    record.akarikh_max = data.akarikh_max
+    record.oral_max = data.oral_max
+    record.written_max = data.written_max
+    record.max_marks = data.akarikh_max + data.oral_max + data.written_max
     await db.commit()
 
     reload_stmt = (
@@ -201,7 +210,10 @@ async def batch_update_subject_max_marks(
                 status_code=404,
                 detail=f"Subject max marks configuration with id {update.id} not found"
             )
-        record.max_marks = update.max_marks
+        record.akarikh_max = update.akarikh_max
+        record.oral_max = update.oral_max
+        record.written_max = update.written_max
+        record.max_marks = update.akarikh_max + update.oral_max + update.written_max
         updated_ids.append(record.id)
 
     await db.commit()
@@ -258,7 +270,10 @@ async def copy_subject_max_marks(
             class_name=record.class_name,
             subject_id=record.subject_id,
             exam_type_id=data.target_exam_type_id,
-            max_marks=record.max_marks,
+            akarikh_max=record.akarikh_max,
+            oral_max=record.oral_max,
+            written_max=record.written_max,
+            max_marks=record.akarikh_max + record.oral_max + record.written_max,
         )
         db.add(new_record)
         new_records.append(new_record)

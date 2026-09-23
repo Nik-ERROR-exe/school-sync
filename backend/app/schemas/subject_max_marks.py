@@ -1,31 +1,24 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List
 
-class SubjectMaxMarksBase(BaseModel):
+class SubjectMaxMarksCreate(BaseModel):
     class_name: str
     subject_id: int
     exam_type_id: int
-    max_marks: float = Field(gt=0)
-
-class SubjectMaxMarksCreate(SubjectMaxMarksBase):
-    pass
+    akarikh_max: float
+    oral_max: float
+    written_max: float
 
 class SubjectMaxMarksUpdate(BaseModel):
-    max_marks: float = Field(gt=0)
+    akarikh_max: float
+    oral_max: float
+    written_max: float
 
-class SubjectMaxMarksResponse(SubjectMaxMarksBase):
-    id: int
-    subject_name: Optional[str] = None
-    subject_code: Optional[str] = None
-    exam_type_name: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
-# New batch update schema
 class SubjectMaxMarksBatchUpdateItem(BaseModel):
     id: int
-    max_marks: float = Field(gt=0)
+    akarikh_max: float
+    oral_max: float
+    written_max: float
 
 class SubjectMaxMarksBatchUpdate(BaseModel):
     updates: List[SubjectMaxMarksBatchUpdateItem]
@@ -34,3 +27,19 @@ class SubjectMaxMarksCopy(BaseModel):
     source_exam_type_id: int
     target_exam_type_id: int
     class_name: Optional[str] = None
+
+class SubjectMaxMarksResponse(BaseModel):
+    id: int
+    class_name: str
+    subject_id: int
+    subject_name: Optional[str] = None
+    subject_code: Optional[str] = None
+    exam_type_id: int
+    exam_type_name: Optional[str] = None
+    akarikh_max: float
+    oral_max: float
+    written_max: float
+    max_marks: float
+
+    class Config:
+        from_attributes = True
