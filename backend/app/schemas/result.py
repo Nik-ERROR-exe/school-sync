@@ -1,24 +1,37 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List
 
-# Marks range rule: entered marks must be between 0 and the subject's configured max_marks.
+# Per-component marks must be non-negative; upper bound enforced by service against DB max.
 MIN_MARKS = 0
-MAX_MARKS = 1000
+
+class SubjectMaxMarksCreate(BaseModel):
+    class_name: str
+    subject_id: int
+    exam_type_id: int
+    akarikh_max: float
+    oral_max: float
+    written_max: float
 
 class MarkEntry(BaseModel):
     student_id: int
-    marks_obtained: float = Field(ge=MIN_MARKS)
+    subject_id: int
+    exam_type_id: int
+    akarikh_marks: float = Field(default=0, ge=MIN_MARKS)
+    oral_marks: float = Field(default=0, ge=MIN_MARKS)
+    written_marks: float = Field(default=0, ge=MIN_MARKS)
 
 class ResultSubmitRequest(BaseModel):
     class_id: int
-    subject_id: int
     exam_type_id: int
     marks: List[MarkEntry]
 
 class TeacherMarkEntry(BaseModel):
     student_id: int
     subject_id: int
-    marks_obtained: float = Field(ge=MIN_MARKS)
+    exam_type_id: int
+    akarikh_marks: float = Field(default=0, ge=MIN_MARKS)
+    oral_marks: float = Field(default=0, ge=MIN_MARKS)
+    written_marks: float = Field(default=0, ge=MIN_MARKS)
 
 class TeacherResultSubmit(BaseModel):
     class_id: int
@@ -32,14 +45,17 @@ class ResultResponse(BaseModel):
     student_name: Optional[str] = None
     student_class: Optional[str] = None
     student_division: Optional[str] = None
-    
+
     subject_id: int
     subject_name: Optional[str] = None
     subject_code: Optional[str] = None
-    
+
     exam_type_id: int
     exam_type_name: Optional[str] = None
-    
+
+    akarikh_marks: float
+    oral_marks: float
+    written_marks: float
     marks_obtained: float
     total_marks: float
     percentage: float
@@ -47,7 +63,7 @@ class ResultResponse(BaseModel):
     status: str
     submitted_by_id: int
     approved_by_id: Optional[int] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -55,7 +71,9 @@ class ResultCreate(BaseModel):
     student_id: int
     subject_id: int
     exam_type_id: int
-    marks_obtained: float = Field(ge=MIN_MARKS)
+    akarikh_marks: float = Field(default=0, ge=MIN_MARKS)
+    oral_marks: float = Field(default=0, ge=MIN_MARKS)
+    written_marks: float = Field(default=0, ge=MIN_MARKS)
     percentage: Optional[float] = None
     grade: Optional[str] = None
     submitted_by_id: Optional[int] = None
@@ -63,14 +81,14 @@ class ResultCreate(BaseModel):
 class ResultBatchCreate(BaseModel):
     results: List[ResultCreate]
 
-# --- Result Update Schemas ---
 class ResultUpdate(BaseModel):
-    marks_obtained: Optional[float] = Field(default=None, ge=MIN_MARKS)
+    akarikh_marks: Optional[float] = Field(default=None, ge=MIN_MARKS)
+    oral_marks: Optional[float] = Field(default=None, ge=MIN_MARKS)
+    written_marks: Optional[float] = Field(default=None, ge=MIN_MARKS)
+    marks_obtained: Optional[float] = None
+    total_marks: Optional[float] = None
     status: Optional[str] = None
 
-# --- Result Approval Schema ---
 class ResultApproval(BaseModel):
     status: Optional[str] = None
     approved: Optional[bool] = None
-
-

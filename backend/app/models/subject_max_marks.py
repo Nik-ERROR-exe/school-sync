@@ -16,6 +16,10 @@ class SubjectMaxMarks(Base):
     subject_id: Mapped[int] = mapped_column(Integer, ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
     exam_type_id: Mapped[int] = mapped_column(Integer, ForeignKey("exam_types.id", ondelete="CASCADE"), nullable=False)
     max_marks: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    # Component-level maximum marks per subject per exam
+    akarikh_max: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0.00"))
+    oral_max: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0.00"))
+    written_max: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0.00"))
 
     __table_args__ = (
         UniqueConstraint("class_name", "subject_id", "exam_type_id", name="uq_subject_max_marks_class_subj_exam"),

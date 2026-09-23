@@ -111,4 +111,4 @@ async def get_students_by_class(
             }
             for s in subjects
         ]
-    }
+    }

@@ -13,7 +13,6 @@ import {
   X,
   GraduationCap,
   Users,
-  UserPlus,
   UserCircle,
   UserMinus,
   Layers,
@@ -22,6 +21,19 @@ import {
   BookCheck,
   Settings,
 } from 'lucide-react';
+
+interface NavItem {
+  to: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  roles: string[];
+  isPendingTarget?: boolean;
+}
+
+interface NavSection {
+  title: string;
+  items: NavItem[];
+}
 
 const Sidebar: React.FC = () => {
   const { t } = useTranslation();
@@ -58,114 +70,160 @@ const Sidebar: React.FC = () => {
     return () => clearInterval(interval);
   }, [user?.role]);
 
-  const navItems = [
+  // Standalone top item
+  const dashboardItem: NavItem = {
+    to: '/dashboard',
+    label: t('common.dashboard') || 'Dashboard',
+    icon: LayoutDashboard,
+    roles: ['ADMIN', 'TEACHER'],
+  };
+
+  // Grouped Navigation Sections
+  const navSections: NavSection[] = [
     {
-      to: '/dashboard',
-      label: t('common.dashboard'),
-      icon: LayoutDashboard,
-      roles: ['ADMIN', 'TEACHER'],
-      badge: null,
-    },
-    // TEACHER ONLY: Results Entry
-    {
-      to: '/teacher/results-entry',
-      label: 'Enter Results',
-      icon: FileSpreadsheet,
-      roles: ['TEACHER'],
-      badge: null,
-    },
-    // ADMIN: Review & Approve Results
-    {
-      to: '/admin/results',
-      label: 'Review Results',
-      icon: BookCheck,
-      roles: ['ADMIN'],
-      badge: null,
-    },
-    {
-      to: '/timetable',
-      label: t('common.timetable'),
-      icon: Clock,
-      roles: ['ADMIN', 'TEACHER'],
-      badge: null,
-    },
-    // ADMIN: Substitute Management
-    {
-      to: '/admin/substitute',
-      label: 'Substitute Mgmt',
-      icon: UserMinus,
-      roles: ['ADMIN'],
-      badge: null,
-    },
-    // Teacher only: My Substitutions
-    {
-      to: '/teacher/substitute',
-      label: 'My Substitutions',
-      icon: CalendarCheck,
-      roles: ['TEACHER'],
-      badge: null,
+      title: 'RESULT',
+      items: [
+        // ADMIN: Review Results
+        {
+          to: '/admin/results',
+          label: 'Review Results',
+          icon: BookCheck,
+          roles: ['ADMIN'],
+        },
+        // TEACHER: Results Entry
+        {
+          to: '/teacher/results-entry',
+          label: 'Enter Results',
+          icon: FileSpreadsheet,
+          roles: ['TEACHER'],
+        },
+      ],
     },
     {
-      to: '/promotion',
-      label: t('common.promotion'),
-      icon: ArrowUpCircle,
-      roles: ['ADMIN'],
-      badge: null,
-    },
-    // Admin Only: Student Management
-    {
-      to: '/admin/students',
-      label: 'Students',
-      icon: Users,
-      roles: ['ADMIN'],
-      badge: null,
-    },
-    // Admin Only: Class-Subject Mapping
-    {
-      to: '/admin/class-subject-mapping',
-      label: 'Class-Subject',
-      icon: Layers,
-      roles: ['ADMIN'],
-      badge: null,
-    },
-    {
-      to: '/admin/subject-max-marks',
-      label: 'Max Marks Config',
-      icon: Settings,
-      roles: ['ADMIN'],
-      badge: null,
+      title: 'TIMETABLE',
+      items: [
+        {
+          to: '/timetable',
+          label: t('common.timetable') || 'Timetable',
+          icon: Clock,
+          roles: ['ADMIN', 'TEACHER'],
+        },
+        // ADMIN: Substitute Management
+        {
+          to: '/admin/substitute',
+          label: 'Substitute Mgmt',
+          icon: UserMinus,
+          roles: ['ADMIN'],
+        },
+        // TEACHER: My Substitutions
+        {
+          to: '/teacher/substitute',
+          label: 'My Substitutions',
+          icon: CalendarCheck,
+          roles: ['TEACHER'],
+        },
+      ],
     },
     {
-      to: '/admin/teachers/pending',
-      label: 'Pending Approvals',
-      icon: UserPlus,
-      roles: ['ADMIN'],
-      badge: pendingCount > 0 ? pendingCount : null,
-    },
-    {
-      to: '/admin/teachers',
-      label: 'All Teachers',
-      icon: UsersRound,
-      roles: ['ADMIN'],
-      badge: null,
-    },
-    {
-      to: '/admin/class-management',
-      label: 'Class Management',
-      icon: GraduationCap,
-      roles: ['ADMIN'],
-      badge: null,
-    },
-    {
-      to: '/teacher/profile',
-      label: 'My Profile',
-      icon: UserCircle,
-      roles: ['TEACHER', 'ADMIN'],
-      badge: null,
+      title: 'MANAGE',
+      items: [
+        // Admin Only: Student Management
+        {
+          to: '/admin/students',
+          label: 'Students',
+          icon: Users,
+          roles: ['ADMIN'],
+        },
+        // Admin Only: All Teachers (carries the visual pending approval indicator dot)
+        {
+          to: '/admin/teachers',
+          label: 'All Teachers',
+          icon: UsersRound,
+          roles: ['ADMIN'],
+          isPendingTarget: true,
+        },
+        // Admin Only: Class-Subject Mapping
+        {
+          to: '/admin/class-subject-mapping',
+          label: 'Class-Subject',
+          icon: Layers,
+          roles: ['ADMIN'],
+        },
+        // Admin Only: Max Marks Configuration (restored)
+        {
+          to: '/admin/subject-max-marks',
+          label: 'Max Marks Config',
+          icon: Settings,
+          roles: ['ADMIN'],
+        },
+        // Admin Only: Class Management
+        {
+          to: '/admin/class-management',
+          label: 'Class Management',
+          icon: GraduationCap,
+          roles: ['ADMIN'],
+        },
+        // Admin Only: Student Promotion
+        {
+          to: '/promotion',
+          label: 'Student Promotion',
+          icon: ArrowUpCircle,
+          roles: ['ADMIN'],
+        },
+      ],
     },
   ];
 
+  // After-sections item
+  const profileItem: NavItem = {
+    to: '/teacher/profile',
+    label: 'My Profile',
+    icon: UserCircle,
+    roles: ['TEACHER', 'ADMIN'],
+  };
+
   const activePath = routerState.location.pathname;
+
+  const renderNavLink = (item: NavItem) => {
+    const Icon = item.icon;
+    const isActive = activePath === item.to;
+
+    return (
+      <Link
+        key={item.to}
+        to={item.to}
+        className={`
+          sidebar-nav-item flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold
+          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1769FF] focus-visible:ring-inset
+          ${
+            isActive
+              ? 'bg-[#1769FF] dark:bg-[#3B82F6] text-white shadow-md shadow-blue-500/20'
+              : 'text-[#64748B] dark:text-[#94A3B8] hover:bg-[#F1F5F9] dark:hover:bg-[#161D29] hover:text-[#0F172A] dark:hover:text-[#F8FAFC]'
+          }
+        `}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <Icon
+            className={`h-4 w-4 shrink-0 transition-transform duration-200 ${
+              isActive
+                ? 'text-white'
+                : 'text-[#64748B] dark:text-[#94A3B8] group-hover:scale-110'
+            }`}
+          />
+          <span className="truncate">{item.label}</span>
+        </div>
+
+        {/* Small, subtle professional green pending indicator dot beside/near "All Teachers" */}
+        {item.isPendingTarget && pendingCount > 0 && (
+          <span
+            className="pending-notification-dot h-2 w-2 shrink-0 rounded-full bg-[#22c55e]"
+            title={`${pendingCount} pending teacher approval${pendingCount > 1 ? 's' : ''}`}
+            aria-label={`${pendingCount} pending teacher approval${pendingCount > 1 ? 's' : ''}`}
+          />
+        )}
+      </Link>
+    );
+  };
 
   return (
     <>
@@ -221,48 +279,46 @@ const Sidebar: React.FC = () => {
 
         {/* Sidebar Navigation */}
         <nav className="flex-1 space-y-0.5 px-3 py-4 overflow-y-auto">
-          {navItems
-            .filter(item => user && item.roles.includes(user.role))
-            .map(item => {
-              const Icon = item.icon;
-              // Exact match active state — avoids false positives (e.g. /admin/teachers
-              // incorrectly active when on /admin/teachers/pending)
-              const isActive = activePath === item.to;
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  className={`
-                    sidebar-nav-item flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold
-                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1769FF] focus-visible:ring-inset
-                    ${
-                      isActive
-                        ? 'bg-[#1769FF] dark:bg-[#3B82F6] text-white shadow-md shadow-blue-500/20'
-                        : 'text-[#64748B] dark:text-[#94A3B8] hover:bg-[#F1F5F9] dark:hover:bg-[#161D29] hover:text-[#0F172A] dark:hover:text-[#F8FAFC]'
-                    }
-                  `}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <Icon
-                      className={`h-4 w-4 shrink-0 transition-transform duration-200 ${
-                        isActive
-                          ? 'text-white'
-                          : 'text-[#64748B] dark:text-[#94A3B8] group-hover:scale-110'
-                      }`}
-                    />
-                    <span className="truncate">{item.label}</span>
-                  </div>
-                  {item.badge !== null && (
-                    <span className="inline-flex items-center justify-center h-4.5 min-w-4.5 px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold">
-                      {item.badge}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
+          {/* 1. Standalone Dashboard */}
+          {user && dashboardItem.roles.includes(user.role) && renderNavLink(dashboardItem)}
+
+          {/* 2. Grouped Sections (RESULT, TIMETABLE, MANAGE) */}
+          {navSections.map((section, idx) => {
+            const visibleItems = section.items.filter(
+              item => user && item.roles.includes(user.role)
+            );
+            if (visibleItems.length === 0) return null;
+
+            return (
+              <div key={section.title || idx} className="pt-2">
+                {/* Subtle Divider Line */}
+                <div className="mx-1 mb-2 border-t border-[#E2E8F0] dark:border-[#253044]" />
+
+                {/* Section Header */}
+                <div className="px-3.5 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-[#94A3B8] dark:text-[#64748B] select-none">
+                  {section.title}
+                </div>
+
+                {/* Section Items */}
+                <div className="space-y-0.5">
+                  {visibleItems.map(renderNavLink)}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* 3. After the Sections: My Profile */}
+          {user && profileItem.roles.includes(user.role) && (
+            <div className="pt-2">
+              <div className="mx-1 mb-2 border-t border-[#E2E8F0] dark:border-[#253044]" />
+              <div className="space-y-0.5">
+                {renderNavLink(profileItem)}
+              </div>
+            </div>
+          )}
         </nav>
 
-        {/* User Profile & Logout Section */}
+        {/* User Profile & Logout Section (Preserved unchanged) */}
         {user && (
           <div className="border-t border-[#E2E8F0] dark:border-[#253044] p-3.5 bg-[#F8FAFC]/50 dark:bg-[#10151F]">
             <div className="flex items-center gap-3 px-1 py-1">
@@ -283,7 +339,7 @@ const Sidebar: React.FC = () => {
             </div>
             <button
               onClick={logout}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-white dark:bg-[#161D29] hover:bg-red-50 dark:hover:bg-red-950/30 border border-[#E2E8F0] dark:border-[#253044] hover:border-red-200 dark:hover:border-red-900/40 px-3 py-2 text-xs font-bold text-[#64748B] dark:text-[#94A3B8] hover:text-red-600 dark:hover:text-red-400 transition-all duration-200 active:scale-[.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-white dark:bg-[#161D29] hover:bg-red-50 dark:hover:bg-red-950/30 border border-[#E2E8F0] dark:border-[#253044] hover:border-red-200 dark:hover:border-red-900/40 px-3 py-2 text-xs font-bold text-[#64748B] dark:text-[#94A3B8] hover:text-red-600 dark:hover:text-red-400 transition-all duration-200 active:scale-[.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 cursor-pointer"
             >
               <LogOut className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
               <span>{t('common.logout')}</span>

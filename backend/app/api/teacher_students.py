@@ -11,6 +11,9 @@ from app.models.subject import Subject
 from app.models.teacher_class import TeacherClass
 from app.models.teacher_class_subject import TeacherClassSubject
 
+from app.models.teacher_class_subject import TeacherClassSubject
+from app.models.school_class import class_subjects
+
 router = APIRouter(prefix="/teacher/students", tags=["Teacher - Students"])
 
 @router.get("/by-class/{class_id}")

@@ -9,7 +9,7 @@ from app.models.subject import Subject
 from app.models.exam_type import ExamType
 from app.models.teacher_class_subject import TeacherClassSubject
 from app.models.subject_max_marks import SubjectMaxMarks
-from app.schemas.result import ResultCreate, MIN_MARKS, MAX_MARKS
+from app.schemas.result import ResultCreate
 
 from app.core.exceptions import ResourceNotFoundException, ValidationException, ForbiddenException
 from typing import List, Optional
@@ -18,17 +18,30 @@ from datetime import datetime
 import re
 
 def calculate_grade_and_percentage(marks_obtained: float, total_marks: float) -> tuple[float, str]:
-    """Helper function to calculate percentage based on marks."""
     if total_marks <= 0:
         raise ValidationException("Total marks must be greater than 0.")
     if marks_obtained < 0:
         raise ValidationException("Marks obtained cannot be negative.")
     if marks_obtained > total_marks:
         raise ValidationException("Marks obtained cannot exceed total marks.")
-        
     percentage = (marks_obtained / total_marks) * 100
     percentage = round(percentage, 2)
-    return percentage, ""
+    p = round(percentage, 2)
+    if p >= 91:
+        grade = "A1"
+    elif p >= 81:
+        grade = "A2"
+    elif p >= 71:
+        grade = "B1"
+    elif p >= 61:
+        grade = "B2"
+    elif p >= 51:
+        grade = "C1"
+    elif p >= 41:
+        grade = "C2"
+    else:
+        grade = "D"
+    return percentage, grade
 
 
 def get_grading_scale_group(class_name: str) -> str:
@@ -46,53 +59,23 @@ def get_grading_scale_group(class_name: str) -> str:
 
 
 def calculate_overall_grade(percentage: float, scale_group: str) -> str:
-    """Calculate overall student grade based on overall percentage and class scale group.
-    
-    Std 1-8 (8-tier scale):
-    P >= 91 -> 'A 1'
-    P >= 81 -> 'A 2'
-    P >= 71 -> 'ba 1'
-    P >= 61 -> 'ba 2'
-    P >= 51 -> 'k  1' (two spaces)
-    P >= 41 -> 'k  2' (two spaces)
-    P <= 40 -> 'D'
-    P <= 20 -> '[ 1' (unreachable per official Excel formula ordering, preserved per spec)
-    
-    Std 9-10 (5-tier scale):
-    P >= 80 -> 'A'
-    P >= 60 -> 'B'
-    P >= 40 -> 'C'
-    P < 40  -> 'D'
-    """
     p = round(percentage, 2)
-    if scale_group == "STD_1_8":
-        if p >= 91:
-            return "A 1"
-        elif p >= 81:
-            return "A 2"
-        elif p >= 71:
-            return "ba 1"
-        elif p >= 61:
-            return "ba 2"
-        elif p >= 51:
-            return "k  1"
-        elif p >= 41:
-            return "k  2"
-        elif p <= 20:
-            return "D"
-        elif p <= 40:
-            return "D"
-        else:
-            return "D"
-    else:  # STD_9_10
-        if p >= 80:
-            return "A"
-        elif p >= 60:
-            return "B"
-        elif p >= 40:
-            return "C"
-        else:
-            return "D"
+    # Unified school scale: A1 >= 91, A2 >= 81, B1 >= 71, B2 >= 61,
+    # C1 >= 51, C2 >= 41, else D. Scale applies to all classes uniformly.
+    if p >= 91:
+        return "A1"
+    elif p >= 81:
+        return "A2"
+    elif p >= 71:
+        return "B1"
+    elif p >= 61:
+        return "B2"
+    elif p >= 51:
+        return "C1"
+    elif p >= 41:
+        return "C2"
+    else:
+        return "D"
 
 
 async def calculate_class_overall_results(db: AsyncSession, class_id: int, exam_type_id: int) -> dict:
@@ -134,6 +117,18 @@ async def calculate_class_overall_results(db: AsyncSession, class_id: int, exam_
     for r in results:
         student_results.setdefault(r.student_id, []).append(r)
 
+    # Add result_status: P (Pass) if no subject total < 35% of its max; else F (Fail)
+    result_status = "P"
+    for student in students:
+        res_list = student_results.get(student.id, [])
+        if res_list:
+            for r in res_list:
+                if float(r.marks_obtained) < 0.35 * float(r.total_marks):
+                    result_status = "F"
+                    break
+        else:
+            result_status = "F"
+
     overall_summary = {}
     for student in students:
         res_list = student_results.get(student.id, [])
@@ -144,7 +139,8 @@ async def calculate_class_overall_results(db: AsyncSession, class_id: int, exam_
                 "percentage": 0.0,
                 "grade": calculate_overall_grade(0.0, scale_group),
                 "rank": None,
-                "has_results": False
+                "has_results": False,
+                "result_status": "F"
             }
             continue
 
@@ -153,13 +149,21 @@ async def calculate_class_overall_results(db: AsyncSession, class_id: int, exam_
         pct = round((tot_obtained * 100.0) / tot_max, 2) if tot_max > 0 else 0.0
         grd = calculate_overall_grade(pct, scale_group)
 
+        # Compute per-subject pass/fail for this student on this exam
+        student_result_status = "P"
+        for r in res_list:
+            if float(r.marks_obtained) < 0.35 * float(r.total_marks):
+                student_result_status = "F"
+                break
+
         overall_summary[student.id] = {
             "total_obtained": round(tot_obtained, 2),
             "total_max": round(tot_max, 2),
             "percentage": pct,
             "grade": grd,
             "rank": None,
-            "has_results": True
+            "has_results": True,
+            "result_status": student_result_status
         }
 
     ranked_students = [
@@ -278,10 +282,15 @@ async def create_result_batch(
         )
     )).all() if class_names else []
 
-    max_marks_lookup = {
-        (r.class_name, r.subject_id, r.exam_type_id): float(r.max_marks)
-        for r in max_marks_records
-    }
+    # Component-level max lookup (akarikh + oral + written = total max)
+    component_lookup = {}
+    for r in max_marks_records:
+        component_lookup[(r.class_name, r.subject_id, r.exam_type_id)] = {
+            "akarikh_max": float(r.akarikh_max),
+            "oral_max": float(r.oral_max),
+            "written_max": float(r.written_max),
+            "total_max": float(r.akarikh_max) + float(r.oral_max) + float(r.written_max),
+        }
 
     # 2. Bulk fetch existing results matching the batch criteria
     existing_results = (await db.scalars(
@@ -299,28 +308,33 @@ async def create_result_batch(
     for data in results_data:
         c_name = student_class_name_map.get(data.student_id)
         config_key = (c_name, data.subject_id, data.exam_type_id)
-        configured_max = max_marks_lookup.get(config_key)
 
-        if configured_max is None:
+        component_config = component_lookup.get(config_key)
+        if component_config is None:
             raise ValidationException(
-                f"Subject (ID {data.subject_id}) max marks is not configured for Standard '{c_name}' and exam type (ID {data.exam_type_id}). Contact administrator."
+                f"Subject (ID {data.subject_id}) component max marks is not configured for Standard '{c_name}' and exam type (ID {data.exam_type_id}). Contact administrator."
             )
 
-        if data.marks_obtained > configured_max:
+        # Component-level validation
+        if data.akarikh_marks < 0 or data.akarikh_marks > component_config["akarikh_max"]:
             raise ValidationException(
-                f"Marks obtained ({data.marks_obtained}) cannot exceed configured maximum marks ({configured_max}) for subject ID {data.subject_id}."
+                f"akarikh_marks ({data.akarikh_marks}) exceeds configured akarikh_max ({component_config['akarikh_max']}) for subject ID {data.subject_id}."
+            )
+        if data.oral_marks < 0 or data.oral_marks > component_config["oral_max"]:
+            raise ValidationException(
+                f"oral_marks ({data.oral_marks}) exceeds configured oral_max ({component_config['oral_max']}) for subject ID {data.subject_id}."
+            )
+        if data.written_marks < 0 or data.written_marks > component_config["written_max"]:
+            raise ValidationException(
+                f"written_marks ({data.written_marks}) exceeds configured written_max ({component_config['written_max']}) for subject ID {data.subject_id}."
             )
 
-        if data.marks_obtained < MIN_MARKS:
-            raise ValidationException(
-                f"Marks obtained must be between 0 and {configured_max} for subject ID {data.subject_id}."
-            )
-
-        total_marks = configured_max
-        percentage, grade = calculate_grade_and_percentage(data.marks_obtained, total_marks)
+        total_marks = component_config["total_max"]
+        marks_obtained = data.akarikh_marks + data.oral_marks + data.written_marks
+        percentage, grade = calculate_grade_and_percentage(marks_obtained, total_marks)
         key = (data.student_id, data.subject_id, data.exam_type_id)
         existing = existing_map.get(key)
-        
+
         if existing:
             if not is_admin and existing.status == "approved":
                 raise ForbiddenException(
@@ -328,7 +342,10 @@ async def create_result_batch(
                     f"{data.student_id}, subject {data.subject_id}). Contact the "
                     "administrator to amend it."
                 )
-            existing.marks_obtained = data.marks_obtained
+            existing.akarikh_marks = data.akarikh_marks
+            existing.oral_marks = data.oral_marks
+            existing.written_marks = data.written_marks
+            existing.marks_obtained = marks_obtained
             existing.total_marks = total_marks
             existing.percentage = percentage
             existing.grade = grade
@@ -341,7 +358,10 @@ async def create_result_batch(
                 student_id=data.student_id,
                 subject_id=data.subject_id,
                 exam_type_id=data.exam_type_id,
-                marks_obtained=data.marks_obtained,
+                akarikh_marks=data.akarikh_marks,
+                oral_marks=data.oral_marks,
+                written_marks=data.written_marks,
+                marks_obtained=marks_obtained,
                 total_marks=total_marks,
                 percentage=percentage,
                 grade=grade,
@@ -419,14 +439,10 @@ async def update_result(db: AsyncSession, result_id: int, data: dict) -> Result:
     if not db_result:
         raise ResourceNotFoundException("Result", str(result_id))
 
-    # Get class_name for SubjectMaxMarks lookup
-    student_class = db_result.student.school_class if db_result.student else None
-    class_name = student_class.class_name if student_class else None
-
+    class_name = db_result.student.school_class.class_name if db_result.student and db_result.student.school_class else None
     if not class_name:
         raise ValidationException("Student class not found for max marks lookup")
 
-    # Lookup configured max marks for this subject/class/exam
     max_marks_result = await db.execute(
         select(SubjectMaxMarks).where(
             SubjectMaxMarks.class_name == class_name,
@@ -434,36 +450,63 @@ async def update_result(db: AsyncSession, result_id: int, data: dict) -> Result:
             SubjectMaxMarks.exam_type_id == db_result.exam_type_id
         )
     )
-    max_marks_record = max_marks_result.scalar_one_or_none()
-
-    if not max_marks_record:
+    max_record = max_marks_result.scalar_one_or_none()
+    if not max_record:
         raise ValidationException(
             f"Max marks not configured for Standard '{class_name}', subject ID {db_result.subject_id}, exam type ID {db_result.exam_type_id}. Configure it first."
         )
 
-    configured_max = float(max_marks_record.max_marks)
+    component_fields = ['akarikh_marks', 'oral_marks', 'written_marks']
+    has_any = any(k in data for k in component_fields)
 
-    # Update fields
-    if 'marks_obtained' in data:
+    if has_any:
+        if not all(k in data for k in component_fields):
+            raise ValidationException(
+                "When updating component marks, all three (akarikh_marks, oral_marks, written_marks) must be provided together."
+            )
+        for comp_name in component_fields:
+            comp_val = data[comp_name]
+            if comp_val < 0:
+                raise ValidationException(f"{comp_name} ({comp_val}) must be >= 0.")
+        akarikh_max_db = float(max_record.akarikh_max)
+        oral_max_db = float(max_record.oral_max)
+        written_max_db = float(max_record.written_max)
+        if data['akarikh_marks'] > akarikh_max_db:
+            raise ValidationException(f"akarikh_marks ({data['akarikh_marks']}) exceeds configured akarikh_max ({akarikh_max_db}).")
+        if data['oral_marks'] > oral_max_db:
+            raise ValidationException(f"oral_marks ({data['oral_marks']}) exceeds configured oral_max ({oral_max_db}).")
+        if data['written_marks'] > written_max_db:
+            raise ValidationException(f"written_marks ({data['written_marks']}) exceeds configured written_max ({written_max_db}).")
+
+        db_result.akarikh_marks = data['akarikh_marks']
+        db_result.oral_marks = data['oral_marks']
+        db_result.written_marks = data['written_marks']
+        db_result.marks_obtained = data['akarikh_marks'] + data['oral_marks'] + data['written_marks']
+        db_result.total_marks = float(akarikh_max_db + oral_max_db + written_max_db)
+        recompute = True
+    elif 'marks_obtained' in data:
         marks_obtained = data['marks_obtained']
-        if marks_obtained < MIN_MARKS:
-            raise ValidationException(
-                f"Marks obtained must be between 0 and {configured_max} for subject ID {db_result.subject_id}."
-            )
-        if marks_obtained > configured_max:
-            raise ValidationException(
-                f"Marks obtained ({marks_obtained}) cannot exceed configured maximum marks ({configured_max}) for subject ID {db_result.subject_id}."
-            )
+        total_max = float(max_record.akarikh_max) + float(max_record.oral_max) + float(max_record.written_max)
+        if marks_obtained < 0:
+            raise ValidationException(f"Marks obtained must be >= 0.")
+        if marks_obtained > total_max:
+            raise ValidationException(f"Marks obtained ({marks_obtained}) exceeds total max ({total_max}).")
         db_result.marks_obtained = marks_obtained
+        db_result.akarikh_marks = 0
+        db_result.oral_marks = 0
+        db_result.written_marks = 0
+        db_result.total_marks = total_max
+        recompute = True
+    else:
+        recompute = False
 
-    db_result.total_marks = configured_max
-
-    percentage, grade = calculate_grade_and_percentage(
-        db_result.marks_obtained,
-        db_result.total_marks
-    )
-    db_result.percentage = percentage
-    db_result.grade = grade
+    if recompute:
+        percentage, grade = calculate_grade_and_percentage(
+            float(db_result.marks_obtained) if db_result.marks_obtained else 0.0,
+            float(db_result.total_marks) if db_result.total_marks else 100.0,
+        )
+        db_result.percentage = percentage
+        db_result.grade = grade
 
     if 'status' in data:
         db_result.status = data['status']

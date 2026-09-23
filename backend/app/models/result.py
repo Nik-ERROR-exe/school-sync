@@ -24,6 +24,11 @@ class Result(Base):
     subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id"), index=True, nullable=False)
     exam_type_id: Mapped[int] = mapped_column(ForeignKey("exam_types.id"), index=True, nullable=False)
 
+    # Component-level marks (akarikh / oral / written)
+    akarikh_marks: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=0)
+    oral_marks: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=0)
+    written_marks: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=0)
+
     # Storage optimization: compact numeric types (5,2) for marks, short grade code.
     marks_obtained: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     total_marks: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=100.0, nullable=False)
