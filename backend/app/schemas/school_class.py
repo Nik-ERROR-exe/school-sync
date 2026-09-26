@@ -23,3 +23,19 @@ class SchoolClassResponse(BaseModel):
 
 class ClassSubjectsUpdate(BaseModel):
     subject_ids: List[int]
+
+class ClassTeacherAssignmentRequest(BaseModel):
+    teacher_id: Optional[int] = None
+
+class ClearedClassInfo(BaseModel):
+    id: int
+    class_name: str
+    division: str
+
+    class Config:
+        from_attributes = True
+
+class ClassTeacherAssignmentResponse(BaseModel):
+    class_id: int
+    class_teacher_id: Optional[int]
+    cleared_classes: List[ClearedClassInfo] = []
