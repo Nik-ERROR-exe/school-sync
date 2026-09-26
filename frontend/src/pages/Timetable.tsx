@@ -19,11 +19,11 @@ interface LandingPageProps {
 
 function AdminLandingPage({ hasSavedTimetable, onStartWizard, onViewTimetable }: LandingPageProps) {
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 py-12">
+    <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 py-12 font-body text-[#0F172A] dark:text-[#F8FAFC]">
       {/* Heading */}
       <div className="text-center mb-10">
-        <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Timetable Management</h1>
-        <p className="text-slate-500 mt-2 text-sm font-medium max-w-md mx-auto">
+        <h1 className="font-heading text-3xl font-extrabold text-[#0F172A] dark:text-[#F8FAFC] tracking-tight">Timetable Management</h1>
+        <p className="text-[#64748B] dark:text-[#94A3B8] mt-2 text-sm font-medium max-w-md mx-auto">
           Generate a new timetable using the wizard or view the currently saved master timetable.
         </p>
       </div>
@@ -31,13 +31,13 @@ function AdminLandingPage({ hasSavedTimetable, onStartWizard, onViewTimetable }:
       {/* Status Badge */}
       <div className="mb-8">
         {hasSavedTimetable ? (
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm font-semibold shadow-sm">
-            <CheckCircle2 size={16} className="text-emerald-500" />
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 text-xs font-bold shadow-xs">
+            <CheckCircle2 size={16} className="text-emerald-500 dark:text-emerald-400" />
             <span>✓ Timetable saved</span>
           </div>
         ) : (
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-100 border border-slate-200 text-slate-500 text-sm font-semibold">
-            <Clock size={16} className="text-slate-400" />
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#F8FAFC] dark:bg-[#161D29] border border-[#E2E8F0] dark:border-[#253044] text-[#64748B] dark:text-[#94A3B8] text-xs font-bold">
+            <Clock size={16} className="text-[#94A3B8]" />
             <span>No timetable generated yet</span>
           </div>
         )}
@@ -46,37 +46,37 @@ function AdminLandingPage({ hasSavedTimetable, onStartWizard, onViewTimetable }:
       {/* Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl w-full">
         {/* Card 1: Generate */}
-        <div className="bg-white dark:bg-[#10151F] rounded-2xl border border-[#E2E8F0] dark:border-[#253044] shadow-sm hover:shadow-md hover:border-blue-200 transition-all duration-200 p-8 flex flex-col items-center text-center group">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center mb-5 shadow-lg shadow-blue-500/20 group-hover:scale-105 transition-transform duration-200">
+        <div className="bg-white dark:bg-[#10151F] rounded-2xl border border-[#E2E8F0] dark:border-[#253044] shadow-xs hover:shadow-md hover:border-blue-200 dark:hover:border-blue-800/60 transition-all duration-200 p-8 flex flex-col items-center text-center group">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#1769FF] to-indigo-600 flex items-center justify-center mb-5 shadow-lg shadow-blue-500/20 group-hover:scale-105 transition-transform duration-200">
             <Sparkles size={26} className="text-white" />
           </div>
-          <h2 className="text-lg font-extrabold text-[#0F172A] dark:text-[#F8FAFC] mb-2">Generate New Timetable</h2>
+          <h2 className="font-heading text-lg font-extrabold text-[#0F172A] dark:text-[#F8FAFC] mb-2">Generate New Timetable</h2>
           <p className="text-xs text-[#64748B] dark:text-[#94A3B8] leading-relaxed mb-6 max-w-[260px]">
             Create a new timetable using the wizard. Configure school settings, select teachers, set weekly requirements and generate.
           </p>
           <button
             onClick={onStartWizard}
-            className="w-full px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-sm transition-colors"
+            className="w-full px-5 py-2.5 bg-[#1769FF] hover:bg-[#0F5AE6] dark:bg-[#3B82F6] dark:hover:bg-[#2563EB] text-white font-heading font-bold text-sm rounded-xl shadow-xs hover:shadow-md transition-all active:scale-[.98] cursor-pointer"
           >
             Start Wizard →
           </button>
         </div>
 
         {/* Card 2: View */}
-        <div className={`bg-white rounded-2xl border shadow-sm p-8 flex flex-col items-center text-center transition-all duration-200 ${
+        <div className={`bg-white dark:bg-[#10151F] rounded-2xl border shadow-xs p-8 flex flex-col items-center text-center transition-all duration-200 ${
           hasSavedTimetable 
-            ? 'border-slate-200 hover:shadow-md hover:border-emerald-200 group' 
-            : 'border-slate-100 opacity-60'
+            ? 'border-[#E2E8F0] dark:border-[#253044] hover:shadow-md hover:border-emerald-200 dark:hover:border-emerald-800/60 group' 
+            : 'border-[#E2E8F0] dark:border-[#253044] opacity-60'
         }`}>
           <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-5 shadow-lg transition-transform duration-200 ${
             hasSavedTimetable 
               ? 'bg-gradient-to-br from-emerald-500 to-teal-600 shadow-emerald-500/20 group-hover:scale-105' 
-              : 'bg-slate-200 shadow-none'
+              : 'bg-slate-200 dark:bg-slate-700 shadow-none'
           }`}>
             <CalendarDays size={26} className="text-white" />
           </div>
-          <h2 className="text-lg font-extrabold text-slate-900 mb-2">View Saved Timetable</h2>
-          <p className="text-xs text-slate-500 leading-relaxed mb-6 max-w-[260px]">
+          <h2 className="font-heading text-lg font-extrabold text-[#0F172A] dark:text-[#F8FAFC] mb-2">View Saved Timetable</h2>
+          <p className="text-xs text-[#64748B] dark:text-[#94A3B8] leading-relaxed mb-6 max-w-[260px]">
             {hasSavedTimetable 
               ? 'View the currently saved master timetable. Select a class to see its schedule.'
               : 'No timetable saved yet. Generate one using the wizard first.'
@@ -85,10 +85,10 @@ function AdminLandingPage({ hasSavedTimetable, onStartWizard, onViewTimetable }:
           <button
             onClick={onViewTimetable}
             disabled={!hasSavedTimetable}
-            className={`w-full px-5 py-2.5 font-bold text-sm rounded-xl shadow-sm transition-colors ${
+            className={`w-full px-5 py-2.5 font-heading font-bold text-sm rounded-xl shadow-xs transition-all active:scale-[.98] cursor-pointer ${
               hasSavedTimetable
-                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                ? 'bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-500 text-white hover:shadow-md'
+                : 'bg-[#F8FAFC] dark:bg-[#161D29] text-[#94A3B8] cursor-not-allowed'
             }`}
           >
             {hasSavedTimetable ? 'View Timetable →' : 'No timetable saved yet'}
@@ -155,21 +155,21 @@ function TeacherTimetableView({ teacherName }: TeacherViewProps) {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh]">
-        <Loader2 className="animate-spin text-blue-600 mb-4" size={32} />
-        <span className="text-slate-600 font-medium">Loading Your Timetable…</span>
+        <Loader2 className="animate-spin text-[#1769FF] dark:text-[#3B82F6] mb-4" size={32} />
+        <span className="text-[#64748B] dark:text-[#94A3B8] font-heading font-bold text-sm">Loading Your Timetable…</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh] text-center p-8 bg-white rounded-2xl border border-slate-200 shadow-sm max-w-md mx-auto">
-        <AlertCircle className="text-red-500 mb-4" size={48} />
-        <h2 className="text-lg font-bold text-slate-900 mb-2">Failed to Load Timetable</h2>
-        <p className="text-slate-500 text-sm mb-6">{error}</p>
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center p-8 bg-white dark:bg-[#10151F] rounded-2xl border border-[#E2E8F0] dark:border-[#253044] shadow-xs max-w-md mx-auto">
+        <AlertCircle className="text-red-500 dark:text-red-400 mb-4" size={48} />
+        <h2 className="font-heading text-lg font-bold text-[#0F172A] dark:text-[#F8FAFC] mb-2">Failed to Load Timetable</h2>
+        <p className="text-[#64748B] dark:text-[#94A3B8] text-sm mb-6">{error}</p>
         <button 
           onClick={fetchTeacherData}
-          className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2 rounded-lg text-sm shadow transition-colors"
+          className="bg-[#1769FF] hover:bg-[#0F5AE6] dark:bg-[#3B82F6] dark:hover:bg-[#2563EB] text-white font-heading font-bold px-6 py-2.5 rounded-xl text-sm shadow-xs hover:shadow-md transition-all active:scale-[.98] cursor-pointer"
         >
           Retry
         </button>
@@ -179,10 +179,10 @@ function TeacherTimetableView({ teacherName }: TeacherViewProps) {
 
   if (slots.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh] text-center p-8 bg-white rounded-2xl border border-slate-200 shadow-sm max-w-md mx-auto">
-        <CalendarDays className="text-slate-300 mb-4" size={56} />
-        <h2 className="text-lg font-bold text-slate-900 mb-2">No Timetable Assigned</h2>
-        <p className="text-slate-500 text-sm">
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center p-8 bg-white dark:bg-[#10151F] rounded-2xl border border-[#E2E8F0] dark:border-[#253044] shadow-xs max-w-md mx-auto">
+        <CalendarDays className="text-[#94A3B8] mb-4" size={56} />
+        <h2 className="font-heading text-lg font-bold text-[#0F172A] dark:text-[#F8FAFC] mb-2">No Timetable Assigned</h2>
+        <p className="text-[#64748B] dark:text-[#94A3B8] text-sm">
           Your timetable has not been assigned yet. Please contact the admin.
         </p>
       </div>
@@ -435,21 +435,21 @@ function AdminTimetableFlow() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh]">
-        <Loader2 className="animate-spin text-blue-600 mb-4" size={32} />
-        <span className="text-slate-600 font-medium">Loading School Timetable…</span>
+        <Loader2 className="animate-spin text-[#1769FF] dark:text-[#3B82F6] mb-4" size={32} />
+        <span className="text-[#64748B] dark:text-[#94A3B8] font-heading font-bold text-sm">Loading School Timetable…</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh] text-center p-8 bg-white rounded-2xl border border-slate-200 shadow-sm max-w-md mx-auto">
-        <AlertCircle className="text-red-500 mb-4" size={48} />
-        <h2 className="text-lg font-bold text-slate-900 mb-2">Failed to Load Timetable</h2>
-        <p className="text-slate-500 text-sm mb-6">{error}</p>
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center p-8 bg-white dark:bg-[#10151F] rounded-2xl border border-[#E2E8F0] dark:border-[#253044] shadow-xs max-w-md mx-auto">
+        <AlertCircle className="text-red-500 dark:text-red-400 mb-4" size={48} />
+        <h2 className="font-heading text-lg font-bold text-[#0F172A] dark:text-[#F8FAFC] mb-2">Failed to Load Timetable</h2>
+        <p className="text-[#64748B] dark:text-[#94A3B8] text-sm mb-6">{error}</p>
         <button 
           onClick={fetchAllData}
-          className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2 rounded-lg text-sm shadow transition-colors"
+          className="bg-[#1769FF] hover:bg-[#0F5AE6] dark:bg-[#3B82F6] dark:hover:bg-[#2563EB] text-white font-heading font-bold px-6 py-2.5 rounded-xl text-sm shadow-xs hover:shadow-md transition-all active:scale-[.98] cursor-pointer"
         >
           Retry
         </button>
@@ -473,14 +473,14 @@ function AdminTimetableFlow() {
     return (
       <div className="space-y-4">
         {hasSavedTimetable && (
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200/80 dark:border-blue-900/60 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
             <div className="flex items-center gap-2">
-              <AlertCircle className="text-blue-600 shrink-0" size={18} />
-              <span className="text-sm font-semibold text-blue-800">A saved timetable exists.</span>
+              <AlertCircle className="text-[#1769FF] dark:text-[#3B82F6] shrink-0" size={18} />
+              <span className="text-sm font-heading font-bold text-[#0F172A] dark:text-[#F8FAFC]">A saved timetable exists.</span>
             </div>
             <button
               onClick={() => setMode('grid')}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg shadow-sm transition-colors self-start sm:self-auto shrink-0 animate-pulse"
+              className="px-4 py-2 bg-[#1769FF] hover:bg-[#0F5AE6] dark:bg-[#3B82F6] dark:hover:bg-[#2563EB] text-white font-heading font-bold text-xs rounded-xl shadow-xs transition-all active:scale-[.98] cursor-pointer self-start sm:self-auto shrink-0"
             >
               View Saved Timetable →
             </button>
