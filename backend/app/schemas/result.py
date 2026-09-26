@@ -1,24 +1,14 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List
+from app.schemas.result_component import ResultComponentEntry
 
 # Per-component marks must be non-negative; upper bound enforced by service against DB max.
 MIN_MARKS = 0
-
-class SubjectMaxMarksCreate(BaseModel):
-    class_name: str
-    subject_id: int
-    exam_type_id: int
-    akarikh_max: float
-    oral_max: float
-    written_max: float
 
 class MarkEntry(BaseModel):
     student_id: int
     subject_id: int
     exam_type_id: int
-    akarikh_marks: float = Field(default=0, ge=MIN_MARKS)
-    oral_marks: float = Field(default=0, ge=MIN_MARKS)
-    written_marks: float = Field(default=0, ge=MIN_MARKS)
 
 class ResultSubmitRequest(BaseModel):
     class_id: int
@@ -29,9 +19,6 @@ class TeacherMarkEntry(BaseModel):
     student_id: int
     subject_id: int
     exam_type_id: int
-    akarikh_marks: float = Field(default=0, ge=MIN_MARKS)
-    oral_marks: float = Field(default=0, ge=MIN_MARKS)
-    written_marks: float = Field(default=0, ge=MIN_MARKS)
 
 class TeacherResultSubmit(BaseModel):
     class_id: int
@@ -53,9 +40,6 @@ class ResultResponse(BaseModel):
     exam_type_id: int
     exam_type_name: Optional[str] = None
 
-    akarikh_marks: float
-    oral_marks: float
-    written_marks: float
     marks_obtained: float
     total_marks: float
     percentage: float
@@ -71,9 +55,6 @@ class ResultCreate(BaseModel):
     student_id: int
     subject_id: int
     exam_type_id: int
-    akarikh_marks: float = Field(default=0, ge=MIN_MARKS)
-    oral_marks: float = Field(default=0, ge=MIN_MARKS)
-    written_marks: float = Field(default=0, ge=MIN_MARKS)
     percentage: Optional[float] = None
     grade: Optional[str] = None
     submitted_by_id: Optional[int] = None
@@ -82,13 +63,21 @@ class ResultBatchCreate(BaseModel):
     results: List[ResultCreate]
 
 class ResultUpdate(BaseModel):
-    akarikh_marks: Optional[float] = Field(default=None, ge=MIN_MARKS)
-    oral_marks: Optional[float] = Field(default=None, ge=MIN_MARKS)
-    written_marks: Optional[float] = Field(default=None, ge=MIN_MARKS)
     marks_obtained: Optional[float] = None
     total_marks: Optional[float] = None
     status: Optional[str] = None
+    components: Optional[List[ResultComponentEntry]] = None
 
 class ResultApproval(BaseModel):
     status: Optional[str] = None
     approved: Optional[bool] = None
+
+class ResultCreateWithComponents(BaseModel):
+    student_id: int
+    subject_id: int
+    exam_type_id: int
+    components: List[ResultComponentEntry]
+    submitted_by_id: Optional[int] = None
+
+class ResultBatchCreateWithComponents(BaseModel):
+    results: List[ResultCreateWithComponents]
