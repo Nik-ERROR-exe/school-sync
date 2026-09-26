@@ -1,42 +1,82 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { toast } from 'react-hot-toast';
-import { resultApi, subjectMaxMarksApi, ExamType, Subject, SubjectMaxMarks } from '../../api/results';
-import { Settings, Save, Trash2, Plus, AlertTriangle, CheckCircle, Copy } from 'lucide-react';
+import {
+  resultApi,
+  subjectExamComponentsApi,
+  ExamType,
+  SubjectWithComponents,
+  SubjectExamComponentItem,
+} from '../../api/results';
+import { Save, Plus, Trash2, Loader2, AlertCircle } from 'lucide-react';
 import api from '../../api';
 
 const STANDARDS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
 
+interface DraftRow {
+  tempId: string;
+  id: number | null;
+  component_code: string;
+  display_label: string;
+  max_marks: string;
+  display_order: string;
+  original?: SubjectExamComponentItem;
+}
+
+const newTempId = (): string =>
+  `d-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const draftFromItem = (item: SubjectExamComponentItem): DraftRow => ({
+  tempId: newTempId(),
+  id: item.id,
+  component_code: item.component_code,
+  display_label: item.display_label,
+  max_marks: String(item.max_marks),
+  display_order: String(item.display_order),
+  original: item,
+});
+
+const emptyDraft = (nextOrder: number): DraftRow => ({
+  tempId: newTempId(),
+  id: null,
+  component_code: '',
+  display_label: '',
+  max_marks: '100',
+  display_order: String(nextOrder),
+});
+
 const SubjectMaxMarksConfig: React.FC = () => {
   const [examTypes, setExamTypes] = useState<ExamType[]>([]);
-  const [selectedStandard, setSelectedStandard] = useState<string>('10');
+  const [selectedStandard, setSelectedStandard] = useState<string>('8');
   const [selectedExam, setSelectedExam] = useState<number | ''>('');
+  const [subjects, setSubjects] = useState<SubjectWithComponents[]>([]);
+  const [drafts, setDrafts] = useState<Record<number, DraftRow[]>>({});
+  const [deletedIds, setDeletedIds] = useState<Set<number>>(new Set());
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [codeOptions, setCodeOptions] = useState<
+    { component_code: string; common_label: string }[]
+  >([]);
 
-  const [configuredItems, setConfiguredItems] = useState<SubjectMaxMarks[]>([]);
-  const [missingSubjects, setMissingSubjects] = useState<Subject[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [saving, setSaving] = useState<boolean>(false);
-
-  const [editAkarikh, setEditAkarikh] = useState<{ [key: number]: string }>({});
-  const [editOral, setEditOral] = useState<{ [key: number]: string }>({});
-  const [editWritten, setEditWritten] = useState<{ [key: number]: string }>({});
-
-  const [newAkarikh, setNewAkarikh] = useState<{ [subId: number]: string }>({});
-  const [newOral, setNewOral] = useState<{ [subId: number]: string }>({});
-  const [newWritten, setNewWritten] = useState<{ [subId: number]: string }>({});
-
-  const [dirtyItems, setDirtyItems] = useState<Set<number>>(new Set());
-
-  const [copyFromExam, setCopyFromExam] = useState<number | ''>('');
-  const [copying, setCopying] = useState<boolean>(false);
+  useEffect(() => {
+    const fetchCodeOptions = async () => {
+      try {
+        const response = await api.get(
+          '/admin/subject-exam-components/distinct-codes'
+        );
+        setCodeOptions(response.data);
+      } catch {
+        // silently ignore — the dropdown just stays empty
+      }
+    };
+    fetchCodeOptions();
+  }, []);
 
   useEffect(() => {
     const fetchExams = async () => {
       try {
         const exams = await resultApi.getExamTypes();
         setExamTypes(exams);
-        if (exams.length > 0) {
-          setSelectedExam(exams[0].id);
-        }
+        if (exams.length > 0) setSelectedExam(exams[0].id);
       } catch {
         toast.error('Failed to load exam types');
       }
@@ -44,421 +84,413 @@ const SubjectMaxMarksConfig: React.FC = () => {
     fetchExams();
   }, []);
 
-  useEffect(() => {
+  const fetchSubjects = async () => {
     if (!selectedStandard || !selectedExam) return;
-
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const [configs, missing] = await Promise.all([
-          subjectMaxMarksApi.list(selectedStandard, Number(selectedExam)),
-          subjectMaxMarksApi.getMissing(selectedStandard, Number(selectedExam))
-        ]);
-
-        setConfiguredItems(configs);
-        setMissingSubjects(missing);
-
-        const initialEdits: { [key: number]: string } = {};
-        const initialOral: { [key: number]: string } = {};
-        const initialWritten: { [key: number]: string } = {};
-        configs.forEach(c => {
-          initialEdits[c.id] = String(c.akarikh_max ?? 0);
-          initialOral[c.id] = String(c.oral_max ?? 0);
-          initialWritten[c.id] = String(c.written_max ?? 0);
-        });
-        setEditAkarikh(initialEdits);
-        setEditOral(initialOral);
-        setEditWritten(initialWritten);
-        setDirtyItems(new Set());
-        setNewAkarikh({});
-        setNewOral({});
-        setNewWritten({});
-      } catch (error: any) {
-        console.error('Failed to load subject max marks configuration:', error);
-        const status = error.response?.status;
-        const detail = error.response?.data?.detail;
-        if (status === 500) {
-          toast.error(`Server error (500) – check backend logs. Detail: ${detail || 'unknown'}`);
-        } else if (status === 404) {
-          toast.error('API endpoint not found. Check backend routing.');
+    setLoading(true);
+    try {
+      const data = await subjectExamComponentsApi.listByClass(
+        selectedStandard,
+        Number(selectedExam)
+      );
+      setSubjects(data);
+      const nextDrafts: Record<number, DraftRow[]> = {};
+      for (const subj of data) {
+        if (subj.components.length === 0) {
+          nextDrafts[subj.subject_id] = [emptyDraft(1)];
         } else {
-          toast.error(`Failed to load configurations: ${detail || error.message || 'unknown error'}`);
+          nextDrafts[subj.subject_id] = subj.components
+            .slice()
+            .sort((a, b) => a.display_order - b.display_order)
+            .map(draftFromItem);
         }
-      } finally {
-        setLoading(false);
       }
-    };
-
-    fetchData();
-  }, [selectedStandard, selectedExam]);
-
-  const handleEditChange = (id: number, component: 'akarikh' | 'oral' | 'written', value: string) => {
-    if (component === 'akarikh') {
-      setEditAkarikh(prev => ({ ...prev, [id]: value }));
-    } else if (component === 'oral') {
-      setEditOral(prev => ({ ...prev, [id]: value }));
-    } else {
-      setEditWritten(prev => ({ ...prev, [id]: value }));
-    }
-
-    const item = configuredItems.find(c => c.id === id);
-    const originalAkarikh = String(item?.akarikh_max ?? 0);
-    const originalOral = String(item?.oral_max ?? 0);
-    const originalWritten = String(item?.written_max ?? 0);
-    const currentAkarikh = component === 'akarikh' ? value : (editAkarikh[id] ?? originalAkarikh);
-    const currentOral = component === 'oral' ? value : (editOral[id] ?? originalOral);
-    const currentWritten = component === 'written' ? value : (editWritten[id] ?? originalWritten);
-
-    if (currentAkarikh !== originalAkarikh || currentOral !== originalOral || currentWritten !== originalWritten) {
-      setDirtyItems(prev => new Set(prev).add(id));
-    } else {
-      setDirtyItems(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(id);
-        return newSet;
-      });
+      setDrafts(nextDrafts);
+      setDeletedIds(new Set());
+    } catch (error: any) {
+      console.error('Failed to load subject components', error);
+      toast.error(
+        error.response?.data?.detail ||
+          'Failed to load components for this Standard'
+      );
+      setSubjects([]);
+      setDrafts({});
+    } finally {
+      setLoading(false);
     }
   };
 
+  useEffect(() => {
+    fetchSubjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStandard, selectedExam]);
+
+  const updateRow = (
+    subjectId: number,
+    tempId: string,
+    patch: Partial<DraftRow>
+  ) => {
+    setDrafts((prev) => ({
+      ...prev,
+      [subjectId]: (prev[subjectId] || []).map((r) =>
+        r.tempId === tempId ? { ...r, ...patch } : r
+      ),
+    }));
+  };
+
+  const addRow = (subjectId: number) => {
+    setDrafts((prev) => {
+      const rows = prev[subjectId] || [];
+      const nextOrder = rows.length + 1;
+      return { ...prev, [subjectId]: [...rows, emptyDraft(nextOrder)] };
+    });
+  };
+
+  const removeRow = (subjectId: number, tempId: string) => {
+    setDrafts((prev) => {
+      const rows = prev[subjectId] || [];
+      const row = rows.find((r) => r.tempId === tempId);
+      if (row?.id != null) {
+        setDeletedIds((d) => new Set(d).add(row.id as number));
+      }
+      return { ...prev, [subjectId]: rows.filter((r) => r.tempId !== tempId) };
+    });
+  };
+
+  const isDirty = useMemo(() => {
+    if (deletedIds.size > 0) return true;
+    for (const rows of Object.values(drafts)) {
+      for (const r of rows) {
+        if (r.id === null) return true;
+        if (!r.original) return true;
+        if (
+          r.display_label !== r.original.display_label ||
+          parseFloat(r.max_marks) !== r.original.max_marks ||
+          parseInt(r.display_order, 10) !== r.original.display_order
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }, [drafts, deletedIds]);
+
   const handleSaveAll = async () => {
-    if (dirtyItems.size === 0) {
+    if (!isDirty) {
       toast('No changes to save');
       return;
     }
 
-    const updates: { id: number; akarikh_max: number; oral_max: number; written_max: number }[] = [];
-    for (const id of dirtyItems) {
-      const a = parseFloat(editAkarikh[id] || '0') || 0;
-      const o = parseFloat(editOral[id] || '0') || 0;
-      const w = parseFloat(editWritten[id] || '0') || 0;
-      if (a + o + w <= 0) {
-        toast.error('Total max marks must be greater than 0');
-        return;
+    const items: any[] = [];
+    for (const subj of subjects) {
+      const rows = drafts[subj.subject_id] || [];
+      for (const r of rows) {
+        const code = r.component_code.trim();
+        const label = r.display_label.trim();
+        const max = parseFloat(r.max_marks);
+        const order = parseInt(r.display_order, 10);
+        if (!code) {
+          toast.error(
+            `Subject ${subj.subject_name}: component code is required`
+          );
+          return;
+        }
+        if (!/^[A-Z0-9_-]+$/i.test(code)) {
+          toast.error(
+            `Subject ${subj.subject_name}: code "${code}" may only contain letters, digits, _ and -`
+          );
+          return;
+        }
+        if (!label) {
+          toast.error(
+            `Subject ${subj.subject_name}: display label is required`
+          );
+          return;
+        }
+        if (isNaN(max) || max <= 0) {
+          toast.error(
+            `Subject ${subj.subject_name}: max marks must be > 0`
+          );
+          return;
+        }
+        if (isNaN(order) || order < 0) {
+          toast.error(
+            `Subject ${subj.subject_name}: order must be >= 0`
+          );
+          return;
+        }
+        items.push({
+          class_name: selectedStandard,
+          subject_id: subj.subject_id,
+          exam_type_id: Number(selectedExam),
+          component_code: code.toUpperCase(),
+          display_label: label,
+          max_marks: max,
+          display_order: order,
+        });
       }
-      updates.push({ id, akarikh_max: a, oral_max: o, written_max: w });
     }
 
     setSaving(true);
     try {
-      await api.put('/admin/subject-max-marks/batch', { updates });
-      toast.success('All configurations saved');
-      // Refresh
-      const [configs, missing] = await Promise.all([
-        subjectMaxMarksApi.list(selectedStandard, Number(selectedExam)),
-        subjectMaxMarksApi.getMissing(selectedStandard, Number(selectedExam))
-      ]);
-      setConfiguredItems(configs);
-      setMissingSubjects(missing);
-      const initialEdits: { [key: number]: string } = {};
-      const initialOral: { [key: number]: string } = {};
-      const initialWritten: { [key: number]: string } = {};
-      configs.forEach(c => {
-        initialEdits[c.id] = String(c.akarikh_max ?? 0);
-        initialOral[c.id] = String(c.oral_max ?? 0);
-        initialWritten[c.id] = String(c.written_max ?? 0);
-      });
-      setEditAkarikh(initialEdits);
-      setEditOral(initialOral);
-      setEditWritten(initialWritten);
-      setDirtyItems(new Set());
-      setNewAkarikh({});
-      setNewOral({});
-      setNewWritten({});
+      if (items.length > 0) {
+        await subjectExamComponentsApi.batch(items);
+      }
+      for (const id of Array.from(deletedIds)) {
+        await subjectExamComponentsApi.delete(id);
+      }
+      toast.success('Configuration saved');
+      await fetchSubjects();
     } catch (error: any) {
-      console.error('Batch save error:', error);
-      toast.error(error.response?.data?.detail || 'Failed to save configurations');
+      console.error('Save failed', error);
+      toast.error(
+        error.response?.data?.detail ||
+          'Failed to save component configuration'
+      );
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleCreate = async (subjectId: number) => {
-    const a = parseFloat(newAkarikh[subjectId] || '0') || 0;
-    const o = parseFloat(newOral[subjectId] || '0') || 0;
-    const w = parseFloat(newWritten[subjectId] || '0') || 0;
-    if (a + o + w <= 0) {
-      toast.error('Total max marks must be greater than 0');
-      return;
-    }
-    setSaving(true);
-    try {
-      await subjectMaxMarksApi.create({
-        class_name: selectedStandard,
-        subject_id: subjectId,
-        exam_type_id: Number(selectedExam),
-        akarikh_max: a,
-        oral_max: o,
-        written_max: w,
-      });
-      toast.success('Configuration created');
-      const [configs, missing] = await Promise.all([
-        subjectMaxMarksApi.list(selectedStandard, Number(selectedExam)),
-        subjectMaxMarksApi.getMissing(selectedStandard, Number(selectedExam))
-      ]);
-      setConfiguredItems(configs);
-      setMissingSubjects(missing);
-      const initialEdits: { [key: number]: string } = {};
-      const initialOral: { [key: number]: string } = {};
-      const initialWritten: { [key: number]: string } = {};
-      configs.forEach(c => {
-        initialEdits[c.id] = String(c.akarikh_max ?? 0);
-        initialOral[c.id] = String(c.oral_max ?? 0);
-        initialWritten[c.id] = String(c.written_max ?? 0);
-      });
-      setEditAkarikh(initialEdits);
-      setEditOral(initialOral);
-      setEditWritten(initialWritten);
-      setDirtyItems(new Set());
-      setNewAkarikh({});
-      setNewOral({});
-      setNewWritten({});
-    } catch (error: any) {
-      console.error('Create error:', error);
-      toast.error(error.response?.data?.detail || 'Failed to create configuration');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = async (id: number) => {
-    try {
-      await subjectMaxMarksApi.delete(id);
-      toast.success('Deleted');
-      const [configs, missing] = await Promise.all([
-        subjectMaxMarksApi.list(selectedStandard, Number(selectedExam)),
-        subjectMaxMarksApi.getMissing(selectedStandard, Number(selectedExam))
-      ]);
-      setConfiguredItems(configs);
-      setMissingSubjects(missing);
-      const initialEdits: { [key: number]: string } = {};
-      const initialOral: { [key: number]: string } = {};
-      const initialWritten: { [key: number]: string } = {};
-      configs.forEach(c => {
-        initialEdits[c.id] = String(c.akarikh_max ?? 0);
-        initialOral[c.id] = String(c.oral_max ?? 0);
-        initialWritten[c.id] = String(c.written_max ?? 0);
-      });
-      setEditAkarikh(initialEdits);
-      setEditOral(initialOral);
-      setEditWritten(initialWritten);
-      setDirtyItems(new Set());
-    } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to delete');
-    }
-  };
-
-  const handleCopy = async () => {
-    if (!copyFromExam || !selectedExam) return;
-    setCopying(true);
-    try {
-      await subjectMaxMarksApi.copy(Number(copyFromExam), Number(selectedExam), selectedStandard || undefined);
-      toast.success('Copied from exam');
-      const [configs, missing] = await Promise.all([
-        subjectMaxMarksApi.list(selectedStandard, Number(selectedExam)),
-        subjectMaxMarksApi.getMissing(selectedStandard, Number(selectedExam))
-      ]);
-      setConfiguredItems(configs);
-      setMissingSubjects(missing);
-      const initialEdits: { [key: number]: string } = {};
-      const initialOral: { [key: number]: string } = {};
-      const initialWritten: { [key: number]: string } = {};
-      configs.forEach(c => {
-        initialEdits[c.id] = String(c.akarikh_max ?? 0);
-        initialOral[c.id] = String(c.oral_max ?? 0);
-        initialWritten[c.id] = String(c.written_max ?? 0);
-      });
-      setEditAkarikh(initialEdits);
-      setEditOral(initialOral);
-      setEditWritten(initialWritten);
-      setDirtyItems(new Set());
-      setNewAkarikh({});
-      setNewOral({});
-      setNewWritten({});
-    } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to copy');
-    } finally {
-      setCopying(false);
     }
   };
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Subject Max Marks (Component-Based)</h1>
+      <datalist id="component-code-options">
+        {codeOptions.map((opt) => (
+          <option key={opt.component_code} value={opt.component_code}>
+            {opt.common_label}
+          </option>
+        ))}
+      </datalist>
+
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">
+            Subject Components Configuration
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Define marks components (e.g. आका / तोंडी / लेखी) per subject
+            and exam. Unit Tests typically have one component; Semesters
+            typically have three or more.
+          </p>
+        </div>
+        <button
+          onClick={handleSaveAll}
+          disabled={saving || !isDirty}
+          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-2"
+        >
+          {saving ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Save className="w-4 h-4" />
+              Save All
+            </>
+          )}
+        </button>
+      </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Standard</label>
+            <label className="block text-sm font-medium mb-1">
+              Standard
+            </label>
             <select
               value={selectedStandard}
               onChange={(e) => setSelectedStandard(e.target.value)}
               className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              {STANDARDS.map(s => <option key={s} value={s}>{s}</option>)}
+              {STANDARDS.map((s) => (
+                <option key={s} value={s}>
+                  Standard {s}
+                </option>
+              ))}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Exam Type</label>
+            <label className="block text-sm font-medium mb-1">
+              Exam Type
+            </label>
             <select
               value={selectedExam}
-              onChange={(e) => setSelectedExam(Number(e.target.value))}
+              onChange={(e) =>
+                setSelectedExam(e.target.value ? Number(e.target.value) : '')
+              }
               className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Select Exam</option>
-              {examTypes.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+              {examTypes.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}
+                </option>
+              ))}
             </select>
           </div>
-          <div className="flex items-end gap-2">
-            <button
-              onClick={handleSaveAll}
-              disabled={saving || dirtyItems.size === 0}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : 'Save All'}
-            </button>
-          </div>
-        </div>
-
-        {/* Copy panel */}
-        <div className="mt-4 flex items-center gap-2 bg-amber-50 p-3 rounded-lg border border-amber-200">
-          <Copy className="w-4 h-4 text-amber-600" />
-          <label className="text-sm font-medium">Copy from exam:</label>
-          <select
-            value={copyFromExam}
-            onChange={(e) => setCopyFromExam(e.target.value ? Number(e.target.value) : '')}
-            className="px-2 py-1 border rounded text-sm"
-          >
-            <option value="">Select source exam</option>
-            {examTypes.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-          </select>
-          <button onClick={handleCopy} disabled={copying || !copyFromExam} className="px-3 py-1 bg-amber-600 text-white rounded text-sm hover:bg-amber-700">
-            {copying ? 'Copying...' : 'Copy'}
-          </button>
         </div>
       </div>
 
-      {/* Configured table */}
-      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-        <table className="min-w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-3 text-left font-bold">Subject</th>
-              <th className="px-4 py-3 text-left font-bold">Code</th>
-              <th className="px-4 py-3 text-center font-bold">Akarikh (आका)</th>
-              <th className="px-4 py-3 text-center font-bold">Oral (तोंडी)</th>
-              <th className="px-4 py-3 text-center font-bold">Written (लेखी)</th>
-              <th className="px-4 py-3 text-center font-bold">Total</th>
-              <th className="px-4 py-3 text-center font-bold">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {configuredItems.map((item) => {
-              const isDirty = dirtyItems.has(item.id);
-              return (
-                <tr key={item.id} className={isDirty ? 'bg-blue-50' : ''}>
-                  <td className="px-4 py-3">{item.subject_name}</td>
-                  <td className="px-4 py-3">{item.subject_code}</td>
-                  <td className="px-2 py-2 text-center">
-                    <input
-                      type="number"
-                      value={editAkarikh[item.id] ?? ''}
-                      onChange={(e) => handleEditChange(item.id, 'akarikh', e.target.value)}
-                      className="w-20 px-2 py-1 border rounded text-center"
-                      min="0"
-                    />
-                  </td>
-                  <td className="px-2 py-2 text-center">
-                    <input
-                      type="number"
-                      value={editOral[item.id] ?? ''}
-                      onChange={(e) => handleEditChange(item.id, 'oral', e.target.value)}
-                      className="w-20 px-2 py-1 border rounded text-center"
-                      min="0"
-                    />
-                  </td>
-                  <td className="px-2 py-2 text-center">
-                    <input
-                      type="number"
-                      value={editWritten[item.id] ?? ''}
-                      onChange={(e) => handleEditChange(item.id, 'written', e.target.value)}
-                      className="w-20 px-2 py-1 border rounded text-center"
-                      min="0"
-                    />
-                  </td>
-                  <td className="px-4 py-3 text-center font-bold">
-                    {(parseFloat(editAkarikh[item.id] || '0') || 0) + (parseFloat(editOral[item.id] || '0') || 0) + (parseFloat(editWritten[item.id] || '0') || 0)}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-800" title="Delete">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Missing subjects banner */}
-      {missingSubjects.length > 0 && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
-          <h3 className="font-bold text-amber-900 mb-3">Missing Configurations (add below)</h3>
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr>
-                <th className="px-4 py-2 text-left">Subject</th>
-                <th className="px-4 py-2 text-center">Akarikh (आका)</th>
-                <th className="px-4 py-2 text-center">Oral (तोंडी)</th>
-                <th className="px-4 py-2 text-center">Written (लेखी)</th>
-                <th className="px-4 py-2 text-center">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {missingSubjects.map(sub => (
-                <tr key={sub.id}>
-                  <td className="px-4 py-2">{sub.subject_name}</td>
-                  <td className="px-2 py-2 text-center">
-                    <input
-                      type="number"
-                      value={newAkarikh[sub.id] ?? ''}
-                      onChange={(e) => setNewAkarikh(prev => ({ ...prev, [sub.id]: e.target.value }))}
-                      className="w-20 px-2 py-1 border rounded text-center"
-                      min="0"
-                    />
-                  </td>
-                  <td className="px-2 py-2 text-center">
-                    <input
-                      type="number"
-                      value={newOral[sub.id] ?? ''}
-                      onChange={(e) => setNewOral(prev => ({ ...prev, [sub.id]: e.target.value }))}
-                      className="w-20 px-2 py-1 border rounded text-center"
-                      min="0"
-                    />
-                  </td>
-                  <td className="px-2 py-2 text-center">
-                    <input
-                      type="number"
-                      value={newWritten[sub.id] ?? ''}
-                      onChange={(e) => setNewWritten(prev => ({ ...prev, [sub.id]: e.target.value }))}
-                      className="w-20 px-2 py-1 border rounded text-center"
-                      min="0"
-                    />
-                  </td>
-                  <td className="px-4 py-2 text-center">
-                    <button
-                      onClick={() => handleCreate(sub.id)}
-                      className="inline-flex items-center gap-1 px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
-                    >
-                      <Plus className="w-3 h-3" /> Add
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {loading && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-10 text-center shadow-sm">
+          <Loader2 className="w-6 h-6 animate-spin text-blue-600 mx-auto mb-2" />
+          <p className="text-sm font-medium text-gray-700">
+            Loading subjects...
+          </p>
         </div>
       )}
+
+      {!loading && (!selectedStandard || !selectedExam) && (
+        <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center">
+          <p className="text-sm text-gray-500">
+            Select a Standard and Exam Type to configure components.
+          </p>
+        </div>
+      )}
+
+      {!loading &&
+        selectedStandard &&
+        selectedExam &&
+        subjects.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center">
+            <AlertCircle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+            <p className="text-sm text-gray-600">
+              No subjects are assigned to Standard {selectedStandard}.
+            </p>
+          </div>
+        )}
+
+      {!loading &&
+        subjects.map((subj) => {
+          const rows = drafts[subj.subject_id] || [];
+          return (
+            <div
+              key={subj.subject_id}
+              className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden"
+            >
+              <div className="px-5 py-3 border-b bg-gray-50 flex items-center justify-between">
+                <div>
+                  <span className="font-bold text-gray-800">
+                    {subj.subject_name}
+                  </span>
+                  <span className="text-xs text-gray-500 ml-2">
+                    ({subj.subject_code})
+                  </span>
+                </div>
+                <span className="text-xs text-gray-500">
+                  {rows.length} component{rows.length === 1 ? '' : 's'}
+                </span>
+              </div>
+
+              <table className="min-w-full text-sm">
+                <thead className="bg-white border-b">
+                  <tr className="text-xs font-semibold text-gray-500 uppercase">
+                    <th className="px-4 py-2 text-left">Code</th>
+                    <th className="px-4 py-2 text-left">Label</th>
+                    <th className="px-4 py-2 text-center">Max Marks</th>
+                    <th className="px-4 py-2 text-center">Order</th>
+                    <th className="px-4 py-2 text-center w-16"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {rows.map((r) => {
+                    const locked = r.id !== null;
+                    return (
+                      <tr key={r.tempId}>
+                        <td className="px-4 py-2">
+                          <input
+                            type="text"
+                            list="component-code-options"
+                            value={r.component_code}
+                            disabled={locked}
+                            onChange={(e) => {
+                              const nextCode = e.target.value;
+                              const patch: Partial<DraftRow> = {
+                                component_code: nextCode,
+                              };
+                              if (!r.display_label.trim()) {
+                                const match = codeOptions.find(
+                                  (opt) =>
+                                    opt.component_code === nextCode.trim()
+                                );
+                                if (match) patch.display_label = match.common_label;
+                              }
+                              updateRow(subj.subject_id, r.tempId, patch);
+                            }}
+                            placeholder="AKARIKH"
+                            className="w-32 px-2 py-1 border rounded font-mono text-xs disabled:bg-gray-100 disabled:text-gray-500"
+                          />
+                        </td>
+                        <td className="px-4 py-2">
+                          <input
+                            type="text"
+                            value={r.display_label}
+                            onChange={(e) =>
+                              updateRow(subj.subject_id, r.tempId, {
+                                display_label: e.target.value,
+                              })
+                            }
+                            placeholder="आका"
+                            className="w-40 px-2 py-1 border rounded"
+                          />
+                        </td>
+                        <td className="px-4 py-2 text-center">
+                          <input
+                            type="number"
+                            value={r.max_marks}
+                            min="0.01"
+                            step="0.01"
+                            onChange={(e) =>
+                              updateRow(subj.subject_id, r.tempId, {
+                                max_marks: e.target.value,
+                              })
+                            }
+                            className="w-24 px-2 py-1 border rounded text-center font-mono"
+                          />
+                        </td>
+                        <td className="px-4 py-2 text-center">
+                          <input
+                            type="number"
+                            value={r.display_order}
+                            min="0"
+                            step="1"
+                            onChange={(e) =>
+                              updateRow(subj.subject_id, r.tempId, {
+                                display_order: e.target.value,
+                              })
+                            }
+                            className="w-16 px-2 py-1 border rounded text-center font-mono"
+                          />
+                        </td>
+                        <td className="px-4 py-2 text-center">
+                          <button
+                            onClick={() =>
+                              removeRow(subj.subject_id, r.tempId)
+                            }
+                            className="text-red-600 hover:text-red-800"
+                            title="Remove"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              <div className="px-4 py-3 bg-gray-50 border-t">
+                <button
+                  onClick={() => addRow(subj.subject_id)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add Component
+                </button>
+              </div>
+            </div>
+          );
+        })}
     </div>
   );
 };
