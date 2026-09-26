@@ -10,8 +10,6 @@ export interface Subject {
   id: number;
   subject_name: string;
   code: string;
-  max_marks?: number | null;
-  needs_config?: boolean;
 }
 
 export interface ResultSubmit {
@@ -41,35 +39,6 @@ export interface ResultUpdate {
   total_marks?: number;
 }
 
-export interface SubjectMaxMarks {
-  id: number;
-  class_name: string;
-  subject_id: number;
-  subject_name?: string;
-  subject_code?: string;
-  exam_type_id: number;
-  exam_type_name?: string;
-  akarikh_max: number;
-  oral_max: number;
-  written_max: number;
-  max_marks: number;
-}
-
-export interface SubjectMaxMarksCreate {
-  class_name: string;
-  subject_id: number;
-  exam_type_id: number;
-  akarikh_max: number;
-  oral_max: number;
-  written_max: number;
-}
-
-export interface SubjectMaxMarksUpdate {
-  akarikh_max: number;
-  oral_max: number;
-  written_max: number;
-}
-
 export interface StudentResultResponse {
   student_id: number;
   roll_no: string;
@@ -85,39 +54,6 @@ export interface StudentResultResponse {
     result_id: number | null;
   }[];
 }
-
-export const subjectMaxMarksApi = {
-  list: async (class_name?: string, exam_type_id?: number): Promise<SubjectMaxMarks[]> => {
-    const params = new URLSearchParams();
-    if (class_name) params.append('class_name', class_name);
-    if (exam_type_id) params.append('exam_type_id', exam_type_id.toString());
-    const response = await api.get(`/admin/subject-max-marks?${params.toString()}`);
-    return response.data;
-  },
-  getMissing: async (class_name: string, exam_type_id: number): Promise<Subject[]> => {
-    const response = await api.get(`/admin/subject-max-marks/missing?class_name=${class_name}&exam_type_id=${exam_type_id}`);
-    return response.data;
-  },
-  create: async (data: SubjectMaxMarksCreate): Promise<SubjectMaxMarks> => {
-    const response = await api.post('/admin/subject-max-marks', data);
-    return response.data;
-  },
-  update: async (id: number, data: SubjectMaxMarksUpdate): Promise<SubjectMaxMarks> => {
-    const response = await api.put(`/admin/subject-max-marks/${id}`, data);
-    return response.data;
-  },
-  delete: async (id: number): Promise<void> => {
-    await api.delete(`/admin/subject-max-marks/${id}`);
-  },
-  copy: async (source_exam_type_id: number, target_exam_type_id: number, class_name?: string): Promise<SubjectMaxMarks[]> => {
-    const response = await api.post('/admin/subject-max-marks/copy', {
-      source_exam_type_id,
-      target_exam_type_id,
-      class_name,
-    });
-    return response.data;
-  },
-};
 
 export const resultApi = {
   // Get exam types
@@ -176,4 +112,78 @@ export const resultApi = {
     const response = await api.put(`/admin/results/${id}/reject`);
     return response.data;
   }
+};
+
+export interface SubjectExamComponentItem {
+  id: number;
+  component_code: string;
+  display_label: string;
+  max_marks: number;
+  display_order: number;
+}
+
+export interface SubjectWithComponents {
+  subject_id: number;
+  subject_name: string;
+  subject_code: string;
+  components: SubjectExamComponentItem[];
+}
+
+export interface SubjectExamComponentCreate {
+  class_name: string;
+  subject_id: number;
+  exam_type_id: number;
+  component_code: string;
+  display_label: string;
+  max_marks: number;
+  display_order: number;
+}
+
+export interface SubjectExamComponentUpdate {
+  display_label?: string;
+  max_marks?: number;
+  display_order?: number;
+}
+
+export const subjectExamComponentsApi = {
+  listByClass: async (
+    class_name: string,
+    exam_type_id: number
+  ): Promise<SubjectWithComponents[]> => {
+    const response = await api.get(
+      `/admin/subject-exam-components/by-class/${class_name}/exam/${exam_type_id}`
+    );
+    return response.data;
+  },
+  create: async (
+    data: SubjectExamComponentCreate
+  ): Promise<SubjectExamComponentItem> => {
+    const response = await api.post(
+      '/admin/subject-exam-components/',
+      data
+    );
+    return response.data;
+  },
+  update: async (
+    id: number,
+    data: SubjectExamComponentUpdate
+  ): Promise<SubjectExamComponentItem> => {
+    const response = await api.put(
+      `/admin/subject-exam-components/${id}`,
+      data
+    );
+    return response.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/admin/subject-exam-components/${id}`);
+  },
+  batch: async (
+    items: SubjectExamComponentCreate[]
+  ): Promise<SubjectExamComponentItem[]> => {
+    const response = await api.post(
+      '/admin/subject-exam-components/batch',
+      { items }
+    );
+    return response.data;
+  },
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useId } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useId } from 'react';
 import { toast } from 'react-hot-toast';
 import api from '../api';
 import {
@@ -16,10 +16,6 @@ import {
   FileText,
 } from 'lucide-react';
 
-// Marks range rule: entered marks must be between 35 and 100.
-const MIN_MARKS = 35;
-const MAX_MARKS = 100;
-
 interface Class {
   id: number;
   class_name: string;
@@ -32,9 +28,23 @@ interface ExamType {
   weightage: number;
 }
 
-interface SubjectResult {
+interface ComponentConfig {
+  component_code: string;
+  display_label: string;
+  max_marks: number;
+  display_order: number;
+}
+
+interface SubjectConfig {
+  id: number;
+  name: string;
+  components: ComponentConfig[];
+}
+
+interface StudentSubjectData {
   subject_id: number;
   subject_name: string;
+  components: { component_code: string; marks_obtained: number | null }[];
   marks_obtained: number | null;
   total_marks: number | null;
   percentage: number | null;
@@ -47,90 +57,78 @@ interface StudentResult {
   student_id: number;
   roll_no: string;
   name: string;
-  subjects: SubjectResult[];
+  subjects: StudentSubjectData[];
 }
 
-interface EditableMarkInputProps {
-  resultId: number | null;
-  initialValue: number | null;
-  totalMarks: number;
-  onSave: (resultId: number | null, newMarks: number, totalMarks: number) => void;
+/* ─────────────────────────────────────────────────────────────────────────
+   COMPONENT INPUT CELL
+   Local state keeps keystrokes responsive; only commits on blur or Enter.
+   ───────────────────────────────────────────────────────────────────────── */
+interface ComponentCellProps {
+  value: string;
+  maxMarks: number;
+  onCommit: (value: string) => void;
 }
 
-const EditableMarkInput: React.FC<EditableMarkInputProps> = ({
-  resultId,
-  initialValue,
-  totalMarks,
-  onSave,
+const ComponentCell: React.FC<ComponentCellProps> = ({
+  value,
+  maxMarks,
+  onCommit,
 }) => {
-  const [val, setVal] = useState<string>(initialValue !== null ? String(initialValue) : '');
-  const [isFocused, setIsFocused] = useState(false);
+  const [local, setLocal] = useState<string>(value);
+  const [focused, setFocused] = useState(false);
 
   useEffect(() => {
-    setVal(initialValue !== null ? String(initialValue) : '');
-  }, [initialValue]);
+    setLocal(value);
+  }, [value]);
 
   const handleBlur = () => {
-    setIsFocused(false);
-    if (val === '' || val === null) {
-      setVal(initialValue !== null ? String(initialValue) : '');
+    setFocused(false);
+    const trimmed = local.trim();
+    if (trimmed === '') {
+      if (value !== '') onCommit('');
       return;
     }
-    const num = parseFloat(val);
-    if (isNaN(num)) {
-      setVal(initialValue !== null ? String(initialValue) : '');
+    const num = parseFloat(trimmed);
+    if (isNaN(num) || num < 0 || num > maxMarks) {
+      toast.error(`Marks must be between 0 and ${maxMarks}.`);
+      setLocal(value);
       return;
     }
-    const maxAllowed = Math.min(totalMarks, MAX_MARKS);
-    if (num < MIN_MARKS || num > maxAllowed) {
-      toast.error(`Marks must be between ${MIN_MARKS} and ${maxAllowed}.`);
-      setVal(initialValue !== null ? String(initialValue) : '');
-      return;
-    }
-    if (num !== initialValue) {
-      onSave(resultId, num, totalMarks);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      (e.target as HTMLInputElement).blur();
+    if (trimmed !== value) {
+      onCommit(trimmed);
     }
   };
 
   return (
-    <div className="relative inline-flex items-center">
-      <input
-        type="number"
-        value={val}
-        onChange={(e) => setVal(e.target.value)}
-        onFocus={() => setIsFocused(true)}
-        onBlur={handleBlur}
-        onKeyDown={handleKeyDown}
-        className={`
-          w-16 md:w-20 px-2 py-1.5 text-xs font-semibold text-center rounded-lg border
-          transition-all duration-150 outline-hidden font-body
-          ${
-            isFocused
-              ? 'border-[#1769FF] dark:border-[#3B82F6] ring-2 ring-[#1769FF]/20 dark:ring-[#3B82F6]/25 bg-white dark:bg-[#161D29] text-[#0F172A] dark:text-[#F8FAFC]'
-              : 'border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#121A27] text-[#0F172A] dark:text-[#F8FAFC] hover:border-blue-400/60 dark:hover:border-blue-500/60'
-          }
-        `}
-        min={MIN_MARKS}
-        max={Math.min(totalMarks, MAX_MARKS)}
-        aria-label="Enter mark"
-      />
-    </div>
+    <input
+      type="number"
+      value={local}
+      onChange={(e) => setLocal(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={handleBlur}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+      }}
+      min={0}
+      max={maxMarks}
+      aria-label="Enter mark"
+      className={`
+        w-14 md:w-16 px-1.5 py-1 text-xs font-semibold text-center rounded-lg border
+        transition-all duration-150 outline-hidden font-body
+        ${
+          focused
+            ? 'border-[#1769FF] dark:border-[#3B82F6] ring-2 ring-[#1769FF]/20 dark:ring-[#3B82F6]/25 bg-white dark:bg-[#161D29] text-[#0F172A] dark:text-[#F8FAFC]'
+            : 'border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#121A27] text-[#0F172A] dark:text-[#F8FAFC] hover:border-blue-400/60 dark:hover:border-blue-500/60'
+        }
+      `}
+    />
   );
 };
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   CUSTOM ACCESSIBLE DROPDOWN COMPONENT
-   - Displays ONLY the label (NO weightage, badges or secondary clutter)
-   - Full keyboard navigation (Arrow keys, Enter, Space, Escape, Tab, Home, End)
-   - Click-outside handling
-   - Exact application font family (Inter/Sora) and theme tokens
-   ───────────────────────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────
+   CUSTOM ACCESSIBLE DROPDOWN (unchanged)
+   ───────────────────────────────────────────────────────────────────────── */
 interface DropdownOption<T> {
   value: T;
   label: string;
@@ -162,7 +160,6 @@ function CustomDropdown<T extends number | string>({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listboxId = useId();
 
-  // Close when clicking outside
   useEffect(() => {
     const handlePointerDown = (e: PointerEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -175,7 +172,6 @@ function CustomDropdown<T extends number | string>({
     return () => document.removeEventListener('pointerdown', handlePointerDown);
   }, [isOpen]);
 
-  // Set initial highlight to currently selected option on open
   useEffect(() => {
     if (isOpen) {
       const idx = options.findIndex((opt) => opt.value === value);
@@ -183,13 +179,10 @@ function CustomDropdown<T extends number | string>({
     }
   }, [isOpen, options, value]);
 
-  // Ensure highlighted option is visible in scroll container
   useEffect(() => {
     if (isOpen && highlightedIndex >= 0 && listboxRef.current) {
       const item = listboxRef.current.children[highlightedIndex] as HTMLElement;
-      if (item) {
-        item.scrollIntoView({ block: 'nearest' });
-      }
+      if (item) item.scrollIntoView({ block: 'nearest' });
     }
   }, [highlightedIndex, isOpen]);
 
@@ -204,18 +197,12 @@ function CustomDropdown<T extends number | string>({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      if (!isOpen) {
-        setIsOpen(true);
-      } else {
-        setHighlightedIndex((prev) => (prev < options.length - 1 ? prev + 1 : 0));
-      }
+      if (!isOpen) setIsOpen(true);
+      else setHighlightedIndex((prev) => (prev < options.length - 1 ? prev + 1 : 0));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      if (!isOpen) {
-        setIsOpen(true);
-      } else {
-        setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : options.length - 1));
-      }
+      if (!isOpen) setIsOpen(true);
+      else setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : options.length - 1));
     } else if (e.key === 'Home') {
       e.preventDefault();
       if (isOpen) setHighlightedIndex(0);
@@ -347,16 +334,9 @@ function CustomDropdown<T extends number | string>({
   );
 }
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   CLEAN PROFESSIONAL BLUE DOWNLOAD EXCEL BUTTON
-   - Color: Application's EXISTING BLUE accent token (#1769FF / #3B82F6)
-   - Compact, uncluttered ERP button
-   - Normal: [↓ Download Excel]
-   - Hover: icon glides down subtly, subtle blue glow
-   - Active: scale(.98)
-   - Loading: [◌ Downloading...]
-   - Success: [✓ Downloaded]
-   ───────────────────────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────
+   DOWNLOAD EXCEL BUTTON (unchanged)
+   ───────────────────────────────────────────────────────────────────────── */
 interface DownloadButtonProps {
   onClick: () => void;
   disabled: boolean;
@@ -409,31 +389,78 @@ const DownloadExcelButton: React.FC<DownloadButtonProps> = ({
   );
 };
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/* ─────────────────────────────────────────────────────────────────────────
+   GRADE HELPERS — unified scale
+   ───────────────────────────────────────────────────────────────────────── */
+const calculateGrade = (percentage: number): string => {
+  if (percentage >= 91) return 'A1';
+  if (percentage >= 81) return 'A2';
+  if (percentage >= 71) return 'B1';
+  if (percentage >= 61) return 'B2';
+  if (percentage >= 51) return 'C1';
+  if (percentage >= 41) return 'C2';
+  return 'D';
+};
+
+const getGradeBadgeStyle = (grade: string): string => {
+  switch (grade) {
+    case 'A1':
+    case 'A2':
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60';
+    case 'B1':
+    case 'B2':
+      return 'bg-blue-50 text-blue-700 border-blue-200/80 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800/60';
+    case 'C1':
+    case 'C2':
+      return 'bg-amber-50 text-amber-700 border-amber-200/80 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800/60';
+    case 'D':
+      return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-950/70 dark:text-red-300 dark:border-red-900/60';
+    default:
+      return 'bg-slate-100 text-[#475569] border-slate-200 dark:bg-[#161D29] dark:text-[#94A3B8] dark:border-[#253044]';
+  }
+};
+
+const computeResultStatus = (
+  studentId: number,
+  subjects: { id: number; components: { component_code: string; max_marks: number }[] }[],
+  marks: Record<string, string>
+): 'P' | 'F' => {
+  let anyConfigured = false;
+  for (const subj of subjects) {
+    if (subj.components.length === 0) continue;
+    anyConfigured = true;
+    let maxTotal = 0;
+    let subtotal = 0;
+    for (const c of subj.components) {
+      maxTotal += c.max_marks;
+      const key = `${studentId}_${subj.id}_${c.component_code}`;
+      const raw = marks[key];
+      if (raw === undefined || raw === '') continue;
+      const n = parseFloat(raw);
+      if (!isNaN(n)) subtotal += n;
+    }
+    if (maxTotal > 0 && subtotal < 0.35 * maxTotal) return 'F';
+  }
+  return anyConfigured ? 'P' : 'F';
+};
+
+/* ─────────────────────────────────────────────────────────────────────────
    MAIN RESULTS COMPONENT
-   ───────────────────────────────────────────────────────────────────────────── */
+   ───────────────────────────────────────────────────────────────────────── */
 const Results: React.FC = () => {
   const [classes, setClasses] = useState<Class[]>([]);
   const [examTypes, setExamTypes] = useState<ExamType[]>([]);
-  const [studentResults, setStudentResults] = useState<StudentResult[]>([]);
-  const [subjects, setSubjects] = useState<{ id: number; name: string }[]>([]);
+  const [subjects, setSubjects] = useState<SubjectConfig[]>([]);
+  const [students, setStudents] = useState<StudentResult[]>([]);
+  const [marks, setMarks] = useState<Record<string, string>>({});
+  const [resultIds, setResultIds] = useState<Record<string, number | null>>({});
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
   const [selectedClass, setSelectedClass] = useState<number | ''>('');
   const [selectedExam, setSelectedExam] = useState<number | ''>('');
-  const [totalMarksInput, setTotalMarksInput] = useState<string>('100');
 
-  // Parse total marks validation
-  const totalMarksNum = Number(totalMarksInput);
-  const isTotalMarksValid =
-    totalMarksInput !== '' &&
-    !isNaN(totalMarksNum) &&
-    totalMarksNum >= MIN_MARKS &&
-    totalMarksNum <= MAX_MARKS;
-  const effectiveTotalMarks = isTotalMarksValid ? totalMarksNum : 100;
-
-  // Load classes (admin endpoint with trailing slash)
+  // Load classes
   useEffect(() => {
     const fetchClasses = async () => {
       try {
@@ -446,7 +473,7 @@ const Results: React.FC = () => {
     fetchClasses();
   }, []);
 
-  // Load exam types (admin endpoint with trailing slash)
+  // Load exam types
   useEffect(() => {
     const fetchExamTypes = async () => {
       try {
@@ -462,8 +489,10 @@ const Results: React.FC = () => {
   // Load results when class and exam are selected
   useEffect(() => {
     if (!selectedClass || !selectedExam) {
-      setStudentResults([]);
+      setStudents([]);
       setSubjects([]);
+      setMarks({});
+      setResultIds({});
       return;
     }
 
@@ -473,10 +502,38 @@ const Results: React.FC = () => {
         const response = await api.get(
           `/admin/results/class/${selectedClass}/exam/${selectedExam}`
         );
-        setStudentResults(response.data.students || []);
-        setSubjects(response.data.subjects || []);
+        const data = response.data || {};
+        const studentList: StudentResult[] = data.students || [];
+        const subjectList: SubjectConfig[] = data.subjects || [];
+
+        setStudents(studentList);
+        setSubjects(subjectList);
+
+        const newMarks: Record<string, string> = {};
+        const newResultIds: Record<string, number | null> = {};
+
+        for (const student of studentList) {
+          for (const subj of student.subjects || []) {
+            const rKey = `${student.student_id}_${subj.subject_id}`;
+            newResultIds[rKey] = subj.result_id ?? null;
+
+            const comps = subj.components || [];
+            for (const comp of comps) {
+              if (comp.marks_obtained !== null && comp.marks_obtained !== undefined) {
+                newMarks[`${student.student_id}_${subj.subject_id}_${comp.component_code}`] = String(
+                  comp.marks_obtained
+                );
+              }
+            }
+          }
+        }
+
+        setMarks(newMarks);
+        setResultIds(newResultIds);
       } catch {
         toast.error('Failed to load results');
+        setStudents([]);
+        setSubjects([]);
       } finally {
         setLoading(false);
       }
@@ -484,117 +541,113 @@ const Results: React.FC = () => {
     fetchResults();
   }, [selectedClass, selectedExam]);
 
-  const handleMarkChange = async (
+  const unconfiguredSubjects = useMemo(
+    () => subjects.filter((s) => s.components.length === 0),
+    [subjects]
+  );
+
+  const getSubjectSubtotal = (
     studentId: number,
     subjectId: number,
-    resultId: number | null,
-    newMarks: number,
-    total: number
-  ) => {
-    try {
-      let savedResultId: number | null = resultId;
+    configured: ComponentConfig[]
+  ): number => {
+    let sum = 0;
+    for (const c of configured) {
+      const key = `${studentId}_${subjectId}_${c.component_code}`;
+      const raw = marks[key];
+      if (raw === undefined || raw === '') continue;
+      const n = parseFloat(raw);
+      if (!isNaN(n)) sum += n;
+    }
+    return sum;
+  };
 
-      if (resultId) {
-        // Update an existing result
-        await api.put(`/admin/results/${resultId}`, {
-          marks_obtained: newMarks,
-          total_marks: total,
-        });
+  const getStudentOverall = (studentId: number) => {
+    let obt = 0;
+    let max = 0;
+    for (const subj of subjects) {
+      for (const c of subj.components) {
+        const key = `${studentId}_${subj.id}_${c.component_code}`;
+        const raw = marks[key];
+        if (raw === undefined || raw === '') continue;
+        const n = parseFloat(raw);
+        if (isNaN(n)) continue;
+        obt += n;
+        max += c.max_marks;
+      }
+    }
+    if (max === 0) {
+      return { obt: 0, max: 0, pct: 0, grade: '-' };
+    }
+    const pct = (obt / max) * 100;
+    return { obt, max, pct, grade: calculateGrade(pct) };
+  };
+
+  const handleComponentCommit = async (
+    studentId: number,
+    subject: SubjectConfig,
+    changedCode: string,
+    newValue: string
+  ) => {
+    const markKey = `${studentId}_${subject.id}_${changedCode}`;
+    const previous = marks[markKey] ?? '';
+
+    // Optimistic update
+    setMarks((prev) => ({ ...prev, [markKey]: newValue }));
+
+    // Build full components array for this student+subject, merged with
+    // the just-committed value.
+    const components: { component_code: string; marks_obtained: number }[] = [];
+    for (const c of subject.components) {
+      const k = `${studentId}_${subject.id}_${c.component_code}`;
+      const raw = c.component_code === changedCode ? newValue : marks[k] ?? '';
+      const trimmed = String(raw).trim();
+      if (trimmed === '') continue;
+      const n = parseFloat(trimmed);
+      if (isNaN(n)) continue;
+      components.push({ component_code: c.component_code, marks_obtained: n });
+    }
+
+    if (components.length === 0) {
+      // Nothing to persist; leave the local edit in place.
+      return;
+    }
+
+    const resultKey = `${studentId}_${subject.id}`;
+    const existingId = resultIds[resultKey] ?? null;
+
+    try {
+      let savedId: number | null = existingId;
+
+      if (existingId) {
+        await api.put(`/admin/results/${existingId}`, { components });
       } else {
-        // No result exists yet - create one directly as admin
         const response = await api.post('/admin/results/', {
           results: [
             {
               student_id: studentId,
-              subject_id: subjectId,
+              subject_id: subject.id,
               exam_type_id: selectedExam,
-              marks_obtained: newMarks,
-              total_marks: total,
+              components,
             },
           ],
         });
         const created = response.data?.[0];
-        if (created) {
-          savedResultId = created.id;
-        }
+        if (created) savedId = created.id;
       }
 
-      // Functional update: only touch this cell so overlapping saves don't get clobbered
-      setStudentResults((prev) =>
-        prev.map((student) => {
-          if (student.student_id !== studentId) return student;
-          return {
-            ...student,
-            subjects: student.subjects.map((subject) =>
-              subject.subject_id === subjectId
-                ? {
-                    ...subject,
-                    result_id: savedResultId,
-                    marks_obtained: newMarks,
-                    total_marks: total,
-                    percentage: (newMarks / total) * 100,
-                    grade: calculateGrade((newMarks / total) * 100),
-                    status: 'submitted',
-                  }
-                : subject
-            ),
-          };
-        })
-      );
+      if (savedId !== existingId) {
+        setResultIds((prev) => ({ ...prev, [resultKey]: savedId }));
+      }
     } catch (error: any) {
-      toast.error(error.response?.data?.detail?.message || 'Failed to save marks');
+      toast.error(
+        error.response?.data?.detail ||
+          error.response?.data?.detail?.message ||
+          'Failed to save mark'
+      );
+      // Revert local state
+      setMarks((prev) => ({ ...prev, [markKey]: previous }));
     }
-  };
-
-  const calculateGrade = (percentage: number): string => {
-    if (percentage >= 90) return 'A+';
-    if (percentage >= 80) return 'A';
-    if (percentage >= 70) return 'B';
-    if (percentage >= 60) return 'C';
-    if (percentage >= 50) return 'D';
-    if (percentage >= 40) return 'E';
-    return 'F';
-  };
-
-  // Grade badge colors adapted for dark and light theme tokens
-  const getGradeBadgeStyle = (grade: string): string => {
-    switch (grade) {
-      case 'A+':
-        return 'bg-purple-50 text-purple-700 border-purple-200/80 dark:bg-purple-950/50 dark:text-purple-300 dark:border-purple-800/60';
-      case 'A':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60';
-      case 'B':
-        return 'bg-blue-50 text-blue-700 border-blue-200/80 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800/60';
-      case 'C':
-        return 'bg-amber-50 text-amber-700 border-amber-200/80 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800/60';
-      case 'D':
-        return 'bg-orange-50 text-orange-700 border-orange-200/80 dark:bg-orange-950/50 dark:text-orange-300 dark:border-orange-800/60';
-      case 'E':
-        return 'bg-rose-50 text-rose-700 border-rose-200/80 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800/60';
-      case 'F':
-        return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-950/70 dark:text-red-300 dark:border-red-900/60';
-      default:
-        return 'bg-slate-100 text-[#475569] border-slate-200 dark:bg-[#161D29] dark:text-[#94A3B8] dark:border-[#253044]';
-    }
-  };
-
-  const calculateOverall = (student: StudentResult) => {
-    let totalObtained = 0;
-    let totalMax = 0;
-    let hasAnyResult = false;
-    student.subjects.forEach((subject) => {
-      if (subject.marks_obtained !== null && subject.total_marks !== null) {
-        totalObtained += subject.marks_obtained;
-        totalMax += subject.total_marks;
-        hasAnyResult = true;
-      }
-    });
-    if (!hasAnyResult || totalMax === 0) {
-      return { percentage: 0, grade: '-', hasResults: false, totalObtained: 0, totalMax: 0 };
-    }
-    const percentage = (totalObtained / totalMax) * 100;
-    const grade = calculateGrade(percentage);
-    return { percentage, grade, hasResults: true, totalObtained, totalMax };
   };
 
   const handleDownloadExcel = async () => {
@@ -627,7 +680,6 @@ const Results: React.FC = () => {
       link.remove();
       window.URL.revokeObjectURL(url);
 
-      // Brief success feedback state on button
       setDownloadSuccess(true);
       setTimeout(() => setDownloadSuccess(false), 2400);
       toast.success(`File downloaded: ${filename}`);
@@ -653,15 +705,12 @@ const Results: React.FC = () => {
     }
   };
 
-  // Find names for current selections for summary header
   const currentClassObj = classes.find((c) => c.id === selectedClass);
   const currentExamObj = examTypes.find((e) => e.id === selectedExam);
 
   return (
     <div className="space-y-6 md:space-y-7 animate-hero-enter">
-      {/* ───────────────────────────────────────────────────────────────────────
-          PAGE HEADER: Title + Description + Blue Download Button
-          ─────────────────────────────────────────────────────────────────────── */}
+      {/* PAGE HEADER */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E2E8F0] dark:border-[#253044] pb-5">
         <div>
           <h1 className="font-heading text-2xl md:text-3xl font-extrabold tracking-tight text-[#0F172A] dark:text-[#F8FAFC]">
@@ -682,10 +731,7 @@ const Results: React.FC = () => {
         </div>
       </div>
 
-      {/* ───────────────────────────────────────────────────────────────────────
-          EXAM CONFIGURATION GROUPING
-          Class, Exam Type & Total Marks
-          ─────────────────────────────────────────────────────────────────────── */}
+      {/* EXAM CONFIGURATION */}
       <div className="rounded-2xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] p-5 md:p-6 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -702,8 +748,7 @@ const Results: React.FC = () => {
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5 items-start">
-          {/* Class Dropdown */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5 items-start">
           <CustomDropdown
             id="class-selector"
             label="Class"
@@ -717,7 +762,6 @@ const Results: React.FC = () => {
             onChange={(val) => setSelectedClass(val as number)}
           />
 
-          {/* Exam Type Custom Accessible Dropdown (ONLY exam names, NO weightage) */}
           <CustomDropdown
             id="exam-selector"
             label="Exam Type"
@@ -730,61 +774,11 @@ const Results: React.FC = () => {
             value={selectedExam}
             onChange={(val) => setSelectedExam(val as number)}
           />
-
-          {/* Total Marks Input with 35-100 validation */}
-          <div className="font-body">
-            <label
-              htmlFor="total-marks-input"
-              className="block text-xs font-semibold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] mb-1.5"
-            >
-              <span className="flex items-center gap-1.5">
-                <Edit3 className="w-3.5 h-3.5" />
-                <span>Total Marks</span>
-              </span>
-            </label>
-
-            <div className="relative">
-              <input
-                id="total-marks-input"
-                type="number"
-                value={totalMarksInput}
-                onChange={(e) => setTotalMarksInput(e.target.value)}
-                min={MIN_MARKS}
-                max={MAX_MARKS}
-                className={`
-                  w-full h-10 px-3.5 rounded-xl border text-xs md:text-sm font-semibold
-                  transition-all duration-200 outline-hidden
-                  ${
-                    !isTotalMarksValid
-                      ? 'border-rose-500 text-rose-600 dark:text-rose-400 bg-rose-50/40 dark:bg-rose-950/20 ring-2 ring-rose-500/20'
-                      : 'border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#121A27] text-[#0F172A] dark:text-[#F8FAFC] hover:border-blue-400/60 dark:hover:border-blue-500/60 focus:border-[#1769FF] dark:focus:border-[#3B82F6] focus:ring-2 focus:ring-[#1769FF]/20 dark:focus:ring-[#3B82F6]/25'
-                  }
-                `}
-                placeholder="100"
-              />
-            </div>
-
-            {/* Validation Message with smooth fade/slide */}
-            {!isTotalMarksValid ? (
-              <p className="flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400 mt-1.5 animate-fade-in">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>Marks must be between {MIN_MARKS} and {MAX_MARKS}</span>
-              </p>
-            ) : (
-              <p className="flex items-center gap-1 text-[11px] font-medium text-[#475569] dark:text-[#94A3B8] mt-1.5">
-                <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span>Evaluation standard: {MIN_MARKS} – {MAX_MARKS}</span>
-              </p>
-            )}
-          </div>
         </div>
       </div>
 
-      {/* ───────────────────────────────────────────────────────────────────────
-          RESULTS CONTENT / COMPACT EMPTY STATES
-          ─────────────────────────────────────────────────────────────────────── */}
+      {/* EMPTY / LOADING / RESULTS */}
       {!selectedClass || !selectedExam ? (
-        /* Minimal, compact ERP empty state */
         <div className="rounded-2xl border border-dashed border-[#CBD5E1] dark:border-[#253044] bg-white dark:bg-[#10151F] p-8 md:p-10 text-center animate-card-enter">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/40 text-[#1769FF] dark:text-[#3B82F6] mx-auto mb-3 shadow-2xs">
             <FileText className="w-5 h-5" />
@@ -797,7 +791,6 @@ const Results: React.FC = () => {
           </p>
         </div>
       ) : loading ? (
-        /* Polished loading state */
         <div className="rounded-2xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] p-10 text-center shadow-sm animate-card-enter">
           <Loader2 className="w-6 h-6 animate-spin text-[#1769FF] dark:text-[#3B82F6] mx-auto mb-2.5" />
           <p className="font-heading text-sm font-bold text-[#0F172A] dark:text-[#F8FAFC]">
@@ -807,8 +800,7 @@ const Results: React.FC = () => {
             Fetching student score records for this exam
           </p>
         </div>
-      ) : studentResults.length === 0 ? (
-        /* Empty results state */
+      ) : students.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-[#CBD5E1] dark:border-[#253044] bg-white dark:bg-[#10151F] p-8 md:p-10 text-center animate-card-enter">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900/40 text-amber-600 dark:text-amber-400 mx-auto mb-3 shadow-2xs">
             <AlertCircle className="w-5 h-5" />
@@ -819,7 +811,9 @@ const Results: React.FC = () => {
           <p className="mt-1 text-xs md:text-sm text-[#475569] dark:text-[#94A3B8] max-w-md mx-auto">
             No student marks have been submitted yet for{' '}
             <span className="font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
-              {currentClassObj ? `${currentClassObj.class_name} - ${currentClassObj.division}` : 'this class'}
+              {currentClassObj
+                ? `${currentClassObj.class_name} - ${currentClassObj.division}`
+                : 'this class'}
             </span>{' '}
             under{' '}
             <span className="font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
@@ -829,11 +823,8 @@ const Results: React.FC = () => {
           </p>
         </div>
       ) : (
-        /* ─────────────────────────────────────────────────────────────────────
-            RESULTS TABLE CONTAINER WITH STAGGERED ROW ANIMATION
-            ───────────────────────────────────────────────────────────────────── */
         <div className="rounded-2xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] shadow-sm overflow-hidden animate-card-enter">
-          {/* Table Context Banner */}
+          {/* Context banner */}
           <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-b border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#161D29]/60">
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-white dark:bg-[#10151F] border border-[#E2E8F0] dark:border-[#253044] text-[#0F172A] dark:text-[#F8FAFC] shadow-2xs">
@@ -843,7 +834,7 @@ const Results: React.FC = () => {
                 {currentExamObj?.name}
               </span>
               <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-100 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-400">
-                {studentResults.length} {studentResults.length === 1 ? 'Student' : 'Students'}
+                {students.length} {students.length === 1 ? 'Student' : 'Students'}
               </span>
             </div>
 
@@ -853,128 +844,221 @@ const Results: React.FC = () => {
             </div>
           </div>
 
-          {/* Scrollable Table Viewport */}
+          {/* Unconfigured subjects banner */}
+          {unconfiguredSubjects.length > 0 && (
+            <div className="px-5 py-3 border-b border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 text-xs text-amber-800 dark:text-amber-200">
+              <span className="font-bold">Not configured: </span>
+              {unconfiguredSubjects.map((s) => s.name).join(', ')}
+              <span className="ml-1 opacity-80">
+                — configure them under Max Marks Config.
+              </span>
+            </div>
+          )}
+
+          {/* Table */}
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#161D29]">
-                  {/* Sticky Roll No */}
-                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] sticky left-0 z-20 bg-[#F8FAFC] dark:bg-[#161D29] border-r border-[#E2E8F0] dark:border-[#253044] w-20 min-w-20">
+                  <th
+                    rowSpan={2}
+                    className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] sticky left-0 z-20 bg-[#F8FAFC] dark:bg-[#161D29] border-r border-[#E2E8F0] dark:border-[#253044] w-20 min-w-20"
+                  >
                     Roll No
                   </th>
-                  {/* Sticky Student Name */}
-                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] sticky left-20 z-20 bg-[#F8FAFC] dark:bg-[#161D29] border-r border-[#E2E8F0] dark:border-[#253044] min-w-44 shadow-xs">
+                  <th
+                    rowSpan={2}
+                    className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] sticky left-20 z-20 bg-[#F8FAFC] dark:bg-[#161D29] border-r border-[#E2E8F0] dark:border-[#253044] min-w-44 shadow-xs"
+                  >
                     Student
                   </th>
 
-                  {/* Dynamic Subjects */}
-                  {subjects.map((subject) => (
-                    <th
-                      key={subject.id}
-                      className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] min-w-28 text-center"
-                    >
-                      {subject.name}
-                    </th>
-                  ))}
+                  {subjects.map((subj) => {
+                    const colSpan =
+                      subj.components.length > 0 ? subj.components.length + 1 : 1;
+                    return (
+                      <th
+                        key={subj.id}
+                        colSpan={colSpan}
+                        className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] text-center border-r border-[#E2E8F0] dark:border-[#253044]"
+                      >
+                        {subj.name}
+                      </th>
+                    );
+                  })}
 
-                  {/* Totals */}
-                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] text-center min-w-24">
+                  <th
+                    rowSpan={2}
+                    className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] text-center min-w-24 border-r border-[#E2E8F0] dark:border-[#253044]"
+                  >
                     Total
                   </th>
-                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] text-center min-w-20">
+                  <th
+                    rowSpan={2}
+                    className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] text-center min-w-20 border-r border-[#E2E8F0] dark:border-[#253044]"
+                  >
                     %
                   </th>
-                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] text-center min-w-20">
+                  <th
+                    rowSpan={2}
+                    className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] text-center min-w-20"
+                  >
                     Grade
                   </th>
+                  <th
+                    rowSpan={2}
+                    className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] text-center min-w-16"
+                  >
+                    Result
+                  </th>
+                </tr>
+                <tr className="border-b border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#161D29]">
+                  {subjects.map((subj) => {
+                    if (subj.components.length === 0) {
+                      return (
+                        <th
+                          key={`${subj.id}-na`}
+                          className="px-2 py-2 text-[10px] font-medium italic text-slate-400 dark:text-slate-500 text-center border-r border-[#E2E8F0] dark:border-[#253044]"
+                        >
+                          Not configured
+                        </th>
+                      );
+                    }
+                    return (
+                      <React.Fragment key={subj.id}>
+                        {subj.components.map((c) => (
+                          <th
+                            key={`${subj.id}-${c.component_code}`}
+                            className="px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] text-center min-w-16 border-r border-[#E2E8F0] dark:border-[#253044]"
+                          >
+                            <div className="truncate">{c.display_label}</div>
+                            <div className="text-[9px] font-mono font-normal text-slate-400 dark:text-slate-500">
+                              /{c.max_marks}
+                            </div>
+                          </th>
+                        ))}
+                        <th
+                          key={`${subj.id}-sub`}
+                          className="px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-[#1769FF] dark:text-[#3B82F6] text-center min-w-16 border-r border-[#E2E8F0] dark:border-[#253044]"
+                        >
+                          एकूण
+                        </th>
+                      </React.Fragment>
+                    );
+                  })}
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-[#E2E8F0] dark:divide-[#253044]">
-                {studentResults.map((student, index) => {
-                  const { percentage, grade, hasResults, totalObtained, totalMax } =
-                    calculateOverall(student);
+                {students.map((student, index) => {
+                  const overall = getStudentOverall(student.student_id);
+                  const status = computeResultStatus(student.student_id, subjects, marks);
+                  const hasAny = overall.max > 0;
                   return (
                     <tr
                       key={student.student_id}
                       className="group hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-colors duration-150 animate-card-enter"
-                      style={{ animationDelay: `${Math.min(index * 30, 450)}ms` }}
+                      style={{ animationDelay: `${Math.min(index * 25, 400)}ms` }}
                     >
-                      {/* Sticky Roll No */}
-                      <td className="px-4 py-3 text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] sticky left-0 z-10 bg-white dark:bg-[#10151F] group-hover:bg-blue-50/40 dark:group-hover:bg-[#161D29] border-r border-[#E2E8F0] dark:border-[#253044] transition-colors">
+                      <td className="px-4 py-2 text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] sticky left-0 z-10 bg-white dark:bg-[#10151F] group-hover:bg-blue-50/40 dark:group-hover:bg-[#161D29] border-r border-[#E2E8F0] dark:border-[#253044] transition-colors">
                         {student.roll_no}
                       </td>
-
-                      {/* Sticky Student Name */}
-                      <td className="px-4 py-3 text-xs md:text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC] sticky left-20 z-10 bg-white dark:bg-[#10151F] group-hover:bg-blue-50/40 dark:group-hover:bg-[#161D29] border-r border-[#E2E8F0] dark:border-[#253044] transition-colors shadow-xs">
+                      <td className="px-4 py-2 text-xs md:text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC] sticky left-20 z-10 bg-white dark:bg-[#10151F] group-hover:bg-blue-50/40 dark:group-hover:bg-[#161D29] border-r border-[#E2E8F0] dark:border-[#253044] transition-colors shadow-xs">
                         {student.name}
                       </td>
 
-                      {/* Subject Mark Inputs */}
-                      {subjects.map((subject) => {
-                        const subjectData = student.subjects.find(
-                          (s) => s.subject_id === subject.id
+                      {subjects.map((subj) => {
+                        if (subj.components.length === 0) {
+                          return (
+                            <td
+                              key={`${subj.id}-na`}
+                              className="px-2 py-2 text-center text-slate-300 dark:text-slate-600 border-r border-[#E2E8F0] dark:border-[#253044]"
+                            >
+                              —
+                            </td>
+                          );
+                        }
+                        const subtotal = getSubjectSubtotal(
+                          student.student_id,
+                          subj.id,
+                          subj.components
                         );
-                        const resultId = subjectData ? subjectData.result_id : null;
-                        const subjectTotal =
-                          (subjectData && subjectData.total_marks) || effectiveTotalMarks;
-
                         return (
-                          <td key={subject.id} className="px-4 py-3 text-center">
-                            <EditableMarkInput
-                              resultId={resultId}
-                              initialValue={subjectData ? subjectData.marks_obtained : null}
-                              totalMarks={subjectTotal}
-                              onSave={(rid, marks, total) =>
-                                handleMarkChange(
-                                  student.student_id,
-                                  subject.id,
-                                  rid,
-                                  marks,
-                                  total
-                                )
-                              }
-                            />
-                          </td>
+                          <React.Fragment key={subj.id}>
+                            {subj.components.map((c) => {
+                              const key = `${student.student_id}_${subj.id}_${c.component_code}`;
+                              return (
+                                <td
+                                  key={`${subj.id}-${c.component_code}`}
+                                  className="px-1.5 py-1.5 text-center border-r border-[#E2E8F0] dark:border-[#253044]"
+                                >
+                                  <ComponentCell
+                                    value={marks[key] ?? ''}
+                                    maxMarks={c.max_marks}
+                                    onCommit={(val) =>
+                                      handleComponentCommit(
+                                        student.student_id,
+                                        subj,
+                                        c.component_code,
+                                        val
+                                      )
+                                    }
+                                  />
+                                </td>
+                              );
+                            })}
+                            <td
+                              key={`${subj.id}-sub`}
+                              className="px-2 py-2 text-center text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] border-r border-[#E2E8F0] dark:border-[#253044] bg-blue-50/30 dark:bg-blue-950/10"
+                            >
+                              {subtotal > 0 ? subtotal : '—'}
+                            </td>
+                          </React.Fragment>
                         );
                       })}
 
-                      {/* Total */}
-                      <td className="px-4 py-3 text-center text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] font-heading">
-                        {hasResults ? (
+                      <td className="px-3 py-2 text-center text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] border-r border-[#E2E8F0] dark:border-[#253044] font-heading">
+                        {hasAny ? (
                           <span>
-                            {totalObtained}{' '}
+                            {overall.obt}{' '}
                             <span className="text-[#475569] dark:text-[#94A3B8] font-normal">
-                              / {totalMax}
+                              / {overall.max}
                             </span>
                           </span>
                         ) : (
                           <span className="text-[#475569] dark:text-[#94A3B8]">—</span>
                         )}
                       </td>
-
-                      {/* Percentage */}
-                      <td className="px-4 py-3 text-center text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] font-heading">
-                        {hasResults ? (
-                          `${percentage.toFixed(1)}%`
+                      <td className="px-3 py-2 text-center text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] border-r border-[#E2E8F0] dark:border-[#253044] font-heading">
+                        {hasAny ? (
+                          `${overall.pct.toFixed(1)}%`
                         ) : (
                           <span className="text-[#475569] dark:text-[#94A3B8]">—</span>
                         )}
                       </td>
-
-                      {/* Grade Pill */}
-                      <td className="px-4 py-3 text-center">
-                        {hasResults ? (
+                      <td className="px-3 py-2 text-center">
+                        {hasAny ? (
                           <span
-                            className={`inline-flex items-center justify-center px-2.5 py-1 rounded-md text-xs font-bold border ${getGradeBadgeStyle(
-                              grade
+                            className={`inline-flex items-center justify-center px-2 py-0.5 rounded-md text-xs font-bold border ${getGradeBadgeStyle(
+                              overall.grade
                             )}`}
                           >
-                            {grade}
+                            {overall.grade}
                           </span>
                         ) : (
                           <span className="text-[#475569] dark:text-[#94A3B8] text-xs">—</span>
                         )}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <span
+                          className={`inline-flex items-center justify-center px-2 py-0.5 rounded-md text-xs font-bold border ${
+                            status === 'P'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60'
+                              : 'bg-red-100 text-red-800 border-red-200 dark:bg-red-950/70 dark:text-red-300 dark:border-red-900/60'
+                          }`}
+                        >
+                          {status}
+                        </span>
                       </td>
                     </tr>
                   );
