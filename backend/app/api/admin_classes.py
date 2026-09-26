@@ -5,10 +5,18 @@ from sqlalchemy.future import select
 from typing import List
 from app.database import get_db
 from app.api.deps import require_admin
-from app.schemas.school_class import SchoolClassResponse, SchoolClassCreate, ClassSubjectsUpdate
+from app.schemas.school_class import (
+    SchoolClassResponse,
+    SchoolClassCreate,
+    ClassSubjectsUpdate,
+    ClassTeacherAssignmentRequest,
+    ClassTeacherAssignmentResponse,
+    ClearedClassInfo,
+)
 from app.schemas.subject import SubjectResponse
 from app.models.school_class import SchoolClass
 from app.models.subject import Subject
+from app.models.teacher import Teacher
 from app.models.timetable import TimetableSlot
 from app.models.weekly_requirement import WeeklyRequirement
 from app.models.student import Student
@@ -106,6 +114,62 @@ async def update_class_subjects(
     await db.commit()
     await db.refresh(school_class)
     return school_class
+
+
+@router.put("/{class_id}/class-teacher", response_model=ClassTeacherAssignmentResponse)
+async def set_class_teacher(
+    class_id: int,
+    data: ClassTeacherAssignmentRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Assign, change, or clear the class teacher for a class.
+
+    A teacher may be class teacher of at most one class at a time. If the
+    supplied teacher is currently class teacher of another class, that
+    other class is automatically cleared (class_teacher_id set to NULL)
+    and reported in `cleared_classes` so the admin can assign a
+    replacement. Passing teacher_id = null clears this class's class
+    teacher.
+    """
+    school_class = await db.get(SchoolClass, class_id)
+    if not school_class:
+        raise ResourceNotFoundException("Class", str(class_id))
+
+    cleared: list[ClearedClassInfo] = []
+
+    if data.teacher_id is not None:
+        teacher = await db.get(Teacher, data.teacher_id)
+        if not teacher:
+            raise ResourceNotFoundException("Teacher", str(data.teacher_id))
+        if teacher.status != "ACTIVE":
+            raise ValidationException(
+                f"Teacher '{teacher.name}' is not ACTIVE "
+                f"(current status: {teacher.status}). Approve the teacher "
+                "before assigning them as a class teacher."
+            )
+
+        stmt = select(SchoolClass).where(
+            SchoolClass.class_teacher_id == data.teacher_id,
+            SchoolClass.id != class_id,
+        )
+        other_classes = list((await db.execute(stmt)).scalars().all())
+        for c in other_classes:
+            c.class_teacher_id = None
+            cleared.append(
+                ClearedClassInfo(
+                    id=c.id, class_name=c.class_name, division=c.division
+                )
+            )
+
+    school_class.class_teacher_id = data.teacher_id
+    await db.commit()
+    await db.refresh(school_class)
+
+    return ClassTeacherAssignmentResponse(
+        class_id=school_class.id,
+        class_teacher_id=school_class.class_teacher_id,
+        cleared_classes=cleared,
+    )
 
 
 @router.delete("/{class_id}", status_code=status.HTTP_204_NO_CONTENT)
