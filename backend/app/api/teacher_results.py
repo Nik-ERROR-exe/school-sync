@@ -31,7 +31,9 @@ async def submit_results(
             student_id=m.student_id,
             subject_id=req.subject_id,
             exam_type_id=req.exam_type_id,
-            marks_obtained=m.marks_obtained,
+            akarikh_marks=0,
+            oral_marks=0,
+            written_marks=0,
         )
         for m in req.marks
     ]
@@ -65,6 +67,9 @@ async def submit_student_results(
                 subject_code=r.subject.code if r.subject else None,
                 exam_type_id=r.exam_type_id,
                 exam_type_name=r.exam_type.name if r.exam_type else None,
+                akarikh_marks=r.akarikh_marks,
+                oral_marks=r.oral_marks,
+                written_marks=r.written_marks,
                 marks_obtained=r.marks_obtained,
                 total_marks=r.total_marks,
                 percentage=r.percentage,
@@ -100,6 +105,12 @@ async def get_results_by_class_and_exam(
 
     if not teaches_here:
         raise HTTPException(status_code=403, detail="You are not assigned to this class.")
+
+    school_class = (await db.execute(
+        select(SchoolClass).where(SchoolClass.id == class_id)
+    )).scalars().first()
+    if school_class is None:
+        return {"students": [], "subjects": []}
 
     # 2. Fetch subjects this teacher teaches in this class
     subject_ids = (await db.execute(
@@ -162,6 +173,9 @@ async def get_results_by_class_and_exam(
                 student_subjects.append({
                     "subject_id": subj.id,
                     "subject_name": subj.subject_name,
+                    "akarikh_marks": float(r.akarikh_marks),
+                    "oral_marks": float(r.oral_marks),
+                    "written_marks": float(r.written_marks),
                     "marks_obtained": r.marks_obtained,
                     "total_marks": r.total_marks,
                     "percentage": r.percentage,
@@ -173,6 +187,9 @@ async def get_results_by_class_and_exam(
                 student_subjects.append({
                     "subject_id": subj.id,
                     "subject_name": subj.subject_name,
+                    "akarikh_marks": None,
+                    "oral_marks": None,
+                    "written_marks": None,
                     "marks_obtained": None,
                     "total_marks": None,
                     "percentage": None,
@@ -201,6 +218,23 @@ async def get_results_by_class_and_exam(
             "subjects": student_subjects,
         })
 
-    subject_list = [{"id": s.id, "name": s.subject_name} for s in subjects]
+    smm_stmt = select(SubjectMaxMarks).where(
+        SubjectMaxMarks.class_name == school_class.class_name,
+        SubjectMaxMarks.exam_type_id == exam_type_id,
+    )
+    smm_records = (await db.execute(smm_stmt)).scalars().all()
+    smm_lookup = {r.subject_id: r for r in smm_records}
+
+    subject_list = []
+    for s in subjects:
+        m = smm_lookup.get(s.id)
+        subject_list.append({
+            "id": s.id,
+            "name": s.subject_name,
+            "akarikh_max": float(m.akarikh_max) if m else 0.0,
+            "oral_max": float(m.oral_max) if m else 0.0,
+            "written_max": float(m.written_max) if m else 0.0,
+            "total_max": float(m.max_marks) if m else 0.0,
+        })
 
     return {"students": students_list, "subjects": subject_list}

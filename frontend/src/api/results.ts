@@ -49,7 +49,25 @@ export interface SubjectMaxMarks {
   subject_code?: string;
   exam_type_id: number;
   exam_type_name?: string;
+  akarikh_max: number;
+  oral_max: number;
+  written_max: number;
   max_marks: number;
+}
+
+export interface SubjectMaxMarksCreate {
+  class_name: string;
+  subject_id: number;
+  exam_type_id: number;
+  akarikh_max: number;
+  oral_max: number;
+  written_max: number;
+}
+
+export interface SubjectMaxMarksUpdate {
+  akarikh_max: number;
+  oral_max: number;
+  written_max: number;
 }
 
 export interface StudentResultResponse {
@@ -80,12 +98,12 @@ export const subjectMaxMarksApi = {
     const response = await api.get(`/admin/subject-max-marks/missing?class_name=${class_name}&exam_type_id=${exam_type_id}`);
     return response.data;
   },
-  create: async (data: { class_name: string; subject_id: number; exam_type_id: number; max_marks: number }): Promise<SubjectMaxMarks> => {
+  create: async (data: SubjectMaxMarksCreate): Promise<SubjectMaxMarks> => {
     const response = await api.post('/admin/subject-max-marks', data);
     return response.data;
   },
-  update: async (id: number, max_marks: number): Promise<SubjectMaxMarks> => {
-    const response = await api.put(`/admin/subject-max-marks/${id}`, { max_marks });
+  update: async (id: number, data: SubjectMaxMarksUpdate): Promise<SubjectMaxMarks> => {
+    const response = await api.put(`/admin/subject-max-marks/${id}`, data);
     return response.data;
   },
   delete: async (id: number): Promise<void> => {
