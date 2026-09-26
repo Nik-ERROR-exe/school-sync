@@ -5,14 +5,15 @@ from app.models.exam_type import ExamType
 from app.models.school_class import SchoolClass
 from app.models.student import Student
 from app.models.subject import Subject
+from app.models.subject_exam_component import SubjectExamComponent
 from app.models.teacher import Teacher
-from app.models.subject_max_marks import SubjectMaxMarks
-from app.schemas.result import ResultCreate
+from app.schemas.result import ResultCreateWithComponents
+from app.schemas.result_component import ResultComponentEntry
 from app.services.result_service import (
     get_grading_scale_group,
     calculate_overall_grade,
     calculate_class_overall_results,
-    create_result_batch,
+    create_result_batch_with_components,
 )
 
 
@@ -26,36 +27,32 @@ def test_grading_scale_group_detection():
     assert get_grading_scale_group("Std 10 C") == "STD_9_10"
 
 
-def test_std_1_8_grading_scale_boundaries():
-    # Std 1-8 8-tier scale
-    assert calculate_overall_grade(95.0, "STD_1_8") == "A 1"
-    assert calculate_overall_grade(91.0, "STD_1_8") == "A 1"
-    assert calculate_overall_grade(90.99, "STD_1_8") == "A 2"
-    assert calculate_overall_grade(81.0, "STD_1_8") == "A 2"
-    assert calculate_overall_grade(80.99, "STD_1_8") == "ba 1"
-    assert calculate_overall_grade(71.0, "STD_1_8") == "ba 1"
-    assert calculate_overall_grade(70.99, "STD_1_8") == "ba 2"
-    assert calculate_overall_grade(61.0, "STD_1_8") == "ba 2"
-    assert calculate_overall_grade(60.99, "STD_1_8") == "k  1"
-    assert calculate_overall_grade(51.0, "STD_1_8") == "k  1"
-    assert calculate_overall_grade(50.99, "STD_1_8") == "k  2"
-    assert calculate_overall_grade(41.0, "STD_1_8") == "k  2"
+def test_unified_grading_scale_boundaries():
+    # Unified 7-tier scale applied to every class
+    assert calculate_overall_grade(100.0, "STD_1_8") == "A1"
+    assert calculate_overall_grade(91.0, "STD_1_8") == "A1"
+    assert calculate_overall_grade(90.99, "STD_1_8") == "A2"
+    assert calculate_overall_grade(81.0, "STD_1_8") == "A2"
+    assert calculate_overall_grade(80.99, "STD_1_8") == "B1"
+    assert calculate_overall_grade(71.0, "STD_1_8") == "B1"
+    assert calculate_overall_grade(70.99, "STD_1_8") == "B2"
+    assert calculate_overall_grade(61.0, "STD_1_8") == "B2"
+    assert calculate_overall_grade(60.99, "STD_1_8") == "C1"
+    assert calculate_overall_grade(51.0, "STD_1_8") == "C1"
+    assert calculate_overall_grade(50.99, "STD_1_8") == "C2"
+    assert calculate_overall_grade(41.0, "STD_1_8") == "C2"
+    assert calculate_overall_grade(40.99, "STD_1_8") == "D"
     assert calculate_overall_grade(40.0, "STD_1_8") == "D"
-    assert calculate_overall_grade(20.0, "STD_1_8") == "D"  # Dead-code branch preserved as unreachable
     assert calculate_overall_grade(0.0, "STD_1_8") == "D"
 
-
-def test_std_9_10_grading_scale_boundaries():
-    # Std 9-10 4-tier scale (A, B, C, D)
-    assert calculate_overall_grade(85.0, "STD_9_10") == "A"
-    assert calculate_overall_grade(80.0, "STD_9_10") == "A"
-    assert calculate_overall_grade(75.0, "STD_9_10") == "B"
-    assert calculate_overall_grade(60.0, "STD_9_10") == "B"
-    assert calculate_overall_grade(59.99, "STD_9_10") == "C"
-    assert calculate_overall_grade(40.0, "STD_9_10") == "C"
-    assert calculate_overall_grade(39.99, "STD_9_10") == "D"
-    assert calculate_overall_grade(35.0, "STD_9_10") == "D"
-    assert calculate_overall_grade(0.0, "STD_9_10") == "D"
+    # Same scale for the STD_9_10 group (scale_group is now ignored)
+    assert calculate_overall_grade(91.0, "STD_9_10") == "A1"
+    assert calculate_overall_grade(85.0, "STD_9_10") == "A2"
+    assert calculate_overall_grade(75.0, "STD_9_10") == "B1"
+    assert calculate_overall_grade(65.0, "STD_9_10") == "B2"
+    assert calculate_overall_grade(55.0, "STD_9_10") == "C1"
+    assert calculate_overall_grade(45.0, "STD_9_10") == "C2"
+    assert calculate_overall_grade(20.0, "STD_9_10") == "D"
 
 
 @pytest.mark.asyncio
@@ -86,10 +83,17 @@ async def test_calculate_class_overall_results_and_ranks(db: AsyncSession):
     db.add(exam)
     await db.flush()
 
-    smm1 = SubjectMaxMarks(class_name=klass.class_name, subject_id=s1.id, exam_type_id=exam.id, max_marks=10.0)
-    smm2 = SubjectMaxMarks(class_name=klass.class_name, subject_id=s2.id, exam_type_id=exam.id, max_marks=10.0)
-    smm3 = SubjectMaxMarks(class_name=klass.class_name, subject_id=s3.id, exam_type_id=exam.id, max_marks=10.0)
-    db.add_all([smm1, smm2, smm3])
+    # One MAIN component of 10 marks per subject for this class/exam
+    for s in (s1, s2, s3):
+        db.add(SubjectExamComponent(
+            class_name=klass.class_name,
+            subject_id=s.id,
+            exam_type_id=exam.id,
+            component_code="MAIN",
+            display_label="Main",
+            max_marks=10.0,
+            display_order=1,
+        ))
     await db.flush()
 
     st1 = Student(roll_no="1", name="Student One", class_id=klass.id)
@@ -102,47 +106,51 @@ async def test_calculate_class_overall_results_and_ranks(db: AsyncSession):
     # Create results (total 30 marks per student across 3 subjects of 10 marks each)
     batch_data = [
         # Student 1: 10 + 9 + 9 = 28/30 (93.33%) -> Rank 1
-        ResultCreate(student_id=st1.id, subject_id=s1.id, exam_type_id=exam.id, marks_obtained=10, total_marks=10),
-        ResultCreate(student_id=st1.id, subject_id=s2.id, exam_type_id=exam.id, marks_obtained=9, total_marks=10),
-        ResultCreate(student_id=st1.id, subject_id=s3.id, exam_type_id=exam.id, marks_obtained=9, total_marks=10),
+        ResultCreateWithComponents(student_id=st1.id, subject_id=s1.id, exam_type_id=exam.id, components=[ResultComponentEntry(component_code="MAIN", marks_obtained=10)]),
+        ResultCreateWithComponents(student_id=st1.id, subject_id=s2.id, exam_type_id=exam.id, components=[ResultComponentEntry(component_code="MAIN", marks_obtained=9)]),
+        ResultCreateWithComponents(student_id=st1.id, subject_id=s3.id, exam_type_id=exam.id, components=[ResultComponentEntry(component_code="MAIN", marks_obtained=9)]),
 
         # Student 2: 8 + 8 + 8 = 24/30 (80.00%) -> Tied Rank 2
-        ResultCreate(student_id=st2.id, subject_id=s1.id, exam_type_id=exam.id, marks_obtained=8, total_marks=10),
-        ResultCreate(student_id=st2.id, subject_id=s2.id, exam_type_id=exam.id, marks_obtained=8, total_marks=10),
-        ResultCreate(student_id=st2.id, subject_id=s3.id, exam_type_id=exam.id, marks_obtained=8, total_marks=10),
+        ResultCreateWithComponents(student_id=st2.id, subject_id=s1.id, exam_type_id=exam.id, components=[ResultComponentEntry(component_code="MAIN", marks_obtained=8)]),
+        ResultCreateWithComponents(student_id=st2.id, subject_id=s2.id, exam_type_id=exam.id, components=[ResultComponentEntry(component_code="MAIN", marks_obtained=8)]),
+        ResultCreateWithComponents(student_id=st2.id, subject_id=s3.id, exam_type_id=exam.id, components=[ResultComponentEntry(component_code="MAIN", marks_obtained=8)]),
 
         # Student 3: 9 + 8 + 7 = 24/30 (80.00%) -> Tied Rank 2
-        ResultCreate(student_id=st3.id, subject_id=s1.id, exam_type_id=exam.id, marks_obtained=9, total_marks=10),
-        ResultCreate(student_id=st3.id, subject_id=s2.id, exam_type_id=exam.id, marks_obtained=8, total_marks=10),
-        ResultCreate(student_id=st3.id, subject_id=s3.id, exam_type_id=exam.id, marks_obtained=7, total_marks=10),
+        ResultCreateWithComponents(student_id=st3.id, subject_id=s1.id, exam_type_id=exam.id, components=[ResultComponentEntry(component_code="MAIN", marks_obtained=9)]),
+        ResultCreateWithComponents(student_id=st3.id, subject_id=s2.id, exam_type_id=exam.id, components=[ResultComponentEntry(component_code="MAIN", marks_obtained=8)]),
+        ResultCreateWithComponents(student_id=st3.id, subject_id=s3.id, exam_type_id=exam.id, components=[ResultComponentEntry(component_code="MAIN", marks_obtained=7)]),
 
         # Student 4: 5 + 5 + 5 = 15/30 (50.00%) -> Rank 4 (skipped 3 due to tie)
-        ResultCreate(student_id=st4.id, subject_id=s1.id, exam_type_id=exam.id, marks_obtained=5, total_marks=10),
-        ResultCreate(student_id=st4.id, subject_id=s2.id, exam_type_id=exam.id, marks_obtained=5, total_marks=10),
-        ResultCreate(student_id=st4.id, subject_id=s3.id, exam_type_id=exam.id, marks_obtained=5, total_marks=10),
+        ResultCreateWithComponents(student_id=st4.id, subject_id=s1.id, exam_type_id=exam.id, components=[ResultComponentEntry(component_code="MAIN", marks_obtained=5)]),
+        ResultCreateWithComponents(student_id=st4.id, subject_id=s2.id, exam_type_id=exam.id, components=[ResultComponentEntry(component_code="MAIN", marks_obtained=5)]),
+        ResultCreateWithComponents(student_id=st4.id, subject_id=s3.id, exam_type_id=exam.id, components=[ResultComponentEntry(component_code="MAIN", marks_obtained=5)]),
     ]
 
-    await create_result_batch(db, batch_data, teacher.id, is_admin=True)
+    await create_result_batch_with_components(db, batch_data, teacher.id, is_admin=True)
 
     summary = await calculate_class_overall_results(db, klass.id, exam.id)
 
-    # Student 1 verification: 28/30 = 93.33% -> "A 1", Rank 1
+    # Student 1 verification: 28/30 = 93.33% -> "A1", Rank 1
     assert summary[st1.id]["total_obtained"] == 28.0
     assert summary[st1.id]["total_max"] == 30.0
     assert summary[st1.id]["percentage"] == 93.33
-    assert summary[st1.id]["grade"] == "A 1"
+    # Grade scale unified to A1/A2/B1/B2/C1/C2/D in Stage 1.
+    assert summary[st1.id]["grade"] == "A1"
     assert summary[st1.id]["rank"] == 1
 
-    # Student 2 & 3 verification: 24/30 = 80% -> "ba 1", Rank 2
+    # Student 2 & 3 verification: 24/30 = 80% -> "B1", Rank 2
     assert summary[st2.id]["percentage"] == 80.0
-    assert summary[st2.id]["grade"] == "ba 1"
+    # Grade scale unified to A1/A2/B1/B2/C1/C2/D in Stage 1.
+    assert summary[st2.id]["grade"] == "B1"
     assert summary[st2.id]["rank"] == 2
 
     assert summary[st3.id]["percentage"] == 80.0
-    assert summary[st3.id]["grade"] == "ba 1"
+    # Grade scale unified to A1/A2/B1/B2/C1/C2/D in Stage 1.
+    assert summary[st3.id]["grade"] == "B1"
     assert summary[st3.id]["rank"] == 2
 
-    # Student 4 verification: 15/30 = 50% -> "k  2" since P>=41, Rank 4
+    # Student 4 verification: 15/30 = 50% -> "C2" since P>=41, Rank 4
     assert summary[st4.id]["percentage"] == 50.0
-    assert summary[st4.id]["grade"] == "k  2"
+    # Grade scale unified to A1/A2/B1/B2/C1/C2/D in Stage 1.
+    assert summary[st4.id]["grade"] == "C2"
     assert summary[st4.id]["rank"] == 4

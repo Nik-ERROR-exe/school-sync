@@ -1,4 +1,4 @@
-"""Authorization tests for create_result_batch (IDOR protection).
+"""Authorization tests for create_result_batch_with_components (IDOR protection).
 
 A teacher may only submit results for subjects they actually teach in the
 student's class, and may not overwrite results an admin has already approved.
@@ -11,11 +11,12 @@ from app.models.exam_type import ExamType
 from app.models.school_class import SchoolClass
 from app.models.student import Student
 from app.models.subject import Subject
+from app.models.subject_exam_component import SubjectExamComponent
 from app.models.teacher import Teacher
 from app.models.teacher_class_subject import TeacherClassSubject
-from app.models.subject_max_marks import SubjectMaxMarks
-from app.schemas.result import ResultCreate
-from app.services.result_service import create_result_batch
+from app.schemas.result import ResultCreateWithComponents
+from app.schemas.result_component import ResultComponentEntry
+from app.services.result_service import create_result_batch_with_components
 from app.core.exceptions import ForbiddenException, ResourceNotFoundException, ValidationException
 
 
@@ -47,30 +48,35 @@ async def _seed(db: AsyncSession):
     db.add(student)
     await db.flush()
 
-    smm = SubjectMaxMarks(class_name=klass.class_name, subject_id=subject.id, exam_type_id=exam.id, max_marks=100.0)
-    db.add(smm)
+    db.add(SubjectExamComponent(
+        class_name=klass.class_name,
+        subject_id=subject.id,
+        exam_type_id=exam.id,
+        component_code="MAIN",
+        display_label="Main",
+        max_marks=100.0,
+        display_order=1,
+    ))
     await db.flush()
 
     return teacher, klass, subject, exam, student
 
 
 def _result(student, subject, exam):
-    return ResultCreate(
+    return ResultCreateWithComponents(
         student_id=student.id,
         subject_id=subject.id,
         exam_type_id=exam.id,
-        marks_obtained=85,
-        total_marks=100,
+        components=[ResultComponentEntry(component_code="MAIN", marks_obtained=85)],
     )
 
 
 def _result_with_marks(student, subject, exam, marks):
-    return ResultCreate(
+    return ResultCreateWithComponents(
         student_id=student.id,
         subject_id=subject.id,
         exam_type_id=exam.id,
-        marks_obtained=marks,
-        total_marks=100,
+        components=[ResultComponentEntry(component_code="MAIN", marks_obtained=marks)],
     )
 
 
@@ -79,7 +85,7 @@ async def test_teacher_without_assignment_is_rejected(db: AsyncSession):
     teacher, _klass, subject, exam, student = await _seed(db)
 
     with pytest.raises(ForbiddenException):
-        await create_result_batch(db, [_result(student, subject, exam)], teacher.id)
+        await create_result_batch_with_components(db, [_result(student, subject, exam)], teacher.id)
 
 
 @pytest.mark.asyncio
@@ -92,7 +98,7 @@ async def test_teacher_assigned_in_mapping_can_submit(db: AsyncSession):
     )
     await db.commit()
 
-    results = await create_result_batch(db, [_result(student, subject, exam)], teacher.id)
+    results = await create_result_batch_with_components(db, [_result(student, subject, exam)], teacher.id)
     assert len(results) == 1
     assert results[0].status == "submitted"
     assert results[0].submitted_by_id == teacher.id
@@ -113,7 +119,7 @@ async def test_teacher_cannot_submit_for_other_class(db: AsyncSession):
     await db.commit()
 
     with pytest.raises(ForbiddenException):
-        await create_result_batch(db, [_result(student, subject, exam)], teacher.id)
+        await create_result_batch_with_components(db, [_result(student, subject, exam)], teacher.id)
 
 
 @pytest.mark.asyncio
@@ -126,31 +132,31 @@ async def test_approved_result_cannot_be_overwritten(db: AsyncSession):
     )
     await db.commit()
 
-    created = await create_result_batch(db, [_result(student, subject, exam)], teacher.id)
+    created = await create_result_batch_with_components(db, [_result(student, subject, exam)], teacher.id)
     await db.refresh(created[0])
     created[0].status = "approved"
     await db.commit()
 
     with pytest.raises(ForbiddenException):
-        await create_result_batch(db, [_result(student, subject, exam)], teacher.id)
+        await create_result_batch_with_components(db, [_result(student, subject, exam)], teacher.id)
 
 
 @pytest.mark.asyncio
 async def test_missing_student_still_raises_not_found(db: AsyncSession):
     teacher, _klass, subject, exam, _student = await _seed(db)
-    data = ResultCreate(
+    data = ResultCreateWithComponents(
         student_id=99999, subject_id=subject.id, exam_type_id=exam.id,
-        marks_obtained=85, total_marks=100,
+        components=[ResultComponentEntry(component_code="MAIN", marks_obtained=85)],
     )
     with pytest.raises(ResourceNotFoundException):
-        await create_result_batch(db, [data], teacher.id)
+        await create_result_batch_with_components(db, [data], teacher.id)
 
 
 @pytest.mark.asyncio
 async def test_admin_can_submit_without_assignment(db: AsyncSession):
     teacher, _klass, subject, exam, student = await _seed(db)
 
-    results = await create_result_batch(db, [_result(student, subject, exam)], teacher.id, is_admin=True)
+    results = await create_result_batch_with_components(db, [_result(student, subject, exam)], teacher.id, is_admin=True)
     assert len(results) == 1
 
 
@@ -164,13 +170,13 @@ async def test_admin_can_overwrite_approved(db: AsyncSession):
     )
     await db.commit()
 
-    created = await create_result_batch(db, [_result(student, subject, exam)], teacher.id)
+    created = await create_result_batch_with_components(db, [_result(student, subject, exam)], teacher.id)
     await db.refresh(created[0])
     created[0].status = "approved"
     await db.commit()
 
     # Admin is allowed to amend an approved result.
-    updated = await create_result_batch(db, [_result(student, subject, exam)], teacher.id, is_admin=True)
+    updated = await create_result_batch_with_components(db, [_result(student, subject, exam)], teacher.id, is_admin=True)
     assert updated[0].status == "submitted"
 
 
@@ -185,7 +191,7 @@ async def test_teacher_zero_marks_is_accepted(db: AsyncSession):
     ))
     await db.commit()
 
-    results = await create_result_batch(
+    results = await create_result_batch_with_components(
         db, [_result_with_marks(student, subject, exam, 0)], teacher.id
     )
     assert len(results) == 1
@@ -202,7 +208,7 @@ async def test_teacher_negative_marks_is_rejected(db: AsyncSession):
 
     # Pydantic schema rejects negative marks before the service layer
     with pytest.raises((ValidationException, ValidationError)):
-        await create_result_batch(
+        await create_result_batch_with_components(
             db, [_result_with_marks(student, subject, exam, -1)], teacher.id
         )
 
@@ -215,8 +221,8 @@ async def test_teacher_exact_max_marks_is_accepted(db: AsyncSession):
     ))
     await db.commit()
 
-    # SubjectMaxMarks for this class/exam/subject = 100.0
-    results = await create_result_batch(
+    # Configured max for this class/exam/subject = 100.0
+    results = await create_result_batch_with_components(
         db, [_result_with_marks(student, subject, exam, 100)], teacher.id
     )
     assert len(results) == 1
@@ -232,7 +238,7 @@ async def test_teacher_exceeds_max_marks_is_rejected(db: AsyncSession):
     await db.commit()
 
     with pytest.raises(ValidationException):
-        await create_result_batch(
+        await create_result_batch_with_components(
             db, [_result_with_marks(student, subject, exam, 101)], teacher.id
         )
 
@@ -263,7 +269,15 @@ async def test_teacher_custom_max_marks_bounds(db: AsyncSession):
     db.add(exam)
     await db.flush()
 
-    db.add(SubjectMaxMarks(class_name=klass.class_name, subject_id=subject.id, exam_type_id=exam.id, max_marks=25.0))
+    db.add(SubjectExamComponent(
+        class_name=klass.class_name,
+        subject_id=subject.id,
+        exam_type_id=exam.id,
+        component_code="MAIN",
+        display_label="Main",
+        max_marks=25.0,
+        display_order=1,
+    ))
     await db.commit()
 
     student = Student(roll_no="1", name="Student", class_id=klass.id)
@@ -274,23 +288,23 @@ async def test_teacher_custom_max_marks_bounds(db: AsyncSession):
     await db.commit()
 
     # 0 is accepted
-    res0 = await create_result_batch(db, [_result_with_marks(student, subject, exam, 0)], teacher.id)
+    res0 = await create_result_batch_with_components(db, [_result_with_marks(student, subject, exam, 0)], teacher.id)
     assert res0[0].marks_obtained == 0
 
     # 25 is accepted (exact max)
-    res25 = await create_result_batch(db, [_result_with_marks(student, subject, exam, 25)], teacher.id)
+    res25 = await create_result_batch_with_components(db, [_result_with_marks(student, subject, exam, 25)], teacher.id)
     assert res25[0].marks_obtained == 25
 
     # 26 is rejected
     with pytest.raises(ValidationException):
-        await create_result_batch(db, [_result_with_marks(student, subject, exam, 26)], teacher.id)
+        await create_result_batch_with_components(db, [_result_with_marks(student, subject, exam, 26)], teacher.id)
 
 
 @pytest.mark.asyncio
 async def test_admin_zero_marks_is_accepted(db: AsyncSession):
     teacher, klass, subject, exam, student = await _seed(db)
 
-    results = await create_result_batch(
+    results = await create_result_batch_with_components(
         db, [_result_with_marks(student, subject, exam, 0)], teacher.id, is_admin=True
     )
     assert len(results) == 1
@@ -303,7 +317,7 @@ async def test_admin_negative_marks_is_rejected(db: AsyncSession):
 
     # Pydantic schema rejects negative marks before the service layer
     with pytest.raises((ValidationException, ValidationError)):
-        await create_result_batch(
+        await create_result_batch_with_components(
             db, [_result_with_marks(student, subject, exam, -5)], teacher.id, is_admin=True
         )
 
@@ -334,7 +348,15 @@ async def test_admin_custom_max_marks_bounds(db: AsyncSession):
     db.add(exam)
     await db.flush()
 
-    db.add(SubjectMaxMarks(class_name=klass.class_name, subject_id=subject.id, exam_type_id=exam.id, max_marks=50.0))
+    db.add(SubjectExamComponent(
+        class_name=klass.class_name,
+        subject_id=subject.id,
+        exam_type_id=exam.id,
+        component_code="MAIN",
+        display_label="Main",
+        max_marks=50.0,
+        display_order=1,
+    ))
     await db.commit()
 
     student = Student(roll_no="1", name="Student", class_id=klass.id)
@@ -342,13 +364,13 @@ async def test_admin_custom_max_marks_bounds(db: AsyncSession):
     await db.commit()
 
     # 0 accepted
-    res0 = await create_result_batch(db, [_result_with_marks(student, subject, exam, 0)], teacher.id, is_admin=True)
+    res0 = await create_result_batch_with_components(db, [_result_with_marks(student, subject, exam, 0)], teacher.id, is_admin=True)
     assert res0[0].marks_obtained == 0
 
     # 50 accepted
-    res50 = await create_result_batch(db, [_result_with_marks(student, subject, exam, 50)], teacher.id, is_admin=True)
+    res50 = await create_result_batch_with_components(db, [_result_with_marks(student, subject, exam, 50)], teacher.id, is_admin=True)
     assert res50[0].marks_obtained == 50
 
     # 51 rejected
     with pytest.raises(ValidationException):
-        await create_result_batch(db, [_result_with_marks(student, subject, exam, 51)], teacher.id, is_admin=True)
+        await create_result_batch_with_components(db, [_result_with_marks(student, subject, exam, 51)], teacher.id, is_admin=True)
