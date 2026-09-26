@@ -34,13 +34,13 @@ const WizardStepsContent: React.FC<WizardLayoutProps> = ({ onGenerateComplete })
   }, [goToStep]);
 
   return (
-    <div className="flex flex-col h-full w-full bg-slate-50 font-sans">
+    <div className="flex flex-col h-full w-full bg-[#F8FAFC] dark:bg-[#0B0F19] font-body">
       {/* Top Progress Bar */}
-      <div className="bg-white border-b border-slate-200 px-8 py-6 shadow-sm sticky top-0 z-10">
+      <div className="bg-white dark:bg-[#10151F] border-b border-[#E2E8F0] dark:border-[#253044] px-8 py-6 shadow-xs sticky top-0 z-10">
         <div className="max-w-5xl mx-auto">
           <div className="mb-6">
-            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Timetable Generator</h1>
-            <p className="text-sm font-medium text-slate-500 mt-1">Create and manage timetable for all classes from 1A to 10B.</p>
+            <h1 className="font-heading text-2xl font-extrabold text-[#0F172A] dark:text-[#F8FAFC] tracking-tight">Timetable Generator</h1>
+            <p className="text-sm font-medium text-[#64748B] dark:text-[#94A3B8] mt-1">Create and manage timetable for all classes from 1A to 10B.</p>
           </div>
           
           <div className="flex items-center justify-between">
@@ -48,21 +48,21 @@ const WizardStepsContent: React.FC<WizardLayoutProps> = ({ onGenerateComplete })
               <div key={step.id} className="flex items-center">
                 <div className={`flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold transition-colors ${
                   currentStep === step.id 
-                    ? 'bg-blue-600 text-white shadow-md' 
+                    ? 'bg-[#1769FF] dark:bg-[#3B82F6] text-white shadow-md' 
                     : currentStep > step.id 
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'bg-slate-100 text-slate-400'
+                      ? 'bg-blue-100 dark:bg-blue-900/40 text-[#1769FF] dark:text-[#3B82F6]'
+                      : 'bg-[#F1F5F9] dark:bg-[#161D29] text-[#94A3B8] dark:text-[#475569]'
                 }`}>
                   {currentStep > step.id ? '✓' : step.id}
                 </div>
                 <span className={`ml-3 text-xs font-semibold ${
-                  currentStep === step.id ? 'text-slate-900' : 'text-slate-400'
+                  currentStep === step.id ? 'text-[#0F172A] dark:text-[#F8FAFC]' : 'text-[#94A3B8] dark:text-[#475569]'
                 } hidden md:block`}>
                   {step.title}
                 </span>
                 {idx < steps.length - 1 && (
                   <div className={`w-8 md:w-16 h-px mx-4 ${
-                    currentStep > step.id ? 'bg-blue-200' : 'bg-slate-200'
+                    currentStep > step.id ? 'bg-blue-200 dark:bg-blue-800/60' : 'bg-[#E2E8F0] dark:bg-[#253044]'
                   }`} />
                 )}
               </div>
