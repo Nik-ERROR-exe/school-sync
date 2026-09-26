@@ -1,4 +1,4 @@
-from sqlalchemy import cast, Integer
+from sqlalchemy import cast, Integer, delete
 from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -8,8 +8,9 @@ from app.models.school_class import SchoolClass
 from app.models.subject import Subject
 from app.models.exam_type import ExamType
 from app.models.teacher_class_subject import TeacherClassSubject
-from app.models.subject_max_marks import SubjectMaxMarks
-from app.schemas.result import ResultCreate
+from app.models.subject_exam_component import SubjectExamComponent
+from app.models.result_component import ResultComponent
+from app.schemas.result import ResultCreate, ResultCreateWithComponents
 
 from app.core.exceptions import ResourceNotFoundException, ValidationException, ForbiddenException
 from typing import List, Optional
@@ -218,25 +219,44 @@ async def _check_teacher_authorized(
         )
 
 
-async def create_result_batch(
+async def get_subject_components(
     db: AsyncSession,
-    results_data: List[ResultCreate],
-    teacher_id: int,
-    is_admin: bool = False
-) -> List[Result]:
-    """Create or update a batch of student results and set status to 'submitted'.
+    class_name: str,
+    subject_id: int,
+    exam_type_id: int,
+) -> list[SubjectExamComponent]:
+    stmt = (
+        select(SubjectExamComponent)
+        .where(
+            SubjectExamComponent.class_name == class_name,
+            SubjectExamComponent.subject_id == subject_id,
+            SubjectExamComponent.exam_type_id == exam_type_id,
+        )
+        .order_by(SubjectExamComponent.display_order, SubjectExamComponent.id)
+    )
+    return list((await db.scalars(stmt)).all())
 
-    When called by a teacher (is_admin=False) the teacher is only allowed to
-    record results for subjects they actually teach in the student's class, and
-    cannot overwrite results an admin has already approved. Admins bypass both
-    checks (they can enter marks for any student/subject)."""
+
+async def create_result_batch_with_components(
+    db: AsyncSession,
+    results_data: list[ResultCreateWithComponents],
+    teacher_id: int,
+    is_admin: bool = False,
+) -> list[Result]:
+    """
+    Component-aware replacement for create_result_batch. Stages the
+    same authorization and approval rules as the old function but
+    writes ResultComponent rows instead of the three fixed component
+    columns. Still writes denormalized marks_obtained/total_marks/
+    percentage/grade to the Result row for backward compatibility.
+    """
     if not results_data:
         return []
 
     # 1. Bulk validate existence of Students, Subjects, and ExamTypes
-    student_ids = {data.student_id for data in results_data}
-    subject_ids = {data.subject_id for data in results_data}
-    exam_type_ids = {data.exam_type_id for data in results_data}
+    student_ids = {d.student_id for d in results_data}
+    subject_ids = {d.subject_id for d in results_data}
+    exam_type_ids = {d.exam_type_id for d in results_data}
 
     found_student_ids = set((await db.scalars(select(Student.id).where(Student.id.in_(student_ids)))).all())
     missing_students = student_ids - found_student_ids
@@ -253,11 +273,11 @@ async def create_result_batch(
     if missing_exam_types:
         raise ResourceNotFoundException("ExamType", str(next(iter(missing_exam_types))))
 
-    # 1b. Authorization check
+    # 2. Authorization check
     if not is_admin:
         await _check_teacher_authorized(db, results_data, student_ids, teacher_id)
 
-    # 1c. Fetch students with school_class to determine class_name for max_marks lookup
+    # 3. Students with school_class to build student_id -> class_name map
     students = (await db.scalars(
         select(Student)
         .options(joinedload(Student.school_class))
@@ -267,32 +287,7 @@ async def create_result_batch(
         s.id: s.school_class.class_name for s in students if s.school_class
     }
 
-    required_configs = set()
-    for data in results_data:
-        c_name = student_class_name_map.get(data.student_id)
-        if c_name:
-            required_configs.add((c_name, data.subject_id, data.exam_type_id))
-
-    class_names = {c[0] for c in required_configs}
-    max_marks_records = (await db.scalars(
-        select(SubjectMaxMarks).where(
-            SubjectMaxMarks.class_name.in_(class_names),
-            SubjectMaxMarks.subject_id.in_(subject_ids),
-            SubjectMaxMarks.exam_type_id.in_(exam_type_ids)
-        )
-    )).all() if class_names else []
-
-    # Component-level max lookup (akarikh + oral + written = total max)
-    component_lookup = {}
-    for r in max_marks_records:
-        component_lookup[(r.class_name, r.subject_id, r.exam_type_id)] = {
-            "akarikh_max": float(r.akarikh_max),
-            "oral_max": float(r.oral_max),
-            "written_max": float(r.written_max),
-            "total_max": float(r.akarikh_max) + float(r.oral_max) + float(r.written_max),
-        }
-
-    # 2. Bulk fetch existing results matching the batch criteria
+    # 4. Existing results for the batch
     existing_results = (await db.scalars(
         select(Result).where(
             Result.student_id.in_(student_ids),
@@ -302,49 +297,78 @@ async def create_result_batch(
     )).all()
     existing_map = {(r.student_id, r.subject_id, r.exam_type_id): r for r in existing_results}
 
-    # 3. Create or update result records in memory
+    # 5. All needed SubjectExamComponent rows in ONE query
+    class_names = {c for c in student_class_name_map.values() if c}
+    comp_stmt = select(SubjectExamComponent).where(
+        SubjectExamComponent.class_name.in_(class_names),
+        SubjectExamComponent.subject_id.in_(subject_ids),
+        SubjectExamComponent.exam_type_id.in_(exam_type_ids),
+    )
+    all_components = (await db.scalars(comp_stmt)).all()
+
+    components_by_key: dict[tuple, list[SubjectExamComponent]] = {}
+    for c in all_components:
+        components_by_key.setdefault(
+            (c.class_name, c.subject_id, c.exam_type_id), []
+        ).append(c)
+    for v in components_by_key.values():
+        v.sort(key=lambda c: (c.display_order, c.id))
+
+    # 6. Validate + persist
     results = []
     now = datetime.utcnow()
-    for data in results_data:
-        c_name = student_class_name_map.get(data.student_id)
-        config_key = (c_name, data.subject_id, data.exam_type_id)
+    for d in results_data:
+        c_name = student_class_name_map.get(d.student_id)
+        key = (c_name, d.subject_id, d.exam_type_id)
+        config_components = components_by_key.get(key, [])
 
-        component_config = component_lookup.get(config_key)
-        if component_config is None:
+        if not config_components:
             raise ValidationException(
-                f"Subject (ID {data.subject_id}) component max marks is not configured for Standard '{c_name}' and exam type (ID {data.exam_type_id}). Contact administrator."
-            )
-
-        # Component-level validation
-        if data.akarikh_marks < 0 or data.akarikh_marks > component_config["akarikh_max"]:
-            raise ValidationException(
-                f"akarikh_marks ({data.akarikh_marks}) exceeds configured akarikh_max ({component_config['akarikh_max']}) for subject ID {data.subject_id}."
-            )
-        if data.oral_marks < 0 or data.oral_marks > component_config["oral_max"]:
-            raise ValidationException(
-                f"oral_marks ({data.oral_marks}) exceeds configured oral_max ({component_config['oral_max']}) for subject ID {data.subject_id}."
-            )
-        if data.written_marks < 0 or data.written_marks > component_config["written_max"]:
-            raise ValidationException(
-                f"written_marks ({data.written_marks}) exceeds configured written_max ({component_config['written_max']}) for subject ID {data.subject_id}."
+                f"No components configured for class '{c_name}', "
+                f"subject ID {d.subject_id}, exam type ID "
+                f"{d.exam_type_id}. Configure them first."
             )
 
-        total_marks = component_config["total_max"]
-        marks_obtained = data.akarikh_marks + data.oral_marks + data.written_marks
+        config_by_code = {c.component_code: c for c in config_components}
+        provided = {c.component_code: c for c in d.components}
+
+        for code in provided:
+            if code not in config_by_code:
+                raise ValidationException(
+                    f"Component '{code}' is not configured for class "
+                    f"'{c_name}', subject {d.subject_id}, exam "
+                    f"{d.exam_type_id}."
+                )
+
+        for code, entry in provided.items():
+            if entry.marks_obtained < 0:
+                raise ValidationException(
+                    f"Component '{code}' marks_obtained "
+                    f"({entry.marks_obtained}) cannot be negative."
+                )
+            component_max = float(config_by_code[code].max_marks)
+            if entry.marks_obtained > component_max:
+                raise ValidationException(
+                    f"Component '{code}' marks_obtained "
+                    f"({entry.marks_obtained}) exceeds configured max_marks "
+                    f"({component_max}) for class '{c_name}', subject "
+                    f"{d.subject_id}, exam {d.exam_type_id}."
+                )
+
+        marks_obtained = sum(e.marks_obtained for e in provided.values())
+        total_marks = sum(float(c.max_marks) for c in config_components)
         percentage, grade = calculate_grade_and_percentage(marks_obtained, total_marks)
-        key = (data.student_id, data.subject_id, data.exam_type_id)
-        existing = existing_map.get(key)
+
+        rkey = (d.student_id, d.subject_id, d.exam_type_id)
+        existing = existing_map.get(rkey)
 
         if existing:
             if not is_admin and existing.status == "approved":
                 raise ForbiddenException(
                     "Cannot overwrite an already approved result (student "
-                    f"{data.student_id}, subject {data.subject_id}). Contact the "
+                    f"{d.student_id}, subject {d.subject_id}). Contact the "
                     "administrator to amend it."
                 )
-            existing.akarikh_marks = data.akarikh_marks
-            existing.oral_marks = data.oral_marks
-            existing.written_marks = data.written_marks
             existing.marks_obtained = marks_obtained
             existing.total_marks = total_marks
             existing.percentage = percentage
@@ -352,39 +376,140 @@ async def create_result_batch(
             existing.status = "submitted"
             existing.submitted_by_id = teacher_id
             existing.submitted_at = now
-            results.append(existing)
+            await db.execute(
+                delete(ResultComponent).where(ResultComponent.result_id == existing.id)
+            )
+            target_result = existing
         else:
-            db_result = Result(
-                student_id=data.student_id,
-                subject_id=data.subject_id,
-                exam_type_id=data.exam_type_id,
-                akarikh_marks=data.akarikh_marks,
-                oral_marks=data.oral_marks,
-                written_marks=data.written_marks,
+            target_result = Result(
+                student_id=d.student_id,
+                subject_id=d.subject_id,
+                exam_type_id=d.exam_type_id,
                 marks_obtained=marks_obtained,
                 total_marks=total_marks,
                 percentage=percentage,
                 grade=grade,
                 status="submitted",
                 submitted_by_id=teacher_id,
-                submitted_at=now
+                submitted_at=now,
             )
-            db.add(db_result)
-            results.append(db_result)
+            db.add(target_result)
+            await db.flush()
+
+        for code, entry in provided.items():
+            db.add(ResultComponent(
+                result_id=target_result.id,
+                component_code=code,
+                marks_obtained=entry.marks_obtained,
+            ))
+
+        results.append(target_result)
 
     await db.commit()
 
-    # 4. Fetch all refreshed results with joined relationships in a single bulk query
+    # 7. Reload with joined relationships
     result_ids = [r.id for r in results]
     final_results = (await db.scalars(
         select(Result).options(
             joinedload(Result.student).joinedload(Student.school_class),
             joinedload(Result.subject),
-            joinedload(Result.exam_type)
+            joinedload(Result.exam_type),
+            joinedload(Result.components),
         ).where(Result.id.in_(result_ids))
     )).unique().all()
 
     return list(final_results)
+
+
+async def update_result_with_components(
+    db: AsyncSession,
+    result_id: int,
+    data: dict,
+) -> Result:
+    """
+    Component-aware replacement for update_result. Requires the components
+    key; any other update shape is rejected.
+    """
+    if "components" not in data:
+        raise ValidationException("components is required when updating a result.")
+
+    stmt = select(Result).options(
+        joinedload(Result.student).joinedload(Student.school_class),
+        joinedload(Result.subject),
+        joinedload(Result.exam_type)
+    ).where(Result.id == result_id)
+
+    res = await db.execute(stmt)
+    db_result = res.scalar_one_or_none()
+    if not db_result:
+        raise ResourceNotFoundException("Result", str(result_id))
+
+    class_name = db_result.student.school_class.class_name if db_result.student and db_result.student.school_class else None
+    if not class_name:
+        raise ValidationException("Student class not found for max marks lookup")
+
+    config_components = await get_subject_components(
+        db, class_name, db_result.subject_id, db_result.exam_type_id
+    )
+    if not config_components:
+        raise ValidationException(
+            f"No components configured for class '{class_name}', "
+            f"subject ID {db_result.subject_id}, exam type ID "
+            f"{db_result.exam_type_id}. Configure them first."
+        )
+
+    config_by_code = {c.component_code: c for c in config_components}
+    provided = {c["component_code"]: c for c in data["components"]}
+
+    for code in provided:
+        if code not in config_by_code:
+            raise ValidationException(
+                f"Component '{code}' is not configured for class "
+                f"'{class_name}', subject {db_result.subject_id}, exam "
+                f"{db_result.exam_type_id}."
+            )
+
+    for code, entry in provided.items():
+        marks = entry["marks_obtained"]
+        if marks < 0:
+            raise ValidationException(
+                f"Component '{code}' marks_obtained "
+                f"({marks}) cannot be negative."
+            )
+        component_max = float(config_by_code[code].max_marks)
+        if marks > component_max:
+            raise ValidationException(
+                f"Component '{code}' marks_obtained "
+                f"({marks}) exceeds configured max_marks "
+                f"({component_max}) for class '{class_name}', subject "
+                f"{db_result.subject_id}, exam {db_result.exam_type_id}."
+            )
+
+    marks_obtained = sum(float(e["marks_obtained"]) for e in provided.values())
+    total_marks = sum(float(c.max_marks) for c in config_components)
+    percentage, grade = calculate_grade_and_percentage(marks_obtained, total_marks)
+
+    await db.execute(
+        delete(ResultComponent).where(ResultComponent.result_id == db_result.id)
+    )
+    for code, entry in provided.items():
+        db.add(ResultComponent(
+            result_id=db_result.id,
+            component_code=code,
+            marks_obtained=entry["marks_obtained"],
+        ))
+
+    db_result.marks_obtained = marks_obtained
+    db_result.total_marks = total_marks
+    db_result.percentage = percentage
+    db_result.grade = grade
+
+    if "status" in data:
+        db_result.status = data["status"]
+
+    await db.commit()
+    await db.refresh(db_result)
+    return db_result
 
 
 async def get_results_by_status(db: AsyncSession, status: Optional[str] = None) -> List[Result]:
@@ -425,92 +550,3 @@ async def approve_result(db: AsyncSession, result_id: int, admin_id: int, approv
     await db.refresh(db_result)
     return db_result
 
-
-async def update_result(db: AsyncSession, result_id: int, data: dict) -> Result:
-    """Update an existing result (admin override)."""
-    stmt = select(Result).options(
-        joinedload(Result.student).joinedload(Student.school_class),
-        joinedload(Result.subject),
-        joinedload(Result.exam_type)
-    ).where(Result.id == result_id)
-
-    result = await db.execute(stmt)
-    db_result = result.scalar_one_or_none()
-    if not db_result:
-        raise ResourceNotFoundException("Result", str(result_id))
-
-    class_name = db_result.student.school_class.class_name if db_result.student and db_result.student.school_class else None
-    if not class_name:
-        raise ValidationException("Student class not found for max marks lookup")
-
-    max_marks_result = await db.execute(
-        select(SubjectMaxMarks).where(
-            SubjectMaxMarks.class_name == class_name,
-            SubjectMaxMarks.subject_id == db_result.subject_id,
-            SubjectMaxMarks.exam_type_id == db_result.exam_type_id
-        )
-    )
-    max_record = max_marks_result.scalar_one_or_none()
-    if not max_record:
-        raise ValidationException(
-            f"Max marks not configured for Standard '{class_name}', subject ID {db_result.subject_id}, exam type ID {db_result.exam_type_id}. Configure it first."
-        )
-
-    component_fields = ['akarikh_marks', 'oral_marks', 'written_marks']
-    has_any = any(k in data for k in component_fields)
-
-    if has_any:
-        if not all(k in data for k in component_fields):
-            raise ValidationException(
-                "When updating component marks, all three (akarikh_marks, oral_marks, written_marks) must be provided together."
-            )
-        for comp_name in component_fields:
-            comp_val = data[comp_name]
-            if comp_val < 0:
-                raise ValidationException(f"{comp_name} ({comp_val}) must be >= 0.")
-        akarikh_max_db = float(max_record.akarikh_max)
-        oral_max_db = float(max_record.oral_max)
-        written_max_db = float(max_record.written_max)
-        if data['akarikh_marks'] > akarikh_max_db:
-            raise ValidationException(f"akarikh_marks ({data['akarikh_marks']}) exceeds configured akarikh_max ({akarikh_max_db}).")
-        if data['oral_marks'] > oral_max_db:
-            raise ValidationException(f"oral_marks ({data['oral_marks']}) exceeds configured oral_max ({oral_max_db}).")
-        if data['written_marks'] > written_max_db:
-            raise ValidationException(f"written_marks ({data['written_marks']}) exceeds configured written_max ({written_max_db}).")
-
-        db_result.akarikh_marks = data['akarikh_marks']
-        db_result.oral_marks = data['oral_marks']
-        db_result.written_marks = data['written_marks']
-        db_result.marks_obtained = data['akarikh_marks'] + data['oral_marks'] + data['written_marks']
-        db_result.total_marks = float(akarikh_max_db + oral_max_db + written_max_db)
-        recompute = True
-    elif 'marks_obtained' in data:
-        marks_obtained = data['marks_obtained']
-        total_max = float(max_record.akarikh_max) + float(max_record.oral_max) + float(max_record.written_max)
-        if marks_obtained < 0:
-            raise ValidationException(f"Marks obtained must be >= 0.")
-        if marks_obtained > total_max:
-            raise ValidationException(f"Marks obtained ({marks_obtained}) exceeds total max ({total_max}).")
-        db_result.marks_obtained = marks_obtained
-        db_result.akarikh_marks = 0
-        db_result.oral_marks = 0
-        db_result.written_marks = 0
-        db_result.total_marks = total_max
-        recompute = True
-    else:
-        recompute = False
-
-    if recompute:
-        percentage, grade = calculate_grade_and_percentage(
-            float(db_result.marks_obtained) if db_result.marks_obtained else 0.0,
-            float(db_result.total_marks) if db_result.total_marks else 100.0,
-        )
-        db_result.percentage = percentage
-        db_result.grade = grade
-
-    if 'status' in data:
-        db_result.status = data['status']
-
-    await db.commit()
-    await db.refresh(db_result)
-    return db_result
