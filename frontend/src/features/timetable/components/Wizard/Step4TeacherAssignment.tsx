@@ -9,8 +9,6 @@ interface Step4Props {
   onGenerateComplete: (schedule: ApiSlot[], wizardState: WizardState) => void;
 }
 
-
-
 interface TeacherChoice {
   subject_id: number;
   subject_name: string;
@@ -42,7 +40,6 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
           const cls = allClasses.find((c: any) => c.id === state.selectedClassId);
           const classSubjects = cls?.subjects || [];
 
-          // Fetch teacher-class-subject mappings for this class
           let classTeacherMappings: Record<number, number[]> = {};
           try {
             const mapRes = await api.get(`/admin/classes/${state.selectedClassId}/subjects`);
@@ -57,7 +54,6 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
               classTeacherMappings[subjId].push(teacherId);
             }
           } catch {
-            // Fallback: use teacher_class_subjects endpoint
             for (const teacher of activeTeachers) {
               try {
                 const csRes = await api.get(`/admin/teachers/${teacher.id}/class-subjects`);
@@ -200,43 +196,39 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
     updateState({});
   };
 
-  const selectedClass = useMemo(() => {
-    return state._teachersCache.length > 0 ? null : null;
-  }, [state._teachersCache, state.selectedClassId]);
-
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="px-8 py-6 border-b border-slate-100 bg-slate-50/50">
-        <h2 className="text-lg font-bold text-slate-900">Step 4: Generate Timetable</h2>
-        <p className="text-sm text-slate-500 mt-1">Ready to run the automated scheduler engine.</p>
+    <div className="bg-white dark:bg-[#10151F] rounded-2xl shadow-sm border border-slate-200 dark:border-[#253044] overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 text-slate-900 dark:text-slate-100 font-sans">
+      <div className="px-8 py-6 border-b border-slate-100 dark:border-[#253044] bg-slate-50/50 dark:bg-[#161D29]/50">
+        <h2 className="text-lg font-bold">Step 5: Generate Timetable</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Ready to run the automated scheduler engine.</p>
       </div>
 
-      <div className="p-16 flex flex-col items-center justify-center text-center">
-        <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-6 border-8 border-blue-100/50">
-          <Sparkles className="text-blue-600" size={32} />
+      <div className="p-12 flex flex-col items-center justify-center text-center">
+        <div className="w-20 h-20 bg-blue-50 dark:bg-blue-950/40 rounded-full flex items-center justify-center mb-6 border-8 border-blue-100/50 dark:border-blue-900/30">
+          <Sparkles className="text-blue-600 dark:text-blue-400" size={32} />
         </div>
 
-        <h3 className="text-2xl font-extrabold text-slate-900 mb-3">All Set!</h3>
-        <p className="text-slate-500 max-w-md mx-auto mb-4 leading-relaxed">
+        <h3 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 mb-3">All Set!</h3>
+        <p className="text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-4 leading-relaxed text-sm">
           The constraint-satisfaction solver will analyze all configured classes, teachers, and weekly requirements to generate the optimal timetable.
         </p>
 
         {/* Generation config summary */}
-        <div className="flex flex-wrap justify-center gap-3 mb-8">
-          <span className="text-xs font-semibold bg-slate-100 text-slate-600 px-3 py-1 rounded-full">
+        <div className="flex flex-wrap justify-center gap-2.5 mb-8">
+          <span className="text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-3 py-1 rounded-full">
             {state.schoolDays.length} days
           </span>
-          <span className="text-xs font-semibold bg-slate-100 text-slate-600 px-3 py-1 rounded-full">
+          <span className="text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-3 py-1 rounded-full">
             {state.periodsPerDay} periods/day
           </span>
-          <span className="text-xs font-semibold bg-slate-100 text-slate-600 px-3 py-1 rounded-full">
+          <span className="text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-3 py-1 rounded-full">
             1 class selected
           </span>
-          <span className="text-xs font-semibold bg-slate-100 text-slate-600 px-3 py-1 rounded-full">
+          <span className="text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-3 py-1 rounded-full">
             {state.selectedTeacherIds.length} teachers
           </span>
           {state.lunchPeriod && (
-            <span className="text-xs font-semibold bg-slate-100 text-slate-600 px-3 py-1 rounded-full">
+            <span className="text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-3 py-1 rounded-full">
               Lunch: P{state.lunchPeriod}
             </span>
           )}
@@ -244,16 +236,16 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
 
         {/* Teacher assignment prompt */}
         {teacherChoices.length > 0 && !showTeacherModal && (
-          <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 max-w-lg text-left">
-            <p className="text-sm font-semibold text-amber-800 mb-1">
+          <div className="mb-6 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-4 max-w-lg text-left">
+            <p className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-1">
               Some subjects have multiple teachers assigned.
             </p>
-            <p className="text-xs text-amber-700">
+            <p className="text-xs text-amber-700 dark:text-amber-400">
               Click below to choose which teacher should teach each subject for this class.
             </p>
             <button
               onClick={() => setShowTeacherModal(true)}
-              className="mt-3 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow-sm transition-colors"
+              className="mt-3 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
             >
               Choose Teachers
             </button>
@@ -263,7 +255,7 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
         {/* Error Display */}
         {error && (
           <div className="max-w-xl text-left mb-6 space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 text-sm font-medium px-5 py-4 rounded-xl">
+            <div className="flex items-start gap-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 text-rose-700 dark:text-rose-300 text-sm font-medium px-5 py-4 rounded-xl">
               <AlertCircle size={20} className="shrink-0 mt-0.5" />
               <div>
                 <p className="font-bold mb-1">Generation Failed</p>
@@ -277,7 +269,6 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
                 2: 'Teachers & Classes',
                 3: 'Weekly Requirements',
               };
-              // Group issues by step
               const grouped: Record<number, DiagnosticIssue[]> = {};
               diagnosticIssues.forEach(issue => {
                 if (!grouped[issue.step]) grouped[issue.step] = [];
@@ -286,22 +277,21 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
               const sortedSteps = Object.keys(grouped).map(Number).sort((a, b) => a - b);
 
               return (
-                <div className="bg-white border border-red-200 rounded-xl overflow-hidden shadow-sm">
-                  <div className="px-5 py-3 bg-red-50 border-b border-red-100 flex items-center justify-between">
-                    <p className="text-xs font-bold text-red-800 uppercase tracking-wider">
+                <div className="bg-white dark:bg-[#10151F] border border-rose-200 dark:border-rose-800/60 rounded-xl overflow-hidden shadow-xs">
+                  <div className="px-5 py-3 bg-rose-50 dark:bg-rose-950/40 border-b border-rose-100 dark:border-rose-900/40 flex items-center justify-between">
+                    <p className="text-xs font-bold text-rose-800 dark:text-rose-300 uppercase tracking-wider">
                       {diagnosticIssues.length} Issue{diagnosticIssues.length !== 1 ? 's' : ''} Found — Fix to Continue
                     </p>
                   </div>
 
-                  <div className="divide-y divide-slate-100">
+                  <div className="divide-y divide-slate-100 dark:divide-[#253044]">
                     {sortedSteps.map(stepNum => (
                       <div key={stepNum}>
-                        {/* Step group header */}
-                        <div className="px-5 py-2.5 bg-slate-50/70 flex items-center gap-2 border-b border-slate-100">
+                        <div className="px-5 py-2.5 bg-slate-50/70 dark:bg-[#161D29]/70 flex items-center gap-2 border-b border-slate-100 dark:border-[#253044]">
                           <div className="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center">
                             {stepNum}
                           </div>
-                          <span className="text-xs font-bold text-slate-700">
+                          <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
                             Step {stepNum}: {stepNames[stepNum] || `Step ${stepNum}`}
                           </span>
                           <span className="ml-auto text-[10px] font-semibold text-slate-400">
@@ -309,16 +299,15 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
                           </span>
                         </div>
 
-                        {/* Issues in this step */}
                         {grouped[stepNum].map((issue, idx) => (
-                          <div key={idx} className="px-5 py-3.5 flex items-start gap-3 hover:bg-slate-50/50 transition-colors">
+                          <div key={idx} className="px-5 py-3.5 flex items-start gap-3 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
                             <div className={`mt-1 w-2.5 h-2.5 rounded-full shrink-0 ${
-                              issue.severity === 'error' ? 'bg-red-500' : 'bg-amber-500'
+                              issue.severity === 'error' ? 'bg-rose-500' : 'bg-amber-500'
                             }`} />
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs text-slate-700 leading-relaxed">{issue.message}</p>
+                              <p className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed">{issue.message}</p>
                               {issue.suggestion && (
-                                <p className="text-xs text-blue-700 font-semibold mt-1.5 flex items-start gap-1">
+                                <p className="text-xs text-blue-700 dark:text-blue-400 font-semibold mt-1.5 flex items-start gap-1">
                                   <AlertTriangle size={11} className="shrink-0 mt-0.5 text-amber-500" />
                                   {issue.suggestion}
                                 </p>
@@ -328,7 +317,7 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
                                   const goToStep = (window as any).__wizardGoToStep;
                                   if (goToStep) goToStep(issue.redirect_step || issue.step);
                                 }}
-                                className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg shadow-sm transition-all hover:shadow"
+                                className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg shadow-xs transition-colors cursor-pointer"
                               >
                                 Fix Now
                                 <ArrowRight size={12} />
@@ -348,26 +337,26 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
         <button
           onClick={handleGenerate}
           disabled={isGenerating}
-          className={`flex items-center gap-3 px-8 py-4 rounded-xl text-lg font-bold text-white shadow-lg shadow-blue-600/20 transition-all ${
-            isGenerating ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:-translate-y-0.5'
+          className={`flex items-center gap-3 px-8 py-3.5 rounded-xl text-base font-bold text-white shadow-md transition-all cursor-pointer ${
+            isGenerating ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
           }`}
         >
-          {isGenerating ? <Loader2 className="animate-spin" size={24} /> : <Sparkles size={24} />}
+          {isGenerating ? <Loader2 className="animate-spin" size={20} /> : <Sparkles size={20} />}
           {isGenerating ? 'Generating Timetable…' : 'Generate Timetable'}
         </button>
 
         {isGenerating && (
           <p className="text-xs text-slate-400 mt-4 animate-pulse">
-            This may take up to 30 seconds depending on the number of classes and constraints…
+            This may take up to 25 seconds depending on constraints…
           </p>
         )}
       </div>
 
-      <div className="flex justify-between px-8 py-4 border-t border-slate-100 bg-slate-50">
+      <div className="flex justify-between px-8 py-4 border-t border-slate-100 dark:border-[#253044] bg-slate-50 dark:bg-[#161D29]">
         <button
           onClick={onPrev}
           disabled={isGenerating}
-          className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 px-6 py-2.5 rounded-lg text-sm font-bold transition-all disabled:opacity-50"
+          className="bg-white dark:bg-[#10151F] border border-slate-200 dark:border-[#253044] hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 px-6 py-2.5 rounded-lg text-sm font-bold transition-all disabled:opacity-50 cursor-pointer"
         >
           Back
         </button>
@@ -375,21 +364,21 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
 
       {/* Teacher Assignment Modal */}
       {showTeacherModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-hidden flex flex-col">
-            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-xs">
+          <div className="bg-white dark:bg-[#10151F] rounded-2xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-hidden flex flex-col border border-slate-200 dark:border-[#253044] text-slate-900 dark:text-slate-100">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-[#253044] bg-slate-50/50 dark:bg-[#161D29]/50 flex items-center justify-between">
               <div>
-                <h3 className="text-base font-bold text-slate-900">Select Teachers per Subject</h3>
-                <p className="text-xs text-slate-500 mt-0.5">Choose which teacher should teach each subject.</p>
+                <h3 className="text-base font-bold">Select Teachers per Subject</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Choose which teacher should teach each subject.</p>
               </div>
-              <button onClick={() => setShowTeacherModal(false)} className="p-1 hover:bg-slate-100 rounded-lg transition-colors">
+              <button onClick={() => setShowTeacherModal(false)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer">
                 <X size={18} className="text-slate-500" />
               </button>
             </div>
             <div className="p-6 overflow-y-auto space-y-4">
               {teacherChoices.map((choice) => (
-                <div key={choice.subject_id} className="border border-slate-200 rounded-xl p-4">
-                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-2">
+                <div key={choice.subject_id} className="border border-slate-200 dark:border-[#253044] rounded-xl p-4 bg-slate-50/50 dark:bg-[#161D29]/50">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-2">
                     {choice.subject_name}
                   </label>
                   <select
@@ -400,7 +389,7 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
                         c.subject_id === choice.subject_id ? { ...c, selectedTeacherId: val } : c
                       ));
                     }}
-                    className="w-full rounded-lg border border-slate-200 p-2.5 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent bg-white shadow-sm"
+                    className="w-full rounded-lg border border-slate-200 dark:border-[#253044] p-2.5 text-xs font-semibold text-slate-900 dark:text-slate-100 bg-white dark:bg-[#10151F] focus:outline-none focus:border-blue-500 shadow-xs cursor-pointer"
                   >
                     {choice.teachers.map(teacher => (
                       <option key={teacher.id} value={teacher.id}>
@@ -411,10 +400,10 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
                 </div>
               ))}
             </div>
-            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+            <div className="px-6 py-4 border-t border-slate-100 dark:border-[#253044] bg-slate-50 dark:bg-[#161D29] flex justify-end">
               <button
                 onClick={handleTeacherModalConfirm}
-                className="flex items-center gap-1.5 rounded-lg bg-slate-900 hover:bg-slate-950 py-2.5 px-5 text-xs font-bold text-white shadow-sm transition"
+                className="flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 py-2.5 px-5 text-xs font-bold text-white shadow-xs transition cursor-pointer"
               >
                 Confirm
                 <ChevronRight size={14} />
