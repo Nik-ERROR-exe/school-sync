@@ -180,6 +180,37 @@ class TimetableSolver:
 
         # Pre-fill existing slots (from other classes, or previously saved)
         assignments: Dict[Tuple[int, str, int], Tuple[int, int]] = {}
+
+        # --- Pre-fill period 1 with the class teacher for every generating class ---
+        # On every school day, assign one subject the class teacher actually
+        # teaches to that class. Greedy choice: most remaining periods; tie-break
+        # by lowest subject_id for determinism. The pool is decremented so the
+        # solver sees reduced counts. backtrack() skips already-assigned slots,
+        # so these are never overwritten. Factory pre-flight guarantees every
+        # class here has a class teacher with at least one eligible subject.
+        for _c in self.input.classes:
+            _ct_id = _c.class_teacher_id
+            if _ct_id is None:
+                raise ValidationException(
+                    f"Class {_c.class_name}-{_c.division} has no class teacher."
+                )
+            _pool = class_subject_pool[_c.id]
+            for _day in self.input.school_days:
+                _counts: Dict[int, int] = {}
+                for _sub_id in _pool:
+                    if _ct_id in self.input.class_subject_teachers.get((_c.id, _sub_id), []):
+                        _counts[_sub_id] = _counts.get(_sub_id, 0) + 1
+                if not _counts:
+                    raise ValidationException(
+                        f"Cannot fill period 1 for class {_c.class_name}-{_c.division}: "
+                        f"class teacher {_ct_id} has no remaining periods in any "
+                        f"subject they teach to this class. Increase a subject's "
+                        f"weekly periods."
+                    )
+                _chosen = min(_counts, key=lambda s: (-_counts[s], s))
+                _pool.remove(_chosen)
+                assignments[(_c.id, _day, 1)] = (_chosen, _ct_id)
+
         for slot in self.input.existing_slots:
             assignments[(slot.class_id, slot.day_of_week, slot.period_number)] = (slot.subject_id, slot.teacher_id)
             if slot.subject_id != 0:
@@ -224,6 +255,12 @@ class TimetableSolver:
                 return True
 
             class_id, day, period = all_slots[slot_idx]
+
+            if (class_id, day, period) in assignments:
+                # Pre-filled (period 1 class teacher) or pre-seeded from
+                # existing_slots — skip; nothing to place here.
+                return backtrack(slot_idx + 1)
+
             pool = class_subject_pool[class_id]
             if not pool:
                 return False
