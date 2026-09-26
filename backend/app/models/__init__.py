@@ -10,7 +10,8 @@ from app.models.weekly_requirement import WeeklyRequirement
 from app.models.teacher_class import TeacherClass
 from app.models.teacher_class_subject import TeacherClassSubject
 from app.models.timetable_settings import TimetableSettings
-from app.models.subject_max_marks import SubjectMaxMarks
+from app.models.subject_exam_component import SubjectExamComponent
+from app.models.result_component import ResultComponent
 
 __all__ = [
     "Teacher",
@@ -26,6 +27,7 @@ __all__ = [
     "TeacherClass",
     "TeacherClassSubject",
     "TimetableSettings",
-    "SubjectMaxMarks",
+    "SubjectExamComponent",
+    "ResultComponent",
 ]
 

@@ -8,5 +8,6 @@ class ExamType(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     weightage: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    category: Mapped[str] = mapped_column(String(10), nullable=False, default="UNIT")
 
     # --- NO RELATIONSHIPS --- 

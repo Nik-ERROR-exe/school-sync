@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.subject import Subject
     from app.models.exam_type import ExamType
     from app.models.teacher import Teacher
+    from app.models.result_component import ResultComponent
 
 
 class Result(Base):
@@ -23,11 +24,6 @@ class Result(Base):
     student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), index=True, nullable=False)
     subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id"), index=True, nullable=False)
     exam_type_id: Mapped[int] = mapped_column(ForeignKey("exam_types.id"), index=True, nullable=False)
-
-    # Component-level marks (akarikh / oral / written)
-    akarikh_marks: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=0)
-    oral_marks: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=0)
-    written_marks: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=0)
 
     # Storage optimization: compact numeric types (5,2) for marks, short grade code.
     marks_obtained: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
@@ -70,4 +66,10 @@ class Result(Base):
         "Teacher",
         foreign_keys=[approved_by_id],
         lazy="select"
+    )
+    components: Mapped[list["ResultComponent"]] = relationship(
+        "ResultComponent",
+        back_populates="result",
+        cascade="all, delete-orphan",
+        lazy="selectin",
     )
