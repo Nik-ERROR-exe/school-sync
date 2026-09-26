@@ -14,6 +14,7 @@ class SolverClass:
     id: int
     class_name: str
     division: str
+    class_teacher_id: Optional[int] = None
 
 @dataclass
 class SolverRequirement:
