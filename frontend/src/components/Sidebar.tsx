@@ -20,6 +20,7 @@ import {
   CalendarCheck,
   BookCheck,
   Settings,
+  UserCheck,
 } from 'lucide-react';
 
 interface NavItem {
@@ -161,6 +162,13 @@ const Sidebar: React.FC = () => {
           to: '/admin/class-management',
           label: 'Class Management',
           icon: GraduationCap,
+          roles: ['ADMIN'],
+        },
+        // Admin Only: Class Teacher Assignment
+        {
+          to: '/admin/class-teacher-assignment',
+          label: 'Class Teachers',
+          icon: UserCheck,
           roles: ['ADMIN'],
         },
         // Admin Only: Student Promotion
