@@ -16,6 +16,7 @@ import Register from './pages/Register';
 import PendingTeachers from './pages/admin/PendingTeachers';
 import AllTeachers from './pages/admin/AllTeachers';
 import ClassManagement from './pages/admin/ClassManagement';
+import ClassTeacherAssignment from './pages/admin/ClassTeacherAssignment';
 import ClassSubjectMapping from './pages/admin/ClassSubjectMapping';
 import SubjectMaxMarks from './pages/admin/SubjectMaxMarks';
 import Profile from './pages/teacher/Profile';
@@ -174,6 +175,12 @@ const classManagementRoute = createRoute({
   component: ClassManagement,
 });
 
+const classTeacherAssignmentRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/admin/class-teacher-assignment',
+  component: ClassTeacherAssignment,
+});
+
 const teacherProfileRoute = createRoute({
   getParentRoute: () => dashboardLayoutRoute,
   path: '/teacher/profile',
@@ -210,6 +217,7 @@ const routeTree = rootRoute.addChildren([
     pendingTeachersRoute,
     allTeachersRoute,
     classManagementRoute,
+    classTeacherAssignmentRoute,
     teacherProfileRoute,
     classSubjectMappingRoute,
     subjectMaxMarksRoute,
