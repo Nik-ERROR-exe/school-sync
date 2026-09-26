@@ -1,754 +1,937 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useId } from 'react';
 import { toast } from 'react-hot-toast';
 import api from '../../api';
 import {
-  FileSpreadsheet,
-  CheckCircle2,
-  AlertCircle,
-  Search,
-  Send,
-  Calendar,
-  X,
-  RotateCcw,
+  Check,
   Loader2,
-  Users,
-  BookOpen,
-  Award,
+  ChevronDown,
+  AlertCircle,
+  CheckCircle2,
+  SlidersHorizontal,
+  GraduationCap,
+  Sparkles,
+  Edit3,
+  School,
+  FileText,
 } from 'lucide-react';
 
-import { sortClasses } from '../../utils/classSorter';
-
-interface ClassItem {
+interface Class {
   id: number;
   class_name: string;
   division: string;
 }
 
-interface SubjectItem {
-  id: number;
-  subject_name: string;
-  code: string;
-}
-
-interface ExamTypeItem {
+interface ExamType {
   id: number;
   name: string;
   weightage: number;
 }
 
-interface StudentItem {
-  id: number;
-  roll_no: string;
-  name: string;
-  class_id: number;
+interface ComponentConfig {
+  component_code: string;
+  display_label: string;
+  max_marks: number;
+  display_order: number;
 }
 
-const ResultsEntry: React.FC = () => {
-  const [classes, setClasses] = useState<ClassItem[]>([]);
-  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
-  const [examTypes, setExamTypes] = useState<ExamTypeItem[]>([]);
-  const [students, setStudents] = useState<StudentItem[]>([]);
-  const [loadingClassData, setLoadingClassData] = useState(false);
-  const [loadingInitial, setLoadingInitial] = useState(true);
+interface SubjectConfig {
+  id: number;
+  name: string;
+  components: ComponentConfig[];
+}
 
-  const [selectedClass, setSelectedClass] = useState<number | ''>('');
-  const [selectedExam, setSelectedExam] = useState<number | ''>('');
-  const [marks, setMarks] = useState<{ [key: string]: string }>({});
-  const [initialMarks, setInitialMarks] = useState<{ [key: string]: string }>({});
-  const [search, setSearch] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+interface StudentSubjectData {
+  subject_id: number;
+  subject_name: string;
+  components: { component_code: string; marks_obtained: number | null }[];
+  marks_obtained: number | null;
+  total_marks: number | null;
+  percentage: number | null;
+  grade: string | null;
+  status: string | null;
+  result_id: number | null;
+}
 
-  // Load teacher's classes and exam types
+interface StudentResult {
+  student_id: number;
+  roll_no: string;
+  name: string;
+  subjects: StudentSubjectData[];
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   COMPONENT INPUT CELL
+   ───────────────────────────────────────────────────────────────────────── */
+interface ComponentCellProps {
+  value: string;
+  maxMarks: number;
+  onCommit: (value: string) => void;
+}
+
+const ComponentCell: React.FC<ComponentCellProps> = ({
+  value,
+  maxMarks,
+  onCommit,
+}) => {
+  const [local, setLocal] = useState<string>(value);
+  const [focused, setFocused] = useState(false);
+
   useEffect(() => {
-    const fetchDropdowns = async () => {
-      setLoadingInitial(true);
-      try {
-        const [classesRes, examsRes] = await Promise.all([
-          api.get('/teacher/classes/my-classes'),
-          api.get('/teacher/exam-types'),
-        ]);
-        setClasses(classesRes.data || []);
-        setExamTypes(examsRes.data || []);
-      } catch {
-        toast.error('Failed to load initial class or exam types');
-      } finally {
-        setLoadingInitial(false);
+    setLocal(value);
+  }, [value]);
+
+  const handleBlur = () => {
+    setFocused(false);
+    const trimmed = local.trim();
+    if (trimmed === '') {
+      if (value !== '') onCommit('');
+      return;
+    }
+    const num = parseFloat(trimmed);
+    if (isNaN(num) || num < 0 || num > maxMarks) {
+      toast.error(`Marks must be between 0 and ${maxMarks}.`);
+      setLocal(value);
+      return;
+    }
+    if (trimmed !== value) {
+      onCommit(trimmed);
+    }
+  };
+
+  return (
+    <input
+      type="number"
+      value={local}
+      onChange={(e) => setLocal(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={handleBlur}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+      }}
+      min={0}
+      max={maxMarks}
+      aria-label="Enter mark"
+      className={`
+        w-14 md:w-16 px-1.5 py-1 text-xs font-semibold text-center rounded-lg border
+        transition-all duration-150 outline-hidden font-body
+        ${
+          focused
+            ? 'border-[#1769FF] dark:border-[#3B82F6] ring-2 ring-[#1769FF]/20 dark:ring-[#3B82F6]/25 bg-white dark:bg-[#161D29] text-[#0F172A] dark:text-[#F8FAFC]'
+            : 'border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#121A27] text-[#0F172A] dark:text-[#F8FAFC] hover:border-blue-400/60 dark:hover:border-blue-500/60'
+        }
+      `}
+    />
+  );
+};
+
+/* ─────────────────────────────────────────────────────────────────────────
+   CUSTOM ACCESSIBLE DROPDOWN
+   ───────────────────────────────────────────────────────────────────────── */
+interface DropdownOption<T> {
+  value: T;
+  label: string;
+}
+
+interface CustomDropdownProps<T extends number | string> {
+  id: string;
+  label: string;
+  options: DropdownOption<T>[];
+  value: T | '';
+  onChange: (val: T) => void;
+  placeholder: string;
+  icon?: React.ReactNode;
+}
+
+function CustomDropdown<T extends number | string>({
+  id,
+  label,
+  options,
+  value,
+  onChange,
+  placeholder,
+  icon,
+}: CustomDropdownProps<T>) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const listboxRef = useRef<HTMLUListElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const listboxId = useId();
+
+  useEffect(() => {
+    const handlePointerDown = (e: PointerEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
       }
     };
-    fetchDropdowns();
+    if (isOpen) {
+      document.addEventListener('pointerdown', handlePointerDown);
+    }
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen) {
+      const idx = options.findIndex((opt) => opt.value === value);
+      setHighlightedIndex(idx >= 0 ? idx : 0);
+    }
+  }, [isOpen, options, value]);
+
+  useEffect(() => {
+    if (isOpen && highlightedIndex >= 0 && listboxRef.current) {
+      const item = listboxRef.current.children[highlightedIndex] as HTMLElement;
+      if (item) item.scrollIntoView({ block: 'nearest' });
+    }
+  }, [highlightedIndex, isOpen]);
+
+  const selectedOption = options.find((opt) => opt.value === value);
+
+  const handleSelect = (val: T) => {
+    onChange(val);
+    setIsOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (!isOpen) setIsOpen(true);
+      else setHighlightedIndex((prev) => (prev < options.length - 1 ? prev + 1 : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!isOpen) setIsOpen(true);
+      else setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : options.length - 1));
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      if (isOpen) setHighlightedIndex(0);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      if (isOpen) setHighlightedIndex(options.length - 1);
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (isOpen) {
+        if (highlightedIndex >= 0 && highlightedIndex < options.length) {
+          handleSelect(options[highlightedIndex].value);
+        }
+      } else {
+        setIsOpen(true);
+      }
+    } else if (e.key === 'Escape') {
+      if (isOpen) {
+        e.preventDefault();
+        setIsOpen(false);
+      }
+    }
+  };
+
+  return (
+    <div className="relative font-body" ref={containerRef}>
+      <label
+        htmlFor={id}
+        className="block text-xs font-semibold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] mb-1.5"
+      >
+        <span className="flex items-center gap-1.5">
+          {icon}
+          <span>{label}</span>
+        </span>
+      </label>
+
+      <button
+        type="button"
+        id={id}
+        ref={triggerRef}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-controls={listboxId}
+        onClick={() => setIsOpen((prev) => !prev)}
+        onKeyDown={handleKeyDown}
+        className={`
+          w-full h-10 px-3.5 rounded-xl border text-left flex items-center justify-between
+          transition-all duration-200 outline-hidden select-none cursor-pointer
+          ${
+            isOpen
+              ? 'border-[#1769FF] dark:border-[#3B82F6] ring-2 ring-[#1769FF]/20 dark:ring-[#3B82F6]/25 bg-white dark:bg-[#161D29] shadow-xs'
+              : 'border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#121A27] hover:border-blue-400/60 dark:hover:border-blue-500/60 hover:shadow-xs'
+          }
+          focus-visible:ring-2 focus-visible:ring-[#1769FF] dark:focus-visible:ring-[#3B82F6] focus-visible:border-transparent
+        `}
+      >
+        <span className="truncate pr-2">
+          {selectedOption ? (
+            <span className="text-xs md:text-sm font-medium text-[#0F172A] dark:text-[#F8FAFC]">
+              {selectedOption.label}
+            </span>
+          ) : (
+            <span className="text-xs md:text-sm text-[#475569] dark:text-[#94A3B8] font-normal">
+              {placeholder}
+            </span>
+          )}
+        </span>
+
+        <ChevronDown
+          className={`w-4 h-4 shrink-0 text-[#475569] dark:text-[#94A3B8] transition-transform duration-200 ease-out ${
+            isOpen ? 'rotate-180 text-[#1769FF] dark:text-[#3B82F6]' : ''
+          }`}
+          aria-hidden="true"
+        />
+      </button>
+
+      {isOpen && (
+        <ul
+          id={listboxId}
+          ref={listboxRef}
+          role="listbox"
+          tabIndex={-1}
+          aria-activedescendant={
+            highlightedIndex >= 0 ? `${id}-opt-${highlightedIndex}` : undefined
+          }
+          className="absolute left-0 right-0 top-full mt-1.5 z-50 max-h-60 overflow-y-auto rounded-xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] p-1.5 shadow-xl ring-1 ring-black/5 animate-dropdown-reveal"
+        >
+          {options.length === 0 ? (
+            <li className="px-3 py-2 text-xs text-[#475569] dark:text-[#94A3B8] text-center italic">
+              No options available
+            </li>
+          ) : (
+            options.map((opt, idx) => {
+              const isSelected = opt.value === value;
+              const isHighlighted = idx === highlightedIndex;
+              return (
+                <li
+                  key={String(opt.value)}
+                  id={`${id}-opt-${idx}`}
+                  role="option"
+                  aria-selected={isSelected}
+                  onMouseEnter={() => setHighlightedIndex(idx)}
+                  onClick={() => handleSelect(opt.value)}
+                  className={`
+                    relative flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs md:text-sm cursor-pointer
+                    transition-colors duration-150 select-none
+                    ${
+                      isSelected
+                        ? 'bg-blue-50 dark:bg-blue-950/60 text-[#1769FF] dark:text-[#3B82F6] font-semibold'
+                        : isHighlighted
+                        ? 'bg-[#F1F5F9] dark:bg-[#161D29] text-[#0F172A] dark:text-[#F8FAFC]'
+                        : 'text-[#0F172A] dark:text-[#F8FAFC]'
+                    }
+                  `}
+                >
+                  <span className="truncate pr-3 font-medium">{opt.label}</span>
+                  {isSelected && (
+                    <Check
+                      className="w-4 h-4 shrink-0 text-[#1769FF] dark:text-[#3B82F6]"
+                      aria-hidden="true"
+                    />
+                  )}
+                </li>
+              );
+            })
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   GRADE HELPERS — unified scale
+   ───────────────────────────────────────────────────────────────────────── */
+const calculateGrade = (percentage: number): string => {
+  if (percentage >= 91) return 'A1';
+  if (percentage >= 81) return 'A2';
+  if (percentage >= 71) return 'B1';
+  if (percentage >= 61) return 'B2';
+  if (percentage >= 51) return 'C1';
+  if (percentage >= 41) return 'C2';
+  return 'D';
+};
+
+const getGradeBadgeStyle = (grade: string): string => {
+  switch (grade) {
+    case 'A1':
+    case 'A2':
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60';
+    case 'B1':
+    case 'B2':
+      return 'bg-blue-50 text-blue-700 border-blue-200/80 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800/60';
+    case 'C1':
+    case 'C2':
+      return 'bg-amber-50 text-amber-700 border-amber-200/80 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800/60';
+    case 'D':
+      return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-950/70 dark:text-red-300 dark:border-red-900/60';
+    default:
+      return 'bg-slate-100 text-[#475569] border-slate-200 dark:bg-[#161D29] dark:text-[#94A3B8] dark:border-[#253044]';
+  }
+};
+
+const computeResultStatus = (
+  studentId: number,
+  subjects: { id: number; components: { component_code: string; max_marks: number }[] }[],
+  marks: Record<string, string>
+): 'P' | 'F' => {
+  let anyConfigured = false;
+  for (const subj of subjects) {
+    if (subj.components.length === 0) continue;
+    anyConfigured = true;
+    let maxTotal = 0;
+    let subtotal = 0;
+    for (const c of subj.components) {
+      maxTotal += c.max_marks;
+      const key = `${studentId}_${subj.id}_${c.component_code}`;
+      const raw = marks[key];
+      if (raw === undefined || raw === '') continue;
+      const n = parseFloat(raw);
+      if (!isNaN(n)) subtotal += n;
+    }
+    if (maxTotal > 0 && subtotal < 0.35 * maxTotal) return 'F';
+  }
+  return anyConfigured ? 'P' : 'F';
+};
+
+/* ─────────────────────────────────────────────────────────────────────────
+   MAIN RESULTS COMPONENT
+   ───────────────────────────────────────────────────────────────────────── */
+const ResultsEntry: React.FC = () => {
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [examTypes, setExamTypes] = useState<ExamType[]>([]);
+  const [subjects, setSubjects] = useState<SubjectConfig[]>([]);
+  const [students, setStudents] = useState<StudentResult[]>([]);
+  const [marks, setMarks] = useState<Record<string, string>>({});
+  const [resultIds, setResultIds] = useState<Record<string, number | null>>({});
+  const [loading, setLoading] = useState(false);
+  const [selectedClass, setSelectedClass] = useState<number | ''>('');
+  const [selectedExam, setSelectedExam] = useState<number | ''>('');
+
+  // Load teacher's classes
+  useEffect(() => {
+    const fetchClasses = async () => {
+      try {
+        const response = await api.get('/teacher/classes/my-classes');
+        setClasses(response.data);
+      } catch {
+        toast.error('Failed to load classes');
+      }
+    };
+    fetchClasses();
   }, []);
 
-  // Load students and subjects when class or exam is selected
+  // Load exam types
   useEffect(() => {
-    if (!selectedClass) {
+    const fetchExamTypes = async () => {
+      try {
+        const response = await api.get('/teacher/exam-types');
+        setExamTypes(response.data);
+      } catch {
+        toast.error('Failed to load exam types');
+      }
+    };
+    fetchExamTypes();
+  }, []);
+
+  // Load results when class and exam are selected
+  useEffect(() => {
+    if (!selectedClass || !selectedExam) {
       setStudents([]);
       setSubjects([]);
       setMarks({});
-      setInitialMarks({});
+      setResultIds({});
       return;
     }
 
-    const fetchClassData = async () => {
-      setLoadingClassData(true);
+    const fetchResults = async () => {
+      setLoading(true);
       try {
-        const [studentsRes, subjectsData] = await Promise.all([
-          api.get(`/teacher/classes/students/by-class/${selectedClass}`),
-          resultApi.getSubjectsByClass(selectedClass, selectedExam ? Number(selectedExam) : undefined)
-        ]);
-        const data = studentsRes.data;
-        setStudents(data.students || []);
-        setSubjects(subjectsData || []);
-        // Clear marks when class changes (exam will be reloaded separately)
-        setMarks({});
-        setInitialMarks({});
-      } catch {
-        toast.error('Failed to load class roster');
-        setStudents([]);
-        setSubjects([]);
-        setMarks({});
-      } finally {
-        setLoadingClassData(false);
-      }
-    };
-    fetchClassData();
-  }, [selectedClass, selectedExam]);
-
-  // Load existing results when both class and exam are selected
-  useEffect(() => {
-    if (!selectedClass || !selectedExam) {
-      // If no exam selected, we keep the marks as they are (may be from previous selection)
-      // But better to clear if no exam to avoid confusion.
-      setMarks({});
-      return;
-    }
-
-    const fetchExistingResults = async () => {
-      try {
-        const response = await resultApi.getResultsByClassAndExam(
-          Number(selectedClass),
-          Number(selectedExam)
+        const response = await api.get(
+          `/teacher/results/class/${selectedClass}/exam/${selectedExam}`
         );
-        // Response structure: { students: StudentResultResponse[], subjects: Subject[] }
-        const studentList: StudentResultResponse[] = response.students || [];
-        const newMarks: { [key: string]: string } = {};
+        const data = response.data || {};
+        const studentList: StudentResult[] = data.students || [];
+        const subjectList: SubjectConfig[] = data.subjects || [];
 
-        studentList.forEach((student) => {
-          student.subjects.forEach((subject) => {
-            if (subject.marks_obtained !== null && subject.marks_obtained !== undefined) {
-              const key = `${student.student_id}_${subject.subject_id}`;
-              newMarks[key] = String(subject.marks_obtained);
+        setStudents(studentList);
+        setSubjects(subjectList);
+
+        const newMarks: Record<string, string> = {};
+        const newResultIds: Record<string, number | null> = {};
+
+        for (const student of studentList) {
+          for (const subj of student.subjects || []) {
+            const rKey = `${student.student_id}_${subj.subject_id}`;
+            newResultIds[rKey] = subj.result_id ?? null;
+
+            const comps = subj.components || [];
+            for (const comp of comps) {
+              if (comp.marks_obtained !== null && comp.marks_obtained !== undefined) {
+                newMarks[
+                  `${student.student_id}_${subj.subject_id}_${comp.component_code}`
+                ] = String(comp.marks_obtained);
+              }
             }
-          });
-        });
-
-        setMarks(newMarks);
-      } catch (error) {
-        console.error('Failed to load existing results:', error);
-        // Don't show a toast here; just leave marks empty.
-      }
-    };
-
-    fetchExistingResults();
-  }, [selectedClass, selectedExam]);
-
-  // Load existing marks when class and exam are selected
-  useEffect(() => {
-    if (!selectedClass || !selectedExam) return;
-
-    const fetchExistingMarks = async () => {
-      try {
-        const response = await api.get(`/teacher/results/class/${selectedClass}/exam/${selectedExam}`);
-        const existingData = response.data || {};
-        const stringMap: { [key: string]: string } = {};
-        Object.entries(existingData).forEach(([key, val]) => {
-          stringMap[key] = String(val);
-        });
-        setMarks(stringMap);
-        setInitialMarks(stringMap);
-      } catch {
-        // Not fatal if no results exist yet
-        setMarks({});
-        setInitialMarks({});
-      }
-    };
-    fetchExistingMarks();
-  }, [selectedClass, selectedExam]);
-
-  const handleMarkChange = (studentId: number, subjectId: number, value: string) => {
-    const key = `${studentId}_${subjectId}`;
-    setMarks((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const getMark = (studentId: number, subjectId: number): string => {
-    const key = `${studentId}_${subjectId}`;
-    return marks[key] !== undefined ? marks[key] : '';
-  };
-
-  // Check if mark is valid: empty is allowed, but if entered it must be between MIN_MARKS and totalMarks
-  const getMarkValidation = (studentId: number, subjectId: number): 'empty' | 'valid' | 'invalid' => {
-    const raw = getMark(studentId, subjectId).trim();
-    if (raw === '') return 'empty';
-    const val = parseFloat(raw);
-    const maxAllowed = Math.min(totalMarks, MAX_MARKS);
-    if (isNaN(val) || val < MIN_MARKS || val > maxAllowed) {
-      return 'invalid';
-    }
-    return 'valid';
-  };
-
-  const calculateStudentTotal = (studentId: number): number => {
-    let total = 0;
-    subjects.forEach((subject) => {
-      const val = parseFloat(getMark(studentId, subject.id));
-      if (!isNaN(val)) total += val;
-    });
-    return total;
-  };
-
-  const calculateStudentPercentage = (studentId: number): number => {
-    const total = calculateStudentTotal(studentId);
-    let validCount = 0;
-    subjects.forEach((subject) => {
-      if (getMark(studentId, subject.id) !== '') validCount++;
-    });
-    const maxTotal = validCount * totalMarks;
-    return maxTotal > 0 ? (total / maxTotal) * 100 : 0;
-  };
-
-  const calculateGrade = (percentage: number): string => {
-    if (percentage >= 90) return 'A+';
-    if (percentage >= 80) return 'A';
-    if (percentage >= 70) return 'B';
-    if (percentage >= 60) return 'C';
-    if (percentage >= 50) return 'D';
-    if (percentage >= 40) return 'E';
-    return 'F';
-  };
-
-  const getGradeBadge = (grade: string) => {
-    switch (grade) {
-      case 'A+':
-      case 'A':
-        return 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800';
-      case 'B':
-      case 'C':
-        return 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800';
-      case 'D':
-      case 'E':
-        return 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800';
-      case 'F':
-        return 'bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800';
-      default:
-        return 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700';
-    }
-  };
-
-  // Filtered student list for search
-  const filteredStudents = useMemo(() => {
-    if (!search.trim()) return students;
-    const q = search.toLowerCase();
-    return students.filter(
-      (s) => s.name.toLowerCase().includes(q) || s.roll_no.toLowerCase().includes(q)
-    );
-  }, [students, search]);
-
-  // Has unsaved changes check
-  const hasChanges = useMemo(() => {
-    const keys = new Set([...Object.keys(marks), ...Object.keys(initialMarks)]);
-    for (const key of keys) {
-      if ((marks[key] || '') !== (initialMarks[key] || '')) {
-        return true;
-      }
-    }
-    return false;
-  }, [marks, initialMarks]);
-
-  // Marks filled count
-  const filledMarksCount = useMemo(() => {
-    return Object.values(marks).filter((v) => v.trim() !== '').length;
-  }, [marks]);
-
-  const handleSubmit = async () => {
-    if (!selectedClass || !selectedExam) {
-      toast.error('Please select both class and exam type before submitting.');
-      return;
-    }
-
-    const resultsData: any[] = [];
-    let hasInvalidMark = false;
-    let invalidErrorMsg = '';
-
-    for (const student of students) {
-      for (const subject of subjects) {
-        const rawMark = getMark(student.id, subject.id).trim();
-        if (rawMark === '') continue;
-
-        const mark = parseFloat(rawMark);
-        if (isNaN(mark) || mark < MIN_MARKS || mark > maxAllowed) {
-          hasInvalidMark = true;
-          invalidErrorMsg = `Mark for ${student.name} (${subject.subject_name}) must be between ${MIN_MARKS} and ${maxAllowed}.`;
-          break;
+          }
         }
 
-        resultsData.push({
-          student_id: student.id,
-          subject_id: subject.id,
-          exam_type_id: Number(selectedExam),
-          marks_obtained: mark,
-        });
+        setMarks(newMarks);
+        setResultIds(newResultIds);
+      } catch {
+        toast.error('Failed to load results');
+        setStudents([]);
+        setSubjects([]);
+      } finally {
+        setLoading(false);
       }
-      if (hasInvalidMark) break;
+    };
+    fetchResults();
+  }, [selectedClass, selectedExam]);
+
+  const unconfiguredSubjects = useMemo(
+    () => subjects.filter((s) => s.components.length === 0),
+    [subjects]
+  );
+
+  const getSubjectSubtotal = (
+    studentId: number,
+    subjectId: number,
+    configured: ComponentConfig[]
+  ): number => {
+    let sum = 0;
+    for (const c of configured) {
+      const key = `${studentId}_${subjectId}_${c.component_code}`;
+      const raw = marks[key];
+      if (raw === undefined || raw === '') continue;
+      const n = parseFloat(raw);
+      if (!isNaN(n)) sum += n;
+    }
+    return sum;
+  };
+
+  const getStudentOverall = (studentId: number) => {
+    let obt = 0;
+    let max = 0;
+    for (const subj of subjects) {
+      for (const c of subj.components) {
+        const key = `${studentId}_${subj.id}_${c.component_code}`;
+        const raw = marks[key];
+        if (raw === undefined || raw === '') continue;
+        const n = parseFloat(raw);
+        if (isNaN(n)) continue;
+        obt += n;
+        max += c.max_marks;
+      }
+    }
+    if (max === 0) {
+      return { obt: 0, max: 0, pct: 0, grade: '-' };
+    }
+    const pct = (obt / max) * 100;
+    return { obt, max, pct, grade: calculateGrade(pct) };
+  };
+
+  const handleComponentCommit = async (
+    studentId: number,
+    subject: SubjectConfig,
+    changedCode: string,
+    newValue: string
+  ) => {
+    const markKey = `${studentId}_${subject.id}_${changedCode}`;
+    const previous = marks[markKey] ?? '';
+    const resultKey = `${studentId}_${subject.id}`;
+    const existingId = resultIds[resultKey] ?? null;
+
+    // Optimistic update
+    setMarks((prev) => ({ ...prev, [markKey]: newValue }));
+
+    // Build full components array for this student+subject, merged with
+    // the just-committed value.
+    const components: { component_code: string; marks_obtained: number }[] = [];
+    for (const c of subject.components) {
+      const k = `${studentId}_${subject.id}_${c.component_code}`;
+      const raw = c.component_code === changedCode ? newValue : marks[k] ?? '';
+      const trimmed = String(raw).trim();
+      if (trimmed === '') continue;
+      const n = parseFloat(trimmed);
+      if (isNaN(n)) continue;
+      components.push({ component_code: c.component_code, marks_obtained: n });
     }
 
-    if (hasInvalidMark) {
-      toast.error(invalidErrorMsg);
+    if (components.length === 0) {
       return;
     }
 
-    if (resultsData.length === 0) {
-      toast.error('Please enter marks for at least one student before submitting.');
-      return;
-    }
-
-    setSubmitting(true);
-    const loadingToast = toast.loading('Submitting student marks...');
     try {
-      await api.post('/teacher/results/', { results: resultsData });
-      toast.dismiss(loadingToast);
-      toast.success(`Successfully recorded ${resultsData.length} marks!`);
-
-      // Update initialMarks to match new saved state
-      setInitialMarks({ ...marks });
+      const response = await api.post('/teacher/results/', {
+        results: [
+          {
+            student_id: studentId,
+            subject_id: subject.id,
+            exam_type_id: selectedExam,
+            components,
+          },
+        ],
+      });
+      const created = response.data?.[0];
+      if (created && created.id !== existingId) {
+        setResultIds((prev) => ({ ...prev, [resultKey]: created.id }));
+      }
     } catch (error: any) {
-      toast.dismiss(loadingToast);
-      console.error('Submit error:', error);
-      const msg =
-        error.response?.data?.detail?.message ||
+      toast.error(
         error.response?.data?.detail ||
-        'Failed to submit marks. Please verify permissions and values.';
-      toast.error(typeof msg === 'string' ? msg : 'Failed to submit marks');
-    } finally {
-      setSubmitting(false);
+          error.response?.data?.detail?.message ||
+          'Failed to save mark'
+      );
+      // Revert local state
+      setMarks((prev) => ({ ...prev, [markKey]: previous }));
     }
   };
 
-  const selectedClassObj = classes.find((c) => c.id === selectedClass);
-  const selectedExamObj = examTypes.find((e) => e.id === selectedExam);
+  const currentClassObj = classes.find((c) => c.id === selectedClass);
+  const currentExamObj = examTypes.find((e) => e.id === selectedExam);
 
   return (
-    <div className="space-y-6 font-body text-[#0F172A] dark:text-[#F8FAFC]">
-      {/* ── Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E2E8F0] dark:border-[#253044] pb-4">
+    <div className="space-y-6 md:space-y-7 animate-hero-enter">
+      {/* PAGE HEADER */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E2E8F0] dark:border-[#253044] pb-5">
         <div>
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#64748B] dark:text-[#94A3B8]">
-            <span>Teacher Portal</span>
-            <span>/</span>
-            <span>Evaluation & Results</span>
-            <span>/</span>
-            <span className="text-[#1769FF] dark:text-[#3B82F6]">Enter Results</span>
-          </div>
-          <h1 className="mt-1 font-heading text-2xl md:text-3xl font-extrabold tracking-tight text-[#0F172A] dark:text-[#F8FAFC]">
+          <h1 className="font-heading text-2xl md:text-3xl font-extrabold tracking-tight text-[#0F172A] dark:text-[#F8FAFC]">
             Enter Student Results
           </h1>
-          <p className="text-xs md:text-sm text-[#64748B] dark:text-[#94A3B8] font-medium mt-1">
-            Input, review, and submit examination marks for your assigned classes and curriculum subjects.
+          <p className="text-xs md:text-sm text-[#475569] dark:text-[#94A3B8] font-medium mt-1">
+            View and edit student marks
           </p>
         </div>
+      </div>
 
-        {/* Academic Context & Rule Badge */}
-        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-[#10151F] text-[#64748B] dark:text-[#94A3B8] border border-[#E2E8F0] dark:border-[#253044] shadow-xs">
-            <Calendar className="w-3.5 h-3.5 text-[#1769FF] dark:text-[#3B82F6]" />
-            <span>AY 2026–27</span>
+      {/* EXAM CONFIGURATION */}
+      <div className="rounded-2xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] p-5 md:p-6 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-950/40 text-[#1769FF] dark:text-[#3B82F6] border border-blue-100 dark:border-blue-900/40">
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+            </div>
+            <h2 className="font-heading text-sm md:text-base font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+              Exam Configuration
+            </h2>
           </div>
+          <span className="text-[11px] font-medium text-[#475569] dark:text-[#94A3B8] hidden sm:inline-flex items-center gap-1">
+            <Sparkles className="w-3 h-3 text-[#1769FF] dark:text-[#3B82F6]" />
+            Select class and exam to load scores
+          </span>
+        </div>
 
-          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 shadow-xs">
-            <Award className="w-3.5 h-3.5" />
-            <span>Marks Range: 35 – 100</span>
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5 items-start">
+          <CustomDropdown
+            id="class-selector"
+            label="Class"
+            icon={<School className="w-3.5 h-3.5" />}
+            placeholder="Select Class"
+            options={classes.map((cls) => ({
+              value: cls.id,
+              label: `${cls.class_name} - Division ${cls.division}`,
+            }))}
+            value={selectedClass}
+            onChange={(val) => setSelectedClass(val as number)}
+          />
+
+          <CustomDropdown
+            id="exam-selector"
+            label="Exam Type"
+            icon={<GraduationCap className="w-3.5 h-3.5" />}
+            placeholder="Select Exam"
+            options={examTypes.map((exam) => ({
+              value: exam.id,
+              label: exam.name,
+            }))}
+            value={selectedExam}
+            onChange={(val) => setSelectedExam(val as number)}
+          />
         </div>
       </div>
 
-      {/* ── Configuration Selectors Card ── */}
-      <div className="rounded-2xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] p-5 sm:p-6 shadow-xs">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
-          {/* 1. Class Selector */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-[#64748B] dark:text-[#94A3B8] mb-1.5">
-              Assigned Class
-            </label>
-            <select
-              value={selectedClass}
-              onChange={(e) => {
-                setSelectedClass(e.target.value ? Number(e.target.value) : '');
-                setSelectedExam('');
-              }}
-              disabled={loadingInitial}
-              className="w-full h-10 px-3.5 rounded-xl border border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#161D29] text-[#0F172A] dark:text-[#F8FAFC] text-xs md:text-sm font-medium outline-none focus:border-[#1769FF] dark:focus:border-[#3B82F6] focus:ring-2 focus:ring-[#1769FF]/20 cursor-pointer disabled:opacity-50"
-            >
-              <option value="">Select Class</option>
-              {classes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  Standard {c.class_name} - Division {c.division}
-                </option>
-              ))}
-            </select>
+      {/* EMPTY / LOADING / RESULTS */}
+      {!selectedClass || !selectedExam ? (
+        <div className="rounded-2xl border border-dashed border-[#CBD5E1] dark:border-[#253044] bg-white dark:bg-[#10151F] p-8 md:p-10 text-center animate-card-enter">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/40 text-[#1769FF] dark:text-[#3B82F6] mx-auto mb-3 shadow-2xs">
+            <FileText className="w-5 h-5" />
           </div>
-
-          {/* 2. Exam Type Selector */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-[#64748B] dark:text-[#94A3B8] mb-1.5">
-              Examination Assessment
-            </label>
-            <select
-              value={selectedExam}
-              onChange={(e) => setSelectedExam(e.target.value ? Number(e.target.value) : '')}
-              disabled={!selectedClass}
-              className="w-full h-10 px-3.5 rounded-xl border border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#161D29] text-[#0F172A] dark:text-[#F8FAFC] text-xs md:text-sm font-medium outline-none focus:border-[#1769FF] dark:focus:border-[#3B82F6] focus:ring-2 focus:ring-[#1769FF]/20 cursor-pointer disabled:opacity-50"
-            >
-              <option value="">Select Exam Type</option>
-              {examTypes.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name} ({e.weightage}% weightage)
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* 3. Total Marks Input */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-[#64748B] dark:text-[#94A3B8] mb-1.5">
-              Max Total Marks per Subject
-            </label>
-            <input
-              type="number"
-              value={totalMarks}
-              onChange={(e) =>
-                setTotalMarks(Math.max(MIN_MARKS, Math.min(MAX_MARKS, Number(e.target.value) || 100)))
-              }
-              min={MIN_MARKS}
-              max={MAX_MARKS}
-              disabled={!selectedClass}
-              className="w-full h-10 px-3.5 rounded-xl border border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#161D29] text-[#0F172A] dark:text-[#F8FAFC] text-xs md:text-sm font-mono font-medium outline-none focus:border-[#1769FF] dark:focus:border-[#3B82F6] focus:ring-2 focus:ring-[#1769FF]/20 disabled:opacity-50"
-            />
-          </div>
+          <h3 className="font-heading text-sm md:text-base font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+            No results to display
+          </h3>
+          <p className="mt-1 text-xs md:text-sm text-[#475569] dark:text-[#94A3B8] max-w-sm mx-auto">
+            Select a class and exam type to review student marks.
+          </p>
         </div>
-      </div>
-
-      {/* ── State Feedback & Guidance Messages ── */}
-      {loadingClassData && (
-        <div className="rounded-2xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] p-10 text-center shadow-xs">
-          <Loader2 className="w-6 h-6 animate-spin text-[#1769FF] dark:text-[#3B82F6] mx-auto mb-2" />
+      ) : loading ? (
+        <div className="rounded-2xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] p-10 text-center shadow-sm animate-card-enter">
+          <Loader2 className="w-6 h-6 animate-spin text-[#1769FF] dark:text-[#3B82F6] mx-auto mb-2.5" />
           <p className="font-heading text-sm font-bold text-[#0F172A] dark:text-[#F8FAFC]">
-            Loading student roster and subjects...
+            Loading examination results...
+          </p>
+          <p className="text-xs text-[#475569] dark:text-[#94A3B8] mt-1">
+            Fetching student score records for this exam
           </p>
         </div>
-      )}
-
-      {!loadingClassData && !selectedClass && (
-        <div className="rounded-2xl border border-dashed border-[#CBD5E1] dark:border-[#253044] bg-white dark:bg-[#10151F] p-10 text-center shadow-xs">
-          <FileSpreadsheet className="w-10 h-10 text-[#64748B] dark:text-[#94A3B8] mx-auto mb-3 opacity-60" />
-          <h3 className="font-heading text-base font-bold text-[#0F172A] dark:text-[#F8FAFC]">
-            No Class Selected
+      ) : students.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-[#CBD5E1] dark:border-[#253044] bg-white dark:bg-[#10151F] p-8 md:p-10 text-center animate-card-enter">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900/40 text-amber-600 dark:text-amber-400 mx-auto mb-3 shadow-2xs">
+            <AlertCircle className="w-5 h-5" />
+          </div>
+          <h3 className="font-heading text-sm md:text-base font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+            No results found
           </h3>
-          <p className="text-xs sm:text-sm text-[#64748B] dark:text-[#94A3B8] max-w-sm mx-auto mt-1">
-            Choose an assigned class and exam assessment from the dropdowns above to open the marks entry sheet.
+          <p className="mt-1 text-xs md:text-sm text-[#475569] dark:text-[#94A3B8] max-w-md mx-auto">
+            No student marks have been submitted yet for{' '}
+            <span className="font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
+              {currentClassObj
+                ? `${currentClassObj.class_name} - ${currentClassObj.division}`
+                : 'this class'}
+            </span>{' '}
+            under{' '}
+            <span className="font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
+              {currentExamObj ? currentExamObj.name : 'this exam'}
+            </span>
+            .
           </p>
         </div>
-      )}
-
-      {!loadingClassData && selectedClass && students.length === 0 && (
-        <div className="rounded-2xl border border-dashed border-[#CBD5E1] dark:border-[#253044] bg-white dark:bg-[#10151F] p-10 text-center shadow-xs">
-          <Users className="w-10 h-10 text-[#64748B] dark:text-[#94A3B8] mx-auto mb-3 opacity-60" />
-          <h3 className="font-heading text-base font-bold text-[#0F172A] dark:text-[#F8FAFC]">
-            No Students Enrolled
-          </h3>
-          <p className="text-xs sm:text-sm text-[#64748B] dark:text-[#94A3B8] max-w-sm mx-auto mt-1">
-            There are no student enrollments registered under this class. Contact your administration.
-          </p>
-        </div>
-      )}
-
-      {!loadingClassData && selectedClass && students.length > 0 && subjects.length === 0 && (
-        <div className="rounded-2xl border border-amber-200 dark:border-amber-500/30 bg-amber-50/80 dark:bg-amber-950/20 p-5 shadow-xs">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-            <div>
-              <h4 className="font-heading text-sm font-bold text-amber-900 dark:text-amber-200">
-                No Teaching Assignments Found for This Class
-              </h4>
-              <p className="text-xs sm:text-sm text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
-                You are not mapped to any subjects in Standard {selectedClassObj?.class_name} - {selectedClassObj?.division}. Ensure the administrator has mapped your subject allocation or generated the timetable slots.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {!loadingClassData && students.length > 0 && subjects.length > 0 && !selectedExam && (
-        <div className="rounded-2xl border border-blue-200 dark:border-blue-800/40 bg-blue-50/80 dark:bg-blue-950/20 p-5 shadow-xs">
-          <div className="flex items-start gap-3">
-            <CheckCircle2 className="w-5 h-5 text-[#1769FF] dark:text-[#3B82F6] shrink-0 mt-0.5" />
-            <div>
-              <h4 className="font-heading text-sm font-bold text-[#0F172A] dark:text-white">
-                Class Loaded: Standard {selectedClassObj?.class_name} - {selectedClassObj?.division}
-              </h4>
-              <p className="text-xs sm:text-sm text-[#64748B] dark:text-[#94A3B8] mt-1">
-                {students.length} students enrolled · {subjects.length} subject{subjects.length > 1 ? 's' : ''} (
-                {subjects.map((s) => s.subject_name).join(', ')})
-              </p>
-              <p className="text-xs font-semibold text-[#1769FF] dark:text-[#3B82F6] mt-2">
-                → Select an Examination Assessment above to begin entering marks.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Marks Entry Data Table ── */}
-      {!loadingClassData && students.length > 0 && subjects.length > 0 && selectedExam && (
-        <div className="space-y-4">
-          {/* Active Context Banner & Search Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] p-4 shadow-xs">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-[#1769FF] dark:text-[#3B82F6]">
-                <FileSpreadsheet className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="font-heading text-sm font-bold text-[#0F172A] dark:text-[#F8FAFC]">
-                  Standard {selectedClassObj?.class_name} - Division {selectedClassObj?.division}
-                </p>
-                <p className="text-xs text-[#64748B] dark:text-[#94A3B8]">
-                  Assessment: <span className="font-semibold">{selectedExamObj?.name}</span> · Maximum Marks: {totalMarks}
-                </p>
-              </div>
+      ) : (
+        <div className="rounded-2xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] shadow-sm overflow-hidden animate-card-enter">
+          {/* Context banner */}
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-b border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#161D29]/60">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-white dark:bg-[#10151F] border border-[#E2E8F0] dark:border-[#253044] text-[#0F172A] dark:text-[#F8FAFC] shadow-2xs">
+                {currentClassObj?.class_name} - Div {currentClassObj?.division}
+              </span>
+              <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 dark:bg-blue-950/50 border border-blue-100 dark:border-blue-900/50 text-[#1769FF] dark:text-[#3B82F6]">
+                {currentExamObj?.name}
+              </span>
+              <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-100 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-400">
+                {students.length} {students.length === 1 ? 'Student' : 'Students'}
+              </span>
             </div>
 
-            {/* Quick Search Box */}
-            <div className="relative w-full sm:w-64">
-              <Search className="w-4 h-4 text-[#64748B] dark:text-[#94A3B8] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Search student by name or roll..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full h-9 pl-9 pr-8 rounded-xl border border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#161D29] text-xs text-[#0F172A] dark:text-[#F8FAFC] outline-none focus:border-[#1769FF] dark:focus:border-[#3B82F6]"
-              />
-              {search && (
-                <button
-                  type="button"
-                  onClick={() => setSearch('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
+            <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#475569] dark:text-[#94A3B8]">
+              <Edit3 className="w-3.5 h-3.5 text-[#1769FF] dark:text-[#3B82F6]" />
+              <span>Click any mark to edit & auto-save</span>
             </div>
           </div>
 
-          {/* Data Table */}
-          <div className="rounded-2xl border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] shadow-xs overflow-hidden">
-            <div className="overflow-x-auto max-h-[600px]">
-              <table className="w-full text-left border-collapse text-xs">
-                {/* Table Header */}
-                <thead className="sticky top-0 z-20 border-b border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#161D29]">
-                  <tr>
-                    {/* Sticky Roll No */}
-                    <th className="px-4 py-3.5 font-bold uppercase tracking-wider text-[#64748B] dark:text-[#94A3B8] w-20 sticky left-0 z-30 bg-[#F8FAFC] dark:bg-[#161D29] border-r border-[#E2E8F0] dark:border-[#253044]">
-                      Roll No
-                    </th>
+          {/* Unconfigured subjects banner */}
+          {unconfiguredSubjects.length > 0 && (
+            <div className="px-5 py-3 border-b border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 text-xs text-amber-800 dark:text-amber-200">
+              <span className="font-bold">Not configured: </span>
+              {unconfiguredSubjects.map((s) => s.name).join(', ')}
+              <span className="ml-1 opacity-80">
+                — configure them under Max Marks Config.
+              </span>
+            </div>
+          )}
 
-                    {/* Sticky Student Name */}
-                    <th className="px-5 py-3.5 font-bold uppercase tracking-wider text-[#64748B] dark:text-[#94A3B8] min-w-[160px] sticky left-20 z-30 bg-[#F8FAFC] dark:bg-[#161D29] border-r border-[#E2E8F0] dark:border-[#253044]">
-                      Student Name
-                    </th>
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#161D29]">
+                  <th
+                    rowSpan={2}
+                    className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] sticky left-0 z-20 bg-[#F8FAFC] dark:bg-[#161D29] border-r border-[#E2E8F0] dark:border-[#253044] w-20 min-w-20"
+                  >
+                    Roll No
+                  </th>
+                  <th
+                    rowSpan={2}
+                    className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] sticky left-20 z-20 bg-[#F8FAFC] dark:bg-[#161D29] border-r border-[#E2E8F0] dark:border-[#253044] min-w-44 shadow-xs"
+                  >
+                    Student
+                  </th>
 
-                    {/* Subject Columns */}
-                    {subjects.map((sub) => (
+                  {subjects.map((subj) => {
+                    const colSpan =
+                      subj.components.length > 0 ? subj.components.length + 1 : 1;
+                    return (
                       <th
-                        key={sub.id}
-                        className="px-3 py-3 font-bold uppercase tracking-wider text-center text-[#64748B] dark:text-[#94A3B8] border-r border-[#E2E8F0] dark:border-[#253044] min-w-[110px]"
+                        key={subj.id}
+                        colSpan={colSpan}
+                        className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] text-center border-r border-[#E2E8F0] dark:border-[#253044]"
                       >
-                        <div className="truncate max-w-[120px] mx-auto" title={sub.subject_name}>
-                          {sub.subject_name}
-                        </div>
-                        <span className="text-[10px] font-mono text-[#1769FF] dark:text-[#3B82F6] font-semibold lowercase">
-                          /{totalMarks}
-                        </span>
+                        {subj.name}
                       </th>
-                    ))}
+                    );
+                  })}
 
-                    {/* Computed Total */}
-                    <th className="px-4 py-3.5 font-bold uppercase tracking-wider text-center text-[#64748B] dark:text-[#94A3B8] border-r border-[#E2E8F0] dark:border-[#253044] w-24">
-                      Total
-                    </th>
+                  <th
+                    rowSpan={2}
+                    className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] text-center min-w-24 border-r border-[#E2E8F0] dark:border-[#253044]"
+                  >
+                    Total
+                  </th>
+                  <th
+                    rowSpan={2}
+                    className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] text-center min-w-20 border-r border-[#E2E8F0] dark:border-[#253044]"
+                  >
+                    %
+                  </th>
+                  <th
+                    rowSpan={2}
+                    className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] text-center min-w-20"
+                  >
+                    Grade
+                  </th>
+                  <th
+                    rowSpan={2}
+                    className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] text-center min-w-16"
+                  >
+                    Result
+                  </th>
+                </tr>
+                <tr className="border-b border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#161D29]">
+                  {subjects.map((subj) => {
+                    if (subj.components.length === 0) {
+                      return (
+                        <th
+                          key={`${subj.id}-na`}
+                          className="px-2 py-2 text-[10px] font-medium italic text-slate-400 dark:text-slate-500 text-center border-r border-[#E2E8F0] dark:border-[#253044]"
+                        >
+                          Not configured
+                        </th>
+                      );
+                    }
+                    return (
+                      <React.Fragment key={subj.id}>
+                        {subj.components.map((c) => (
+                          <th
+                            key={`${subj.id}-${c.component_code}`}
+                            className="px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] text-center min-w-16 border-r border-[#E2E8F0] dark:border-[#253044]"
+                          >
+                            <div className="truncate">{c.display_label}</div>
+                            <div className="text-[9px] font-mono font-normal text-slate-400 dark:text-slate-500">
+                              /{c.max_marks}
+                            </div>
+                          </th>
+                        ))}
+                        <th
+                          key={`${subj.id}-sub`}
+                          className="px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-[#1769FF] dark:text-[#3B82F6] text-center min-w-16 border-r border-[#E2E8F0] dark:border-[#253044]"
+                        >
+                          एकूण
+                        </th>
+                      </React.Fragment>
+                    );
+                  })}
+                </tr>
+              </thead>
 
-                    {/* Percentage */}
-                    <th className="px-4 py-3.5 font-bold uppercase tracking-wider text-center text-[#64748B] dark:text-[#94A3B8] border-r border-[#E2E8F0] dark:border-[#253044] w-20">
-                      %
-                    </th>
+              <tbody className="divide-y divide-[#E2E8F0] dark:divide-[#253044]">
+                {students.map((student, index) => {
+                  const overall = getStudentOverall(student.student_id);
+                  const status = computeResultStatus(student.student_id, subjects, marks);
+                  const hasAny = overall.max > 0;
+                  return (
+                    <tr
+                      key={student.student_id}
+                      className="group hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-colors duration-150 animate-card-enter"
+                      style={{ animationDelay: `${Math.min(index * 25, 400)}ms` }}
+                    >
+                      <td className="px-4 py-2 text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] sticky left-0 z-10 bg-white dark:bg-[#10151F] group-hover:bg-blue-50/40 dark:group-hover:bg-[#161D29] border-r border-[#E2E8F0] dark:border-[#253044] transition-colors">
+                        {student.roll_no}
+                      </td>
+                      <td className="px-4 py-2 text-xs md:text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC] sticky left-20 z-10 bg-white dark:bg-[#10151F] group-hover:bg-blue-50/40 dark:group-hover:bg-[#161D29] border-r border-[#E2E8F0] dark:border-[#253044] transition-colors shadow-xs">
+                        {student.name}
+                      </td>
 
-                    {/* Grade */}
-                    <th className="px-4 py-3.5 font-bold uppercase tracking-wider text-center text-[#64748B] dark:text-[#94A3B8] w-20">
-                      Grade
-                    </th>
-                  </tr>
-                </thead>
+                      {subjects.map((subj) => {
+                        if (subj.components.length === 0) {
+                          return (
+                            <td
+                              key={`${subj.id}-na`}
+                              className="px-2 py-2 text-center text-slate-300 dark:text-slate-600 border-r border-[#E2E8F0] dark:border-[#253044]"
+                            >
+                              —
+                            </td>
+                          );
+                        }
+                        const subtotal = getSubjectSubtotal(
+                          student.student_id,
+                          subj.id,
+                          subj.components
+                        );
+                        return (
+                          <React.Fragment key={subj.id}>
+                            {subj.components.map((c) => {
+                              const key = `${student.student_id}_${subj.id}_${c.component_code}`;
+                              return (
+                                <td
+                                  key={`${subj.id}-${c.component_code}`}
+                                  className="px-1.5 py-1.5 text-center border-r border-[#E2E8F0] dark:border-[#253044]"
+                                >
+                                  <ComponentCell
+                                    value={marks[key] ?? ''}
+                                    maxMarks={c.max_marks}
+                                    onCommit={(val) =>
+                                      handleComponentCommit(
+                                        student.student_id,
+                                        subj,
+                                        c.component_code,
+                                        val
+                                      )
+                                    }
+                                  />
+                                </td>
+                              );
+                            })}
+                            <td
+                              key={`${subj.id}-sub`}
+                              className="px-2 py-2 text-center text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] border-r border-[#E2E8F0] dark:border-[#253044] bg-blue-50/30 dark:bg-blue-950/10"
+                            >
+                              {subtotal > 0 ? subtotal : '—'}
+                            </td>
+                          </React.Fragment>
+                        );
+                      })}
 
-                {/* Table Body */}
-                <tbody className="divide-y divide-[#E2E8F0] dark:divide-[#253044]">
-                  {filteredStudents.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={5 + subjects.length}
-                        className="py-10 text-center text-[#64748B] dark:text-[#94A3B8]"
-                      >
-                        No matching students found for "{search}".
+                      <td className="px-3 py-2 text-center text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] border-r border-[#E2E8F0] dark:border-[#253044] font-heading">
+                        {hasAny ? (
+                          <span>
+                            {overall.obt}{' '}
+                            <span className="text-[#475569] dark:text-[#94A3B8] font-normal">
+                              / {overall.max}
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="text-[#475569] dark:text-[#94A3B8]">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-center text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] border-r border-[#E2E8F0] dark:border-[#253044] font-heading">
+                        {hasAny ? (
+                          `${overall.pct.toFixed(1)}%`
+                        ) : (
+                          <span className="text-[#475569] dark:text-[#94A3B8]">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {hasAny ? (
+                          <span
+                            className={`inline-flex items-center justify-center px-2 py-0.5 rounded-md text-xs font-bold border ${getGradeBadgeStyle(
+                              overall.grade
+                            )}`}
+                          >
+                            {overall.grade}
+                          </span>
+                        ) : (
+                          <span className="text-[#475569] dark:text-[#94A3B8] text-xs">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <span
+                          className={`inline-flex items-center justify-center px-2 py-0.5 rounded-md text-xs font-bold border ${
+                            status === 'P'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60'
+                              : 'bg-red-100 text-red-800 border-red-200 dark:bg-red-950/70 dark:text-red-300 dark:border-red-900/60'
+                          }`}
+                        >
+                          {status}
+                        </span>
                       </td>
                     </tr>
-                  ) : (
-                    filteredStudents.map((student) => {
-                      const total = calculateStudentTotal(student.id);
-                      const percentage = calculateStudentPercentage(student.id);
-                      const grade = total > 0 ? calculateGrade(percentage) : '—';
-
-                      return (
-                        <tr
-                          key={student.id}
-                          className="hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition-colors"
-                        >
-                          {/* Sticky Roll No */}
-                          <td className="px-4 py-2.5 font-mono font-bold text-[#0F172A] dark:text-[#F8FAFC] sticky left-0 z-10 bg-white dark:bg-[#10151F] border-r border-[#E2E8F0] dark:border-[#253044]">
-                            {student.roll_no}
-                          </td>
-
-                          {/* Sticky Student Name */}
-                          <td className="px-5 py-2.5 font-medium text-sm text-[#0F172A] dark:text-[#F8FAFC] sticky left-20 z-10 bg-white dark:bg-[#10151F] border-r border-[#E2E8F0] dark:border-[#253044]">
-                            {student.name}
-                          </td>
-
-                          {/* Subject Inputs */}
-                          {subjects.map((sub) => {
-                            const val = getMark(student.id, sub.id);
-                            const validation = getMarkValidation(student.id, sub.id);
-
-                            return (
-                              <td
-                                key={sub.id}
-                                className="px-2.5 py-2 text-center border-r border-[#E2E8F0] dark:border-[#253044]"
-                              >
-                                <input
-                                  type="number"
-                                  min={MIN_MARKS}
-                                  max={Math.min(totalMarks, MAX_MARKS)}
-                                  value={val}
-                                  onChange={(e) => handleMarkChange(student.id, sub.id, e.target.value)}
-                                  placeholder="—"
-                                  title={
-                                    validation === 'invalid'
-                                      ? `Marks must be between ${MIN_MARKS} and ${totalMarks}`
-                                      : ''
-                                  }
-                                  className={`w-20 h-8 px-2 rounded-lg border text-center font-mono text-xs font-semibold outline-none transition-all ${
-                                    validation === 'invalid'
-                                      ? 'border-red-500 bg-red-50/50 text-red-700 dark:border-red-500 dark:bg-red-950/40 dark:text-red-300 ring-1 ring-red-500'
-                                      : val !== ''
-                                      ? 'border-blue-300/80 dark:border-blue-800/80 bg-blue-50/30 dark:bg-blue-950/20 text-[#0F172A] dark:text-[#F8FAFC] focus:border-[#1769FF] dark:focus:border-[#3B82F6] focus:ring-1 focus:ring-[#1769FF]'
-                                      : 'border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#161D29] text-[#0F172A] dark:text-[#F8FAFC] focus:border-[#1769FF] dark:focus:border-[#3B82F6]'
-                                  }`}
-                                />
-                              </td>
-                            );
-                          })}
-
-                          {/* Total Marks */}
-                          <td className="px-4 py-2.5 text-center font-mono font-bold text-sm text-[#0F172A] dark:text-[#F8FAFC] border-r border-[#E2E8F0] dark:border-[#253044]">
-                            {total > 0 ? total : <span className="text-slate-400 font-normal">—</span>}
-                          </td>
-
-                          {/* Percentage */}
-                          <td className="px-4 py-2.5 text-center font-mono font-semibold text-xs text-[#64748B] dark:text-[#94A3B8] border-r border-[#E2E8F0] dark:border-[#253044]">
-                            {total > 0 ? `${percentage.toFixed(1)}%` : <span className="text-slate-400">—</span>}
-                          </td>
-
-                          {/* Grade Pill */}
-                          <td className="px-4 py-2.5 text-center">
-                            {total > 0 ? (
-                              <span
-                                className={`inline-flex px-2 py-0.5 rounded-md text-xs font-extrabold border ${getGradeBadge(
-                                  grade
-                                )}`}
-                              >
-                                {grade}
-                              </span>
-                            ) : (
-                              <span className="text-slate-400">—</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* ── Table Footer Action Bar ── */}
-            <div className="px-6 py-4 border-t border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#161D29] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-4 text-xs text-[#64748B] dark:text-[#94A3B8]">
-                <span>
-                  <strong>{students.length}</strong> Students
-                </span>
-                <span>•</span>
-                <span>
-                  <strong>{subjects.length}</strong> Subjects
-                </span>
-                <span>•</span>
-                <span>
-                  <strong className="text-emerald-600 dark:text-emerald-400">{filledMarksCount}</strong> Marks
-                  Recorded
-                </span>
-                {hasChanges && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 dark:bg-blue-950 text-[#1769FF] dark:text-[#3B82F6]">
-                    Unsaved Changes
-                  </span>
-                )}
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center gap-2.5 self-end sm:self-auto">
-                {hasChanges && (
-                  <button
-                    type="button"
-                    onClick={() => setMarks({ ...initialMarks })}
-                    disabled={submitting}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] border border-[#E2E8F0] dark:border-[#253044] bg-white dark:bg-[#10151F] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Reset</span>
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleSubmit}
-                  disabled={submitting || filledMarksCount === 0}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-heading text-xs font-bold text-white bg-[#1769FF] hover:bg-[#0F5AE6] dark:bg-[#3B82F6] dark:hover:bg-[#2563EB] shadow-xs hover:shadow-md transition-all active:scale-[.98] cursor-pointer disabled:opacity-50"
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Submitting Marks...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-3.5 h-3.5" />
-                      <span>Submit Results ({filledMarksCount})</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
