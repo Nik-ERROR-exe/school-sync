@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,11 +11,14 @@ from app.models.result import Result
 from app.models.subject import Subject
 from app.models.teacher_class_subject import TeacherClassSubject
 from app.models.school_class import SchoolClass, class_subjects
-from app.schemas.result import ResultBatchCreate, ResultResponse, ResultSubmitRequest, ResultCreate
-from app.services.result_service import create_result_batch, calculate_class_overall_results
+from app.schemas.result import ResultResponse, ResultSubmitRequest, ResultBatchCreateWithComponents
+from app.models.subject_exam_component import SubjectExamComponent
+from app.models.result_component import ResultComponent
+from app.services.result_service import create_result_batch_with_components, calculate_class_overall_results
 
 router = APIRouter(prefix="/teacher/results", tags=["Teacher - Results"])
 
+# LEGACY — retired in Stage 1b-4. Use POST /teacher/results/ instead.
 @router.post("/submit", status_code=status.HTTP_200_OK)
 async def submit_results(
     req: ResultSubmitRequest,
@@ -24,32 +26,23 @@ async def submit_results(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Submits student results grouped by class, subject, and exam type.
+    Retired: single-subject results submission.
     """
-    results_data = [
-        ResultCreate(
-            student_id=m.student_id,
-            subject_id=req.subject_id,
-            exam_type_id=req.exam_type_id,
-            akarikh_marks=0,
-            oral_marks=0,
-            written_marks=0,
-        )
-        for m in req.marks
-    ]
-    await create_result_batch(db, results_data, current_user.id)
-    return {"message": "Results submitted successfully"}
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="This endpoint has been retired; use POST /teacher/results/ instead.",
+    )
 
 @router.post("/", response_model=List[ResultResponse], status_code=status.HTTP_201_CREATED)
 async def submit_student_results(
-    req: ResultBatchCreate,
+    req: ResultBatchCreateWithComponents,
     current_user: Teacher = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Submits or updates a batch of student exam marks. Results are initialized with 'submitted' status.
     """
-    results = await create_result_batch(db, req.results, current_user.id)
+    results = await create_result_batch_with_components(db, req.results, current_user.id)
 
     # Map raw models to response list
     response_data = []
@@ -67,9 +60,6 @@ async def submit_student_results(
                 subject_code=r.subject.code if r.subject else None,
                 exam_type_id=r.exam_type_id,
                 exam_type_name=r.exam_type.name if r.exam_type else None,
-                akarikh_marks=r.akarikh_marks,
-                oral_marks=r.oral_marks,
-                written_marks=r.written_marks,
                 marks_obtained=r.marks_obtained,
                 total_marks=r.total_marks,
                 percentage=r.percentage,
@@ -131,7 +121,6 @@ async def get_results_by_class_and_exam(
         .order_by(Subject.subject_name)
     )
     subjects = list((await db.execute(subjects_stmt)).scalars().all())
-    subject_map = {s.id: s for s in subjects}
 
     # 3. Fetch existing results for this class and exam type
     results_stmt = (
@@ -152,10 +141,36 @@ async def get_results_by_class_and_exam(
     # Build lookup table for existing results: (student_id, subject_id) -> Result
     results_lookup = {(r.student_id, r.subject_id): r for r in results}
 
-    # 4. Compute overall class summary (totals, percentage, overall grade, rank)
+    # 4. Configured components per subject for this class + exam
+    smm_stmt = select(SubjectExamComponent).where(
+        SubjectExamComponent.class_name == school_class.class_name,
+        SubjectExamComponent.exam_type_id == exam_type_id,
+    )
+    smm_records = (await db.execute(smm_stmt)).scalars().unique().all()
+    comps_by_subject = {}
+    for c in smm_records:
+        comps_by_subject.setdefault(c.subject_id, []).append({
+            "component_code": c.component_code,
+            "display_label": c.display_label,
+            "max_marks": float(c.max_marks),
+            "display_order": c.display_order,
+        })
+
+    # 5. One query for all result_components in this class/exam batch
+    result_ids = [r.id for r in results]
+    rc_lookup = {}
+    if result_ids:
+        rc_stmt = select(ResultComponent).where(ResultComponent.result_id.in_(result_ids))
+        for rc in (await db.execute(rc_stmt)).scalars().all():
+            rc_lookup.setdefault(rc.result_id, []).append({
+                "component_code": rc.component_code,
+                "marks_obtained": float(rc.marks_obtained),
+            })
+
+    # 6. Compute overall class summary (totals, percentage, overall grade, rank)
     overall_summary = await calculate_class_overall_results(db, class_id, exam_type_id)
 
-    # 5. Fetch all students in this class
+    # 7. Fetch all students in this class
     students_stmt = (
         select(Student)
         .where(Student.class_id == class_id)
@@ -163,7 +178,7 @@ async def get_results_by_class_and_exam(
     )
     students = (await db.execute(students_stmt)).scalars().all()
 
-    # 6. Construct response for each student
+    # 8. Construct response for each student
     students_list = []
     for student in students:
         student_subjects = []
@@ -173,9 +188,7 @@ async def get_results_by_class_and_exam(
                 student_subjects.append({
                     "subject_id": subj.id,
                     "subject_name": subj.subject_name,
-                    "akarikh_marks": float(r.akarikh_marks),
-                    "oral_marks": float(r.oral_marks),
-                    "written_marks": float(r.written_marks),
+                    "components": rc_lookup.get(r.id, []),
                     "marks_obtained": r.marks_obtained,
                     "total_marks": r.total_marks,
                     "percentage": r.percentage,
@@ -187,9 +200,7 @@ async def get_results_by_class_and_exam(
                 student_subjects.append({
                     "subject_id": subj.id,
                     "subject_name": subj.subject_name,
-                    "akarikh_marks": None,
-                    "oral_marks": None,
-                    "written_marks": None,
+                    "components": [],
                     "marks_obtained": None,
                     "total_marks": None,
                     "percentage": None,
@@ -218,23 +229,12 @@ async def get_results_by_class_and_exam(
             "subjects": student_subjects,
         })
 
-    smm_stmt = select(SubjectMaxMarks).where(
-        SubjectMaxMarks.class_name == school_class.class_name,
-        SubjectMaxMarks.exam_type_id == exam_type_id,
-    )
-    smm_records = (await db.execute(smm_stmt)).scalars().all()
-    smm_lookup = {r.subject_id: r for r in smm_records}
-
     subject_list = []
     for s in subjects:
-        m = smm_lookup.get(s.id)
         subject_list.append({
             "id": s.id,
             "name": s.subject_name,
-            "akarikh_max": float(m.akarikh_max) if m else 0.0,
-            "oral_max": float(m.oral_max) if m else 0.0,
-            "written_max": float(m.written_max) if m else 0.0,
-            "total_max": float(m.max_marks) if m else 0.0,
+            "components": comps_by_subject.get(s.id, []),
         })
 
     return {"students": students_list, "subjects": subject_list}

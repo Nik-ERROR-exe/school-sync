@@ -15,12 +15,14 @@ from app.models.student import Student
 from app.models.subject import Subject
 from app.models.exam_type import ExamType
 from app.models.school_class import SchoolClass, class_subjects
-from app.schemas.result import ResultBatchCreate, ResultResponse, ResultUpdate
+from app.models.subject_exam_component import SubjectExamComponent
+from app.models.result_component import ResultComponent
+from app.schemas.result import ResultBatchCreate, ResultResponse, ResultUpdate, ResultBatchCreateWithComponents
 from app.services.result_service import (
     calculate_grade_and_percentage,
-    create_result_batch,
+    create_result_batch_with_components,
     calculate_class_overall_results,
-    update_result as service_update_result,
+    update_result_with_components,
 )
 from app.services.report_service import generate_results_excel
 
@@ -63,9 +65,6 @@ async def list_results(
             subject_code=r.subject.code if r.subject else None,
             exam_type_id=r.exam_type_id,
             exam_type_name=r.exam_type.name if r.exam_type else None,
-            akarikh_marks=r.akarikh_marks,
-            oral_marks=r.oral_marks,
-            written_marks=r.written_marks,
             marks_obtained=r.marks_obtained,
             total_marks=r.total_marks,
             percentage=r.percentage,
@@ -80,12 +79,12 @@ async def list_results(
 
 @router.post("/", response_model=List[ResultResponse], status_code=201)
 async def create_or_update_results(
-    req: ResultBatchCreate,
+    req: ResultBatchCreateWithComponents,
     admin: Teacher = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """Create or update results directly as an admin asynchronously."""
-    results = await create_result_batch(db, req.results, admin.id, is_admin=True)
+    results = await create_result_batch_with_components(db, req.results, admin.id, is_admin=True)
     return [
         ResultResponse(
             id=r.id,
@@ -99,9 +98,6 @@ async def create_or_update_results(
             subject_code=r.subject.code if r.subject else None,
             exam_type_id=r.exam_type_id,
             exam_type_name=r.exam_type.name if r.exam_type else None,
-            akarikh_marks=r.akarikh_marks,
-            oral_marks=r.oral_marks,
-            written_marks=r.written_marks,
             marks_obtained=r.marks_obtained,
             total_marks=r.total_marks,
             percentage=r.percentage,
@@ -162,24 +158,38 @@ async def get_results_by_class_and_exam(
 
     subjects.sort(key=lambda s: s.subject_name)
 
-    smm_stmt = select(SubjectMaxMarks).where(
-        SubjectMaxMarks.class_name == school_class.class_name,
-        SubjectMaxMarks.exam_type_id == exam_type_id,
+    smm_stmt = select(SubjectExamComponent).where(
+        SubjectExamComponent.class_name == school_class.class_name,
+        SubjectExamComponent.exam_type_id == exam_type_id,
     )
-    smm_records = (await db.execute(smm_stmt)).scalars().all()
-    smm_lookup = {r.subject_id: r for r in smm_records}
+    smm_records = (await db.execute(smm_stmt)).scalars().unique().all()
+    comps_by_subject = {}
+    for c in smm_records:
+        comps_by_subject.setdefault(c.subject_id, []).append({
+            "component_code": c.component_code,
+            "display_label": c.display_label,
+            "max_marks": float(c.max_marks),
+            "display_order": c.display_order,
+        })
 
     subject_list = []
     for s in subjects:
-        m = smm_lookup.get(s.id)
         subject_list.append({
             "id": s.id,
             "name": s.subject_name,
-            "akarikh_max": float(m.akarikh_max) if m else 0.0,
-            "oral_max": float(m.oral_max) if m else 0.0,
-            "written_max": float(m.written_max) if m else 0.0,
-            "total_max": float(m.max_marks) if m else 0.0,
+            "components": comps_by_subject.get(s.id, []),
         })
+
+    # One query for all result_components in this class/exam batch
+    result_ids = [r.id for r in results]
+    rc_lookup = {}
+    if result_ids:
+        rc_stmt = select(ResultComponent).where(ResultComponent.result_id.in_(result_ids))
+        for rc in (await db.execute(rc_stmt)).scalars().all():
+            rc_lookup.setdefault(rc.result_id, []).append({
+                "component_code": rc.component_code,
+                "marks_obtained": float(rc.marks_obtained),
+            })
 
     # Build lookup table for existing results: (student_id, subject_id) -> Result
     results_lookup = {(r.student_id, r.subject_id): r for r in results}
@@ -206,9 +216,7 @@ async def get_results_by_class_and_exam(
                 student_subjects.append({
                     "subject_id": subj.id,
                     "subject_name": subj.subject_name,
-                    "akarikh_marks": float(r.akarikh_marks),
-                    "oral_marks": float(r.oral_marks),
-                    "written_marks": float(r.written_marks),
+                    "components": rc_lookup.get(r.id, []),
                     "marks_obtained": r.marks_obtained,
                     "total_marks": r.total_marks,
                     "percentage": r.percentage,
@@ -220,9 +228,7 @@ async def get_results_by_class_and_exam(
                 student_subjects.append({
                     "subject_id": subj.id,
                     "subject_name": subj.subject_name,
-                    "akarikh_marks": None,
-                    "oral_marks": None,
-                    "written_marks": None,
+                    "components": [],
                     "marks_obtained": None,
                     "total_marks": None,
                     "percentage": None,
@@ -264,7 +270,7 @@ async def update_result(
     update_data = data.model_dump(exclude_unset=True)
 
     try:
-        result = await service_update_result(db, result_id, update_data)
+        result = await update_result_with_components(db, result_id, update_data)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -280,9 +286,6 @@ async def update_result(
         subject_code=result.subject.code if result.subject else None,
         exam_type_id=result.exam_type_id,
         exam_type_name=result.exam_type.name if result.exam_type else None,
-        akarikh_marks=result.akarikh_marks,
-        oral_marks=result.oral_marks,
-        written_marks=result.written_marks,
         marks_obtained=result.marks_obtained,
         total_marks=result.total_marks,
         percentage=result.percentage,
@@ -300,13 +303,59 @@ async def export_results(
     format: str = Query("csv"),
     db: AsyncSession = Depends(get_db)
 ):
-    """Export results for a class and exam type as CSV or Excel (.xlsx) asynchronously."""
-    stmt = (
+    # 1) Resolve class and exam
+    school_class = (await db.execute(
+        select(SchoolClass).where(SchoolClass.id == class_id)
+    )).scalars().first()
+    if school_class is None:
+        raise HTTPException(status_code=404, detail="Class not found")
+
+    exam_type = (await db.execute(
+        select(ExamType).where(ExamType.id == exam_type_id)
+    )).scalars().first()
+    if exam_type is None:
+        raise HTTPException(status_code=404, detail="Exam type not found")
+
+    # 2) Component definitions for this class / exam
+    smm_stmt = select(SubjectExamComponent).where(
+        SubjectExamComponent.class_name == school_class.class_name,
+        SubjectExamComponent.exam_type_id == exam_type_id,
+    )
+    smm_records = (await db.execute(smm_stmt)).scalars().unique().all()
+    comps_by_subject = {}
+    for c in smm_records:
+        comps_by_subject.setdefault(c.subject_id, []).append({
+            "code": c.component_code,
+            "label": c.display_label,
+            "max_marks": float(c.max_marks),
+            "display_order": c.display_order,
+        })
+    for lst in comps_by_subject.values():
+        lst.sort(key=lambda c: (c["display_order"], c["code"]))
+
+    subjects_stmt = (
+        select(Subject)
+        .join(class_subjects, Subject.id == class_subjects.c.subject_id)
+        .where(class_subjects.c.class_id == class_id)
+        .order_by(Subject.subject_name)
+    )
+    subjects = list((await db.execute(subjects_stmt)).scalars().all())
+    payload_subjects = []
+    for s in subjects:
+        payload_subjects.append({
+            "id": s.id,
+            "name": s.subject_name,
+            "components": comps_by_subject.get(s.id, []),
+        })
+
+    # 3) Results with component rows loaded
+    results_stmt = (
         select(Result)
         .options(
             joinedload(Result.student).joinedload(Student.school_class),
             joinedload(Result.subject),
             joinedload(Result.exam_type),
+            joinedload(Result.components),
         )
         .join(Result.student)
         .where(
@@ -315,45 +364,106 @@ async def export_results(
         )
         .order_by(cast(Student.roll_no, Integer))
     )
-    res = await db.execute(stmt)
-    results = res.scalars().unique().all()
+    results = (await db.execute(results_stmt)).scalars().unique().all()
 
-    # Sort in Python
-    results = sorted(
-        results,
-        key=lambda r: (
-            int(r.student.roll_no) if (r.student and r.student.roll_no and r.student.roll_no.isdigit()) else 0,
-            r.subject.subject_name if r.subject else "",
-        ),
-    )
+    # 4) Build student payload with per-subject component values
+    from collections import defaultdict
+    student_map = defaultdict(lambda: {"roll_no": "", "name": "", "subjects": {}})
+    for r in results:
+        st = student_map[r.student_id]
+        st["roll_no"] = (r.student.roll_no or "") if r.student else ""
+        st["name"] = (r.student.name or "") if r.student else ""
+        comps = {rc.component_code: float(rc.marks_obtained) for rc in (r.components or [])}
+        st["subjects"][r.subject_id] = {
+            "components": comps,
+            "subtotal": round(sum(comps.values()), 2) if comps else None,
+            "total_max": float(r.total_marks) if r.total_marks is not None else 0.0,
+        }
+
+    payload_students = []
+    for sid in sorted(student_map.keys(), key=lambda s: int(student_map[s]["roll_no"] or 0)):
+        st = student_map[sid]
+        total_obtained = 0.0
+        total_max = 0.0
+        has_any = False
+        subject_data = {}
+        for subj in payload_subjects:
+            subj_max = sum(c["max_marks"] for c in subj["components"])
+            total_max += subj_max
+            sd = st["subjects"].get(subj["id"])
+            if sd is None:
+                subject_data[subj["id"]] = {"components": {}, "subtotal": None}
+                continue
+            subject_data[subj["id"]] = sd
+            if sd["subtotal"] is not None:
+                total_obtained += sd["subtotal"]
+                has_any = True
+        pct = (total_obtained * 100.0 / total_max) if total_max > 0 else 0.0
+
+        # Pass/Fail: any subject with configured components below 35% of its max => F
+        result_status = "P"
+        any_configured = False
+        for subj in payload_subjects:
+            comps = subj["components"]
+            if not comps:
+                continue
+            any_configured = True
+            subj_max = sum(c["max_marks"] for c in comps)
+            sd = subject_data.get(subj["id"]) or {}
+            subtotal = sum(float((sd.get("components") or {}).get(c["code"], 0) or 0) for c in comps)
+            if subj_max > 0 and subtotal < 0.35 * subj_max:
+                result_status = "F"
+                break
+        if not any_configured:
+            result_status = "F"
+
+        payload_students.append({
+            "roll_no": st["roll_no"],
+            "name": st["name"],
+            "subject_data": subject_data,
+            "grand_total": round(total_obtained, 2) if has_any else None,
+            "grand_max": round(total_max, 2) if has_any else None,
+            "percentage": round(pct, 2) if has_any else None,
+            "grade": calculate_grade_and_percentage(total_obtained, total_max)[1] if has_any else "",
+            "result_status": result_status,
+        })
+
+    payload = {
+        "school_name": "Amarkor Vidyalaya",
+        "class_display": f"{school_class.class_name} - {school_class.division}",
+        "exam_name": exam_type.name,
+        "subjects": payload_subjects,
+        "students": payload_students,
+    }
 
     if format == "excel":
-        buffer = await asyncio.to_thread(generate_results_excel, results)
+        buffer = await asyncio.to_thread(generate_results_excel, payload)
         return StreamingResponse(
             iter([buffer.getvalue()]),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename=results_class{class_id}_exam{exam_type_id}.xlsx"}
         )
 
-    # Build CSV (default)
+    # 6) Component-aware CSV export
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Roll No", "Student Name", "Subject", "Marks Obtained", "Total Marks", "Percentage", "Grade", "Status"])
-    for r in results:
-        writer.writerow([
-            r.student.roll_no if r.student else "",
-            r.student.name if r.student else "",
-            r.subject.subject_name if r.subject else "",
-            r.marks_obtained,
-            r.total_marks,
-            f"{r.percentage:.2f}" if r.percentage else "",
-            r.grade,
-            r.status,
-        ])
-
+    writer.writerow(["Roll No", "Student Name", "Subject", "Component", "Marks", "Max"])
+    for stu in payload_students:
+        for s in payload_subjects:
+            sd = stu["subject_data"].get(s["id"]) or {}
+            marks_map = sd.get("components") or {}
+            for comp in s.get("components") or []:
+                writer.writerow([
+                    stu["roll_no"],
+                    stu["name"],
+                    s["name"],
+                    comp["label"],
+                    marks_map.get(comp["code"], ""),
+                    comp["max_marks"],
+                ])
     output.seek(0)
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=results_class{class_id}_exam{exam_type_id}.csv"}
+        headers={"Content-Disposition": f"attachment; filename=results_class{class_id}_exam_{exam_type_id}.csv"},
     )

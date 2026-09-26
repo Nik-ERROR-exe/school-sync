@@ -9,7 +9,7 @@ from app.models.school_class import SchoolClass
 from app.models.subject import Subject
 from app.models.teacher_class import TeacherClass
 from app.models.teacher_class_subject import TeacherClassSubject
-from app.models.subject_max_marks import SubjectMaxMarks
+from app.models.subject_exam_component import SubjectExamComponent
 
 router = APIRouter(
     prefix="/teacher/subjects",
@@ -78,38 +78,41 @@ async def get_teacher_subjects_by_class(
         .order_by(Subject.subject_name)
     )).all()
 
-    # 3. If exam_type_id is provided, look up max marks for this class's standard (class_name)
-    max_marks_map = {}
+    # 3. If exam_type_id is provided, look up configured components for this
+    #    class's standard (class_name)
+    comps_by_subject: dict[int, list] = {}
+    class_name = None
     if exam_type_id:
         school_class = await db.get(SchoolClass, class_id)
         if school_class:
-            records = (await db.scalars(
-                select(SubjectMaxMarks).where(
-                    SubjectMaxMarks.class_name == school_class.class_name,
-                    SubjectMaxMarks.exam_type_id == exam_type_id,
-                    SubjectMaxMarks.subject_id.in_(subject_ids)
-                )
-            )).all()
-            max_marks_map = {r.subject_id: float(r.max_marks) for r in records}
+            class_name = school_class.class_name
+            stmt = select(SubjectExamComponent).where(
+                SubjectExamComponent.class_name == class_name,
+                SubjectExamComponent.exam_type_id == exam_type_id,
+                SubjectExamComponent.subject_id.in_(subject_ids)
+            ).order_by(SubjectExamComponent.display_order, SubjectExamComponent.id)
+            comps = (await db.scalars(stmt)).all()
+            for c in comps:
+                comps_by_subject.setdefault(c.subject_id, []).append(c)
 
     response = []
     for s in subjects:
-        if exam_type_id is not None:
-            configured_max = max_marks_map.get(s.id)
-            response.append({
-                "id": s.id,
-                "subject_name": s.subject_name,
-                "code": s.code,
-                "max_marks": configured_max,
-                "needs_config": configured_max is None
-            })
-        else:
-            response.append({
-                "id": s.id,
-                "subject_name": s.subject_name,
-                "code": s.code,
-                "max_marks": None,
-                "needs_config": False
-            })
+        comps = comps_by_subject.get(s.id, []) if exam_type_id is not None else []
+        response.append({
+            "id": s.id,
+            "subject_name": s.subject_name,
+            "code": s.code,
+            "max_marks": float(sum(c.max_marks for c in comps)) if exam_type_id is not None else None,
+            "needs_config": (not comps) if exam_type_id is not None else False,
+            "components": [
+                {
+                    "component_code": c.component_code,
+                    "display_label": c.display_label,
+                    "max_marks": float(c.max_marks),
+                    "display_order": c.display_order,
+                }
+                for c in comps
+            ],
+        })
 
     return response
