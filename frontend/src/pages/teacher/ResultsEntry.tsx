@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { toast } from 'react-hot-toast';
 import api from '../../api';
+import { resultApi, StudentResultResponse } from '../../api/results';
 import {
   FileSpreadsheet,
   CheckCircle2,
@@ -12,11 +13,14 @@ import {
   RotateCcw,
   Loader2,
   Users,
-  BookOpen,
   Award,
 } from 'lucide-react';
 
 import { sortClasses } from '../../utils/classSorter';
+
+// Marks range rule: entered marks must be between 35 and 100.
+const MIN_MARKS = 35;
+const MAX_MARKS = 100;
 
 interface ClassItem {
   id: number;
@@ -53,6 +57,7 @@ const ResultsEntry: React.FC = () => {
 
   const [selectedClass, setSelectedClass] = useState<number | ''>('');
   const [selectedExam, setSelectedExam] = useState<number | ''>('');
+  const [totalMarks, setTotalMarks] = useState<number>(100);
   const [marks, setMarks] = useState<{ [key: string]: string }>({});
   const [initialMarks, setInitialMarks] = useState<{ [key: string]: string }>({});
   const [search, setSearch] = useState('');
@@ -67,7 +72,7 @@ const ResultsEntry: React.FC = () => {
           api.get('/teacher/classes/my-classes'),
           api.get('/teacher/exam-types'),
         ]);
-        setClasses(classesRes.data || []);
+        setClasses(sortClasses(classesRes.data || []));
         setExamTypes(examsRes.data || []);
       } catch {
         toast.error('Failed to load initial class or exam types');
@@ -93,7 +98,7 @@ const ResultsEntry: React.FC = () => {
       try {
         const [studentsRes, subjectsData] = await Promise.all([
           api.get(`/teacher/classes/students/by-class/${selectedClass}`),
-          resultApi.getSubjectsByClass(selectedClass, selectedExam ? Number(selectedExam) : undefined)
+          resultApi.getSubjectsByClass(Number(selectedClass), selectedExam ? Number(selectedExam) : undefined)
         ]);
         const data = studentsRes.data;
         setStudents(data.students || []);
@@ -116,9 +121,8 @@ const ResultsEntry: React.FC = () => {
   // Load existing results when both class and exam are selected
   useEffect(() => {
     if (!selectedClass || !selectedExam) {
-      // If no exam selected, we keep the marks as they are (may be from previous selection)
-      // But better to clear if no exam to avoid confusion.
       setMarks({});
+      setInitialMarks({});
       return;
     }
 
@@ -142,36 +146,15 @@ const ResultsEntry: React.FC = () => {
         });
 
         setMarks(newMarks);
+        setInitialMarks(newMarks);
       } catch (error) {
         console.error('Failed to load existing results:', error);
-        // Don't show a toast here; just leave marks empty.
-      }
-    };
-
-    fetchExistingResults();
-  }, [selectedClass, selectedExam]);
-
-  // Load existing marks when class and exam are selected
-  useEffect(() => {
-    if (!selectedClass || !selectedExam) return;
-
-    const fetchExistingMarks = async () => {
-      try {
-        const response = await api.get(`/teacher/results/class/${selectedClass}/exam/${selectedExam}`);
-        const existingData = response.data || {};
-        const stringMap: { [key: string]: string } = {};
-        Object.entries(existingData).forEach(([key, val]) => {
-          stringMap[key] = String(val);
-        });
-        setMarks(stringMap);
-        setInitialMarks(stringMap);
-      } catch {
-        // Not fatal if no results exist yet
         setMarks({});
         setInitialMarks({});
       }
     };
-    fetchExistingMarks();
+
+    fetchExistingResults();
   }, [selectedClass, selectedExam]);
 
   const handleMarkChange = (studentId: number, subjectId: number, value: string) => {
@@ -274,6 +257,7 @@ const ResultsEntry: React.FC = () => {
       return;
     }
 
+    const maxAllowed = Math.min(totalMarks, MAX_MARKS);
     const resultsData: any[] = [];
     let hasInvalidMark = false;
     let invalidErrorMsg = '';
