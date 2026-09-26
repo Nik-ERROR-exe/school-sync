@@ -59,8 +59,23 @@ async def build_solver_input(req: TimetableGenerateRequest, db: AsyncSession) ->
 
     # --- Resolve Classes ---
     if req.classes is not None:
+        # The override path is used by the wizard, which only sends id /
+        # class_name / division. class_teacher_id is a server-side fact and
+        # must not be trusted from the client, so load it from the DB here.
+        _override_ids = [c.id for c in req.classes]
+        _ct_res = await db.execute(
+            select(SchoolClass.id, SchoolClass.class_teacher_id).where(
+                SchoolClass.id.in_(_override_ids)
+            )
+        )
+        _ct_map: dict[int, int | None] = {row.id: row.class_teacher_id for row in _ct_res.all()}
         solver_classes = [
-            SolverClass(id=c.id, class_name=c.class_name, division=c.division)
+            SolverClass(
+                id=c.id,
+                class_name=c.class_name,
+                division=c.division,
+                class_teacher_id=_ct_map.get(c.id),
+            )
             for c in req.classes
         ]
     else:
@@ -71,7 +86,12 @@ async def build_solver_input(req: TimetableGenerateRequest, db: AsyncSession) ->
             raise ValidationException("No classes found in the database. Create classes first.")
 
         solver_classes = [
-            SolverClass(id=c.id, class_name=c.class_name, division=c.division)
+            SolverClass(
+                id=c.id,
+                class_name=c.class_name,
+                division=c.division,
+                class_teacher_id=c.class_teacher_id
+            )
             for c in db_classes
         ]
 
@@ -141,6 +161,58 @@ async def build_solver_input(req: TimetableGenerateRequest, db: AsyncSession) ->
                     ]
                 else:
                     class_subject_teachers[key] = [teacher_id]
+
+    # --- Pre-flight: prerequisites for the "period 1 = class teacher" rule ---
+    num_days = len(req.school_days)
+    reqs_by_class: dict[int, set[int]] = {}
+    for r in solver_reqs:
+        reqs_by_class.setdefault(r.class_id, set()).add(r.subject_id)
+
+    missing_teacher: list[str] = []
+    no_eligible_subject: list[str] = []
+    insufficient_periods: list[str] = []
+
+    for c in solver_classes:
+        label = f"{c.class_name}-{c.division}"
+        if c.class_teacher_id is None:
+            missing_teacher.append(label)
+            continue
+        subjects_for_class = reqs_by_class.get(c.id, set())
+        eligible_total = 0
+        for sub_id in subjects_for_class:
+            if c.class_teacher_id in class_subject_teachers.get((c.id, sub_id), []):
+                for r in solver_reqs:
+                    if r.class_id == c.id and r.subject_id == sub_id:
+                        eligible_total += r.periods_per_week
+                        break
+        if eligible_total == 0:
+            no_eligible_subject.append(label)
+        elif eligible_total < num_days:
+            insufficient_periods.append(
+                f"{label} (teacher has {eligible_total} periods, needs {num_days})"
+            )
+
+    errors: list[str] = []
+    if missing_teacher:
+        errors.append(
+            "These classes have no class teacher assigned: "
+            + ", ".join(missing_teacher)
+            + ". Assign a class teacher before generating."
+        )
+    if no_eligible_subject:
+        errors.append(
+            "The class teacher of these classes does not teach any subject of that class: "
+            + ", ".join(no_eligible_subject)
+            + ". Give the class teacher a subject in this class before generating."
+        )
+    if insufficient_periods:
+        errors.append(
+            "The class teacher does not have enough weekly periods to cover period 1 on every school day for: "
+            + "; ".join(insufficient_periods)
+            + ". Increase the subject's weekly periods, add another subject for the class teacher in this class, or reduce school_days."
+        )
+    if errors:
+        raise ValidationException(" ".join(errors))
 
     # Subject display names for human-readable diagnostics
     subjects_res = await db.execute(select(Subject))
