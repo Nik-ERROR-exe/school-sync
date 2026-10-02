@@ -21,8 +21,167 @@ from app.core.date_utils import int_to_day
 from app.core.exceptions import ValidationException
 
 
+def _teachable_periods_for_day(day_name, periods_per_day, lunch_period, saturday_periods):
+    """Number of teachable periods on a given day."""
+    if day_name == "Saturday" and saturday_periods is not None:
+        cap = min(saturday_periods, periods_per_day)
+    else:
+        cap = periods_per_day
+    if lunch_period is not None and lunch_period <= cap:
+        return cap - 1
+    return cap
+
+
+def _adjust_requirements_for_fill(
+    solver_classes,
+    solver_reqs,
+    class_subject_teachers,
+    school_days,
+    periods_per_day,
+    lunch_period,
+    saturday_periods,
+):
+    """Ensure every class's weekly requirements exactly fill its non-lunch
+    slots, and that each class teacher has at least one period on every
+    school day in a subject they teach to that class.
+
+    Mutates SolverRequirement instances in place. Returns nothing.
+    """
+    num_days = len(school_days)
+    slots_per_class = sum(
+        _teachable_periods_for_day(d, periods_per_day, lunch_period, saturday_periods)
+        for d in school_days
+    )
+
+    by_class: dict[int, list] = {}
+    for r in solver_reqs:
+        by_class.setdefault(r.class_id, []).append(r)
+
+    for cls in solver_classes:
+        reqs = by_class.get(cls.id, [])
+
+        # Step 0: if the class has few or no SolverRequirements, seed one per
+        # (class, subject) pair that has at least one teacher in
+        # class_subject_teachers. This prevents Step 3 from inflating a single
+        # subject to fill the entire week (which BLOCK A's no-adjacent rule
+        # makes infeasible). Every seeded requirement must have a teacher —
+        # otherwise the solver's x-var sum constraint is unsatisfiable.
+        class_subject_pairs = sorted(
+            sub_id
+            for (cid, sub_id) in class_subject_teachers
+            if cid == cls.id
+            and class_subject_teachers.get((cls.id, sub_id))
+        )
+        existing_subject_ids = {r.subject_id for r in reqs}
+        for sub_id in class_subject_pairs:
+            if sub_id in existing_subject_ids:
+                continue
+            new_req = SolverRequirement(
+                class_id=cls.id,
+                subject_id=sub_id,
+                periods_per_week=0,
+            )
+            solver_reqs.append(new_req)
+            reqs.append(new_req)
+
+        if not reqs:
+            continue
+
+        # Step 1: bump the class teacher's chosen subject to >= num_days
+        if cls.class_teacher_id is not None:
+            ct_reqs = [
+                r for r in reqs
+                if cls.class_teacher_id
+                in class_subject_teachers.get((cls.id, r.subject_id), [])
+            ]
+            if ct_reqs:
+                target = max(ct_reqs, key=lambda r: (r.periods_per_week, -r.subject_id))
+                if target.periods_per_week < num_days:
+                    target.periods_per_week = num_days
+
+        # Step 2: reduce if total exceeds slots_per_class
+        total = sum(r.periods_per_week for r in reqs)
+        while total > slots_per_class:
+            reducible = [
+                r for r in reqs
+                if r.periods_per_week > 1
+                and not (
+                    cls.class_teacher_id is not None
+                    and cls.class_teacher_id
+                    in class_subject_teachers.get((cls.id, r.subject_id), [])
+                    and r.periods_per_week <= num_days
+                )
+            ]
+            if not reducible:
+                break
+            biggest = max(reducible, key=lambda r: (r.periods_per_week, -r.subject_id))
+            biggest.periods_per_week -= 1
+            total -= 1
+
+        # Step 3: pad if total is under slots_per_class
+        while total < slots_per_class:
+            for r in reqs:
+                if total >= slots_per_class:
+                    break
+                r.periods_per_week += 1
+                total += 1
+
+        if total != slots_per_class:
+            raise ValidationException(
+                f"Class {cls.class_name}-{cls.division}: cannot fit the weekly "
+                f"requirements into the timetable. {total} periods configured but "
+                f"{slots_per_class} slots available "
+                f"({len(school_days)} days x "
+                f"{periods_per_day - (1 if lunch_period else 0)} non-lunch periods). "
+                f"Remove subjects or reduce periods_per_week for this class."
+            )
+
+
+def _classify_teacher_load(solver_classes, solver_reqs, teachers,
+                            class_subject_teachers, school_days,
+                            periods_per_day, lunch_period, saturday_periods):
+    """Return (soft_overflow, physical_overflow), each a dict
+    {teacher_id: demanded_periods}. `soft` = demand > teacher's weekly
+    soft cap; `physical` = demand > total teachable slots per week.
+    Teachers with demand within both limits are absent from both dicts.
+    """
+    slots_per_week = sum(
+        _teachable_periods_for_day(d, periods_per_day, lunch_period,
+                                    saturday_periods)
+        for d in school_days
+    )
+    teacher_by_id = {t.id: t for t in teachers}
+    demand: dict[int, int] = {}
+    for c in solver_classes:
+        for r in solver_reqs:
+            if r.class_id != c.id:
+                continue
+            for t_id in class_subject_teachers.get((c.id, r.subject_id), []):
+                demand[t_id] = demand.get(t_id, 0) + r.periods_per_week
+    soft: dict[int, int] = {}
+    physical: dict[int, int] = {}
+    for t_id, d in demand.items():
+        t = teacher_by_id.get(t_id)
+        if t is None:
+            continue
+        if d > slots_per_week:
+            physical[t_id] = d
+        elif d > t.max_lectures_per_day * len(school_days):
+            soft[t_id] = d
+    return soft, physical, slots_per_week
+
+
 async def build_solver_input(req: TimetableGenerateRequest, db: AsyncSession) -> SolverInput:
     """Build SolverInput from request data and asynchronous database lookups."""
+
+    periods_per_day = (
+        req.periods_per_day if req.periods_per_day is not None
+        else PERIODS_PER_DAY
+    )
+    lunch_period = (
+        req.lunch_period if req.lunch_period is not None
+        else LUNCH_PERIOD
+    )
 
     # --- Resolve Teachers ---
     if req.teachers is not None:
@@ -177,20 +336,17 @@ async def build_solver_input(req: TimetableGenerateRequest, db: AsyncSession) ->
         if c.class_teacher_id is None:
             missing_teacher.append(label)
             continue
-        subjects_for_class = reqs_by_class.get(c.id, set())
-        eligible_total = 0
-        for sub_id in subjects_for_class:
-            if c.class_teacher_id in class_subject_teachers.get((c.id, sub_id), []):
-                for r in solver_reqs:
-                    if r.class_id == c.id and r.subject_id == sub_id:
-                        eligible_total += r.periods_per_week
-                        break
-        if eligible_total == 0:
+        subjects_for_class = {
+            sub_id
+            for (cid, sub_id) in class_subject_teachers
+            if cid == c.id
+        }
+        eligible_subjects = [
+            sub_id for sub_id in subjects_for_class
+            if c.class_teacher_id in class_subject_teachers.get((c.id, sub_id), [])
+        ]
+        if not eligible_subjects:
             no_eligible_subject.append(label)
-        elif eligible_total < num_days:
-            insufficient_periods.append(
-                f"{label} (teacher has {eligible_total} periods, needs {num_days})"
-            )
 
     errors: list[str] = []
     if missing_teacher:
@@ -205,12 +361,6 @@ async def build_solver_input(req: TimetableGenerateRequest, db: AsyncSession) ->
             + ", ".join(no_eligible_subject)
             + ". Give the class teacher a subject in this class before generating."
         )
-    if insufficient_periods:
-        errors.append(
-            "The class teacher does not have enough weekly periods to cover period 1 on every school day for: "
-            + "; ".join(insufficient_periods)
-            + ". Increase the subject's weekly periods, add another subject for the class teacher in this class, or reduce school_days."
-        )
     if errors:
         raise ValidationException(" ".join(errors))
 
@@ -221,15 +371,86 @@ async def build_solver_input(req: TimetableGenerateRequest, db: AsyncSession) ->
         for s in subjects_res.scalars().all()
     }
 
+    _adjust_requirements_for_fill(
+        solver_classes=solver_classes,
+        solver_reqs=solver_reqs,
+        class_subject_teachers=class_subject_teachers,
+        school_days=req.school_days,
+        periods_per_day=periods_per_day,
+        lunch_period=lunch_period,
+        saturday_periods=req.saturday_periods,
+    )
+
+    soft_overflow, physical_overflow, slots_per_week = _classify_teacher_load(
+        solver_classes=solver_classes,
+        solver_reqs=solver_reqs,
+        teachers=solver_teachers,
+        class_subject_teachers=class_subject_teachers,
+        school_days=req.school_days,
+        periods_per_day=periods_per_day,
+        lunch_period=lunch_period,
+        saturday_periods=req.saturday_periods,
+    )
+
+    def _label(t_id):
+        t = next((x for x in solver_teachers if x.id == t_id), None)
+        return t.name if t else f"Teacher #{t_id}"
+
+    if physical_overflow and not req.allow_gaps:
+        raise ValidationException(
+            detail=(
+                "These teachers are scheduled for more weekly periods than "
+                "there are slots in the week: "
+                + ", ".join(
+                    f"{_label(t_id)} ({d} periods, capacity {slots_per_week})"
+                    for t_id, d in physical_overflow.items()
+                )
+                + ". Reduce their subject assignments or add another teacher. "
+                "If you proceed anyway, some periods will be left unfilled."
+            ),
+            code="PHYSICAL_OVERFLOW",
+            teachers=[
+                {"teacher_id": t_id, "teacher_name": _label(t_id),
+                 "demand": d, "capacity": slots_per_week}
+                for t_id, d in physical_overflow.items()
+            ],
+        )
+
+    if soft_overflow and not req.relax_teacher_caps:
+        raise ValidationException(
+            detail=(
+                "These teachers are scheduled above their daily soft cap: "
+                + ", ".join(
+                    f"{_label(t_id)} ({d} periods/week)"
+                    for t_id, d in soft_overflow.items()
+                )
+                + ". You can relax their caps or redistribute their subjects."
+            ),
+            code="SOFT_OVERFLOW",
+            teachers=[
+                {"teacher_id": t_id, "teacher_name": _label(t_id),
+                 "demand": d,
+                 "soft_cap": next(
+                     (x.max_lectures_per_day * len(req.school_days)
+                      for x in solver_teachers if x.id == t_id), 0)}
+                for t_id, d in soft_overflow.items()
+            ],
+        )
+
     return SolverInput(
         teachers=solver_teachers,
         classes=solver_classes,
         weekly_requirements=solver_reqs,
         school_days=req.school_days,
-        periods_per_day=PERIODS_PER_DAY,
-        lunch_period=LUNCH_PERIOD,
+        periods_per_day=periods_per_day,
+        lunch_period=lunch_period,
+        saturday_periods=req.saturday_periods,
+        relax_teacher_caps=req.relax_teacher_caps,
+        allow_gaps=req.allow_gaps,
         pt_subject_id=req.pt_subject_id,
         existing_slots=solver_existing_slots,
         class_subject_teachers=class_subject_teachers,
         subject_names=subject_names,
+        soft_violation_teachers=soft_overflow if req.relax_teacher_caps else {},
+        physical_overflow_teachers=physical_overflow if req.allow_gaps else {},
     )
