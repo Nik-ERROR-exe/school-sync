@@ -43,3 +43,8 @@ class SolverInput:
     existing_slots: List[SolverSlot] = field(default_factory=list)
     class_subject_teachers: Dict[Tuple[int, int], List[int]] = field(default_factory=dict)  # (class_id, subject_id) -> [teacher_ids]
     subject_names: Dict[int, str] = field(default_factory=dict)  # subject_id -> display name (for diagnostics)
+    saturday_periods: Optional[int] = None
+    relax_teacher_caps: bool = False
+    allow_gaps: bool = False
+    soft_violation_teachers: Dict[int, int] = field(default_factory=dict)
+    physical_overflow_teachers: Dict[int, int] = field(default_factory=dict)
