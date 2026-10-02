@@ -1,7 +1,7 @@
 import React from 'react';
 import { Coffee } from 'lucide-react';
 import { ApiSlot, ApiClass, ApiSubject } from '../../types';
-import { getPeriodTimeStr, getPeriodStartTime } from '../../periodSchedule';
+import { getPeriodTimeStr, getPeriodStartTime, computeSlotLabels } from '../../periodSchedule';
 
 interface TeacherTimetableGridProps {
   schedule: ApiSlot[];
@@ -12,6 +12,9 @@ interface TeacherTimetableGridProps {
   periodsPerDay: number;
   saturdayPeriods: number;
   lunchPeriod?: number | null;
+  startTime?: string | null;
+  periodMinutes?: number | null;
+  lunchMinutes?: number | null;
 }
 
 interface DayRow {
@@ -30,6 +33,9 @@ export default function TeacherTimetableGrid({
   periodsPerDay,
   saturdayPeriods,
   lunchPeriod,
+  startTime = null,
+  periodMinutes = null,
+  lunchMinutes = null,
 }: TeacherTimetableGridProps) {
   const getSubject = (id: number) => subjects.find(s => s.id === id);
   const getClassInfo = (id: number) => classes.find(c => c.id === id);
@@ -65,8 +71,27 @@ export default function TeacherTimetableGrid({
     return { day, lectures, freeCount, totalPeriods: pCount };
   });
 
+  const computedLabels = computeSlotLabels(
+    startTime, periodMinutes, lunchMinutes, lunchPeriod ?? null, periodsPerDay,
+  );
+
+  const slotLabel = (periodNum: number): string => {
+    if (computedLabels) {
+      const s = computedLabels.find(x => x.period === periodNum);
+      if (s) return s.label;
+    }
+    return getPeriodTimeStr(periodNum);
+  };
+  const slotStart = (periodNum: number): string | null => {
+    if (computedLabels) {
+      const s = computedLabels.find(x => x.period === periodNum);
+      if (s) return s.start;
+    }
+    return getPeriodStartTime(periodNum);
+  };
+
   const totalLectures = days.reduce((sum, d) => sum + d.lectures.length, 0);
-  const lunchTimeLabel = lunchNum !== null ? getPeriodTimeStr(lunchNum) : null;
+  const lunchTimeLabel = lunchNum !== null ? slotLabel(lunchNum) : null;
 
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
@@ -144,7 +169,7 @@ export default function TeacherTimetableGrid({
                   ) : (
                     <div className="space-y-2">
                       {lectures.map(({ period, subject, classInfo }) => {
-                        const startTimeChip = getPeriodStartTime(period);
+                        const startTimeChip = slotStart(period);
                         return (
                           <div
                             key={period}
