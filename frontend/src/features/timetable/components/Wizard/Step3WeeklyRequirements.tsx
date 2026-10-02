@@ -317,6 +317,10 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
     );
   }
 
+  if (state.generateMode !== 'single') {
+    return <GroupRequirementsSummary onNext={onNext} onPrev={onPrev} />;
+  }
+
   return (
     <div className="space-y-6">
       {/* Top Fixed Info Bar */}
@@ -673,6 +677,96 @@ export default function Step3WeeklyRequirements({ onNext, onPrev }: { onNext: ()
             <span>{saving ? 'Saving changes…' : saved ? 'Saved ✓' : 'Save & Continue'}</span>
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function GroupRequirementsSummary({ onNext, onPrev }: { onNext: () => void; onPrev: () => void }) {
+  const { state } = useWizard();
+  const [classes, setClasses] = useState<ApiClass[]>([]);
+  const [reqs, setReqs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [cRes, rRes] = await Promise.all([
+          api.get('/admin/classes/'),
+          api.get('/admin/weekly-requirements/'),
+        ]);
+        setClasses(cRes.data);
+        setReqs(rRes.data);
+      } finally { setLoading(false); }
+    })();
+  }, []);
+
+  const range = state.generateMode === 'primary' ? [1,2,3,4] : [5,6,7,8,9,10];
+  const groupClasses = classes.filter(c => range.includes(Number(c.class_name)));
+
+  if (loading) return <div className="p-8 text-center text-slate-500">Loading group requirements…</div>;
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="px-8 py-6 border-b border-slate-100 bg-slate-50/50">
+        <h2 className="text-lg font-bold text-slate-900">
+          Step 3: Group Requirements (read-only)
+        </h2>
+        <p className="text-sm text-slate-500 mt-1">
+          Generating for <b>{state.generateMode === 'primary' ? 'Group 1–4' : 'Group 5–10'}</b>.
+          Weekly requirements are read from the database for each class in the group.
+          To edit them, use <b>Admin → Weekly Requirements</b> before generating.
+        </p>
+      </div>
+      <div className="p-8 space-y-6">
+        {groupClasses.length === 0 ? (
+          <p className="text-slate-500 text-sm">
+            No classes found in the group range. Verify class names are numeric (1–10).
+          </p>
+        ) : (
+          <div className="border border-slate-200 rounded-xl overflow-hidden">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-slate-500 text-[11px] uppercase tracking-wider font-extrabold border-b border-slate-100">
+                <tr>
+                  <th className="px-5 py-3">Class</th>
+                  <th className="px-5 py-3">Subjects Configured</th>
+                  <th className="px-5 py-3 text-center">Total Periods/Week</th>
+                  <th className="px-5 py-3">Class Teacher</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {groupClasses.map(c => {
+                  const classReqs = reqs.filter((r: any) => Number(r.class_id) === c.id);
+                  const total = classReqs.reduce((s: number, r: any) => s + Number(r.periods_per_week || 0), 0);
+                  const teacherName = (c as any).class_teacher_id
+                    ? `Teacher #${(c as any).class_teacher_id}` : '— none —';
+                  return (
+                    <tr key={c.id}>
+                      <td className="px-5 py-3 font-semibold text-slate-900">
+                        {c.class_name}-{c.division}
+                      </td>
+                      <td className="px-5 py-3 text-slate-700">{classReqs.length}</td>
+                      <td className="px-5 py-3 text-center font-mono text-slate-700">{total}</td>
+                      <td className={`px-5 py-3 text-xs font-semibold ${
+                        (c as any).class_teacher_id ? 'text-emerald-700' : 'text-red-600'
+                      }`}>
+                        {teacherName}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      <div className="flex justify-between px-8 py-4 border-t border-slate-100 bg-slate-50">
+        <button onClick={onPrev} className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 px-6 py-2.5 rounded-lg text-sm font-bold transition-all">
+          Back
+        </button>
+        <button onClick={onNext} className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-2.5 rounded-lg text-sm font-bold shadow-sm transition-all hover:shadow">
+          Continue
+        </button>
       </div>
     </div>
   );
