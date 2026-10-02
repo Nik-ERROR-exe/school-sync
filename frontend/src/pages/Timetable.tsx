@@ -7,7 +7,7 @@ import { ApiSlot, ApiClass, ApiSubject, ApiTeacher } from '../features/timetable
 import { WizardState } from '../features/timetable/WizardContext';
 import { useAuth } from '../context/AuthContext';
 import api from '../api';
-import { Loader2, AlertCircle, Sparkles, CalendarDays, CheckCircle2, Clock } from 'lucide-react';
+import { Loader2, AlertCircle, Sparkles, CalendarDays, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 // ─── Admin Landing Page ─────────────────────────────────────────────────────
@@ -112,6 +112,9 @@ function TeacherTimetableView({ teacherName }: TeacherViewProps) {
   const [periodsPerDay, setPeriodsPerDay] = useState(8);
   const [saturdayPeriods, setSaturdayPeriods] = useState(4);
   const [lunchPeriod, setLunchPeriod] = useState<number | null>(4);
+  const [startTime, setStartTime] = useState<string | null>(null);
+  const [periodMinutes, setPeriodMinutes] = useState<number | null>(null);
+  const [lunchMinutes, setLunchMinutes] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -138,6 +141,9 @@ function TeacherTimetableView({ teacherName }: TeacherViewProps) {
           setPeriodsPerDay(s.periods_per_day ?? 8);
           setSaturdayPeriods(s.saturday_periods ?? 4);
           setLunchPeriod(s.lunch_period ?? 4);
+          setStartTime(s.start_time ?? null);
+          setPeriodMinutes(s.period_minutes ?? null);
+          setLunchMinutes(s.lunch_minutes ?? null);
         }
       }
     } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -200,6 +206,9 @@ function TeacherTimetableView({ teacherName }: TeacherViewProps) {
         periodsPerDay={periodsPerDay}
         saturdayPeriods={saturdayPeriods}
         lunchPeriod={lunchPeriod}
+        startTime={startTime}
+        periodMinutes={periodMinutes}
+        lunchMinutes={lunchMinutes}
       />
     </div>
   );
@@ -236,6 +245,9 @@ function AdminTimetableFlow() {
         periodsPerDay: 8,
         saturdayPeriods: savedSatPeriods ? Number(savedSatPeriods) : 4,
         lunchPeriod: 4,
+        startTime: '07:10',
+        periodMinutes: 40,
+        lunchMinutes: 40,
         selectedTeacherIds: [],
         ptSubjectId: savedPt ? Number(savedPt) : null,
         selectedClassId: savedClassId ? Number(savedClassId) : null,
@@ -256,6 +268,9 @@ function AdminTimetableFlow() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [viewClassId, setViewClassId] = useState<number | null>(null);
+  const [relaxations, setRelaxations] = useState<
+    Array<{ teacher_id: number; teacher_name: string; demand: number; reason: string }>
+  >([]);
 
   // Fetch classes, subjects, teachers, and saved timetable on mount
   const fetchAllData = useCallback(async () => {
@@ -286,6 +301,9 @@ function AdminTimetableFlow() {
           saturdayPeriods: s.saturday_periods ?? 4,
           lunchPeriod: s.lunch_period ?? 4,
           ptSubjectId: s.pt_subject_id,
+          startTime: s.start_time ?? prev?.startTime ?? '07:10',
+          periodMinutes: s.period_minutes ?? prev?.periodMinutes ?? 40,
+          lunchMinutes: s.lunch_minutes ?? prev?.lunchMinutes ?? 40,
           selectedTeacherIds: prev?.selectedTeacherIds ?? [],
           selectedClassId: prev?.selectedClassId ?? null,
           weeklyRequirements: prev?.weeklyRequirements ?? [],
@@ -326,6 +344,9 @@ function AdminTimetableFlow() {
           periodsPerDay: prev?.periodsPerDay ?? 8,
           saturdayPeriods: prev?.saturdayPeriods ?? 4,
           lunchPeriod: prev?.lunchPeriod ?? 4,
+          startTime: prev?.startTime ?? '07:10',
+          periodMinutes: prev?.periodMinutes ?? 40,
+          lunchMinutes: prev?.lunchMinutes ?? 40,
           selectedTeacherIds: prev?.selectedTeacherIds ?? [],
           ptSubjectId: ptSub.id,
           selectedClassId: prev?.selectedClassId ?? null,
@@ -338,16 +359,26 @@ function AdminTimetableFlow() {
     }
   }, [subjects, wizardSettings]);
 
-  const handleGenerateComplete = (responseSchedule: ApiSlot[], wizardState: WizardState) => {
+  const handleGenerateComplete = (
+    responseSchedule: ApiSlot[],
+    wizardState: WizardState,
+    relaxationsArg?: Array<any>,
+  ) => {
     setSchedule(responseSchedule);
     setWizardSettings(wizardState);
     setHasSavedTimetable(true);
+    setRelaxations(Array.isArray(relaxationsArg) ? relaxationsArg : []);
     setMode('grid');
 
     api.post('/admin/timetable/settings', {
       school_days: wizardState.schoolDays,
       saturday_periods: wizardState.saturdayPeriods,
       pt_subject_id: wizardState.ptSubjectId,
+      periods_per_day: wizardState.periodsPerDay,
+      lunch_period: wizardState.lunchPeriod,
+      start_time: wizardState.startTime,
+      period_minutes: wizardState.periodMinutes,
+      lunch_minutes: wizardState.lunchMinutes,
     }).catch(err => console.error('Failed to save timetable settings:', err));
   };
 
@@ -380,6 +411,7 @@ function AdminTimetableFlow() {
   const handleRegenerate = () => {
     setMode('wizard');
     setSchedule([]);
+    setRelaxations([]);
   };
 
   const handleDownload = async (format: 'pdf' | 'excel') => {
@@ -502,6 +534,31 @@ function AdminTimetableFlow() {
         onDownload={handleDownload}
       />
 
+      {relaxations.length > 0 && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-start gap-2">
+          <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={16} />
+          <div className="text-xs leading-relaxed">
+            <p className="font-bold text-amber-900">
+              This timetable was generated with relaxed teacher constraints. These teachers may teach more periods per day than configured, or without adequate breaks:
+            </p>
+            <ul className="mt-1 text-amber-800 space-y-0.5">
+              {relaxations.map((r) => (
+                <li key={r.teacher_id}>
+                  • {r.teacher_name} ({r.demand} periods/week —{' '}
+                  {r.reason === 'physical_overflow_gaps_allowed'
+                    ? 'gaps may exist in the grid'
+                    : 'soft cap relaxed'}
+                  )
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1 text-amber-700">
+              Consider redistributing their subject assignments.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 overflow-hidden">
           <TimetableGrid 
@@ -513,6 +570,9 @@ function AdminTimetableFlow() {
             periodsPerDay={wizardSettings?.periodsPerDay ?? 8}
             saturdayPeriods={wizardSettings?.saturdayPeriods ?? 4}
             lunchPeriod={wizardSettings?.lunchPeriod ?? 4}
+            startTime={wizardSettings?.startTime ?? null}
+            periodMinutes={wizardSettings?.periodMinutes ?? null}
+            lunchMinutes={wizardSettings?.lunchMinutes ?? null}
             onSave={handleSaveSlotEdit}
             onClassChange={setViewClassId}
           />
