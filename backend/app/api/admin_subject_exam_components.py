@@ -59,17 +59,18 @@ async def get_components_by_class(
     db: AsyncSession = Depends(get_db)
 ):
     """Return every subject of a class grouped with its configured components."""
-    class_row = (await db.execute(
-        select(SchoolClass).where(SchoolClass.class_name == class_name)
-    )).scalars().first()
+    class_ids = (await db.execute(
+        select(SchoolClass.id).where(SchoolClass.class_name == class_name)
+    )).scalars().all()
 
-    if class_row is None:
+    if not class_ids:
         return []
 
     subjects_stmt = (
         select(Subject)
         .join(class_subjects, Subject.id == class_subjects.c.subject_id)
-        .where(class_subjects.c.class_id == class_row.id)
+        .where(class_subjects.c.class_id.in_(class_ids))
+        .distinct()
         .order_by(Subject.subject_name)
     )
     subjects = list((await db.execute(subjects_stmt)).scalars().all())
