@@ -6,7 +6,11 @@ import { ApiSlot } from '../../types';
 
 interface Step4Props {
   onPrev: () => void;
-  onGenerateComplete: (schedule: ApiSlot[], wizardState: WizardState) => void;
+  onGenerateComplete: (
+    schedule: ApiSlot[],
+    wizardState: WizardState,
+    relaxations?: any[],
+  ) => void;
 }
 
 
@@ -26,6 +30,30 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
   const [showTeacherModal, setShowTeacherModal] = useState(false);
   const [teacherChoices, setTeacherChoices] = useState<TeacherChoice[]>([]);
   const [allTeachers, setAllTeachers] = useState<ApiTeacher[]>([]);
+  const [allClasses, setAllClasses] = useState<any[]>([]);
+  const [overflowWarning, setOverflowWarning] = useState<{
+    code: string;
+    message: string;
+    teachers: Array<{
+      teacher_id: number;
+      teacher_name: string;
+      demand: number;
+      capacity?: number;
+      soft_cap?: number;
+    }>;
+  } | null>(null);
+
+  useEffect(() => {
+    const fetchClassList = async () => {
+      try {
+        const res = await api.get('/admin/classes/');
+        setAllClasses(res.data);
+      } catch {
+        // silent
+      }
+    };
+    fetchClassList();
+  }, []);
 
   useEffect(() => {
     const fetchTeacherData = async () => {
@@ -102,13 +130,35 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
     fetchTeacherData();
   }, [state.selectedClassId, allTeachers]);
 
-  const handleGenerate = async () => {
+  const classesForGeneration = useMemo(() => {
+    if (state.generateMode === 'single') {
+      const targetClass = allClasses.find((c: any) => c.id === state.selectedClassId);
+      return targetClass ? [{
+        id: targetClass.id,
+        class_name: targetClass.class_name,
+        division: targetClass.division,
+      }] : [];
+    }
+    const range = state.generateMode === 'primary' ? [1, 2, 3, 4] : [5, 6, 7, 8, 9, 10];
+    return allClasses
+      .filter((c: any) => range.includes(Number(c.class_name)))
+      .map((c: any) => ({
+        id: c.id,
+        class_name: c.class_name,
+        division: c.division,
+      }));
+  }, [state.generateMode, allClasses, state.selectedClassId]);
+
+  const handleGenerate = async (overrides?: {
+    relax_teacher_caps?: boolean;
+    allow_gaps?: boolean;
+  }) => {
     if (!state.ptSubjectId) {
       setError("PT Subject is not selected. Go back to Step 2 and select the PT subject.");
       return;
     }
-    if (!state.selectedClassId) {
-      setError("No class selected. Go back to Step 1 and select a class.");
+    if (state.generateMode === 'single' && !state.selectedClassId) {
+      setError("No class selected. Go back to Step 2 and select a class.");
       return;
     }
 
@@ -118,32 +168,37 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
     updateState({ diagnosticIssues: [] });
 
     try {
-      const classesRes = await api.get('/admin/classes/');
-      const allClasses = classesRes.data;
+      if (state.generateMode === 'single') {
+        const hasReq = state.weeklyRequirements.some(r => r.class_id === state.selectedClassId && r.periods_per_week > 0);
+        if (!hasReq) {
+          const cls = allClasses.find((c: any) => c.id === state.selectedClassId);
+          const className = cls ? `${cls.class_name}-${cls.division}` : `#${state.selectedClassId}`;
+          setError(`Class ${className} has no weekly requirements configured. Go back to Step 3.`);
+          setIsGenerating(false);
+          return;
+        }
+      }
 
-      const hasReq = state.weeklyRequirements.some(r => r.class_id === state.selectedClassId && r.periods_per_week > 0);
-      if (!hasReq) {
-        const cls = allClasses.find((c: any) => c.id === state.selectedClassId);
-        const className = cls ? `${cls.class_name}-${cls.division}` : `#${state.selectedClassId}`;
-        setError(`Class ${className} has no weekly requirements configured. Go back to Step 3.`);
+      if (classesForGeneration.length === 0) {
+        setError('No classes found for the selected group. Check that classes exist in Class Management.');
         setIsGenerating(false);
         return;
       }
 
-      const targetClass = allClasses.find((c: any) => c.id === state.selectedClassId);
-      const targetClasses = targetClass ? [{
-        id: targetClass.id,
-        class_name: targetClass.class_name,
-        division: targetClass.division
-      }] : [];
-
       const body: any = {
         school_days: state.schoolDays,
+        saturday_periods: state.saturdayPeriods,
         pt_subject_id: state.ptSubjectId,
-        classes: targetClasses,
+        classes: classesForGeneration,
+        periods_per_day: state.periodsPerDay,
+        lunch_period: state.lunchPeriod,
+        start_time: state.startTime,
+        period_minutes: state.periodMinutes,
+        lunch_minutes: state.lunchMinutes,
+        ...(overrides || {}),
       };
 
-      if (teacherChoices.length > 0) {
+      if (state.generateMode === 'single' && teacherChoices.length > 0) {
         body.subject_teacher_assignments = {};
         for (const choice of teacherChoices) {
           if (choice.selectedTeacherId) {
@@ -152,43 +207,72 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
         }
       }
 
-      const response = await api.post('/admin/timetable/generate', body, { timeout: 25000 });
+      const response = await api.post('/admin/timetable/generate', body, { timeout: 300000 });
 
       localStorage.setItem('school_days', JSON.stringify(state.schoolDays));
       localStorage.setItem('saturday_periods', String(state.saturdayPeriods));
       localStorage.setItem('pt_subject_id', state.ptSubjectId !== null ? String(state.ptSubjectId) : '');
       localStorage.setItem('selected_class_id', state.selectedClassId ? String(state.selectedClassId) : '');
 
-      onGenerateComplete(response.data.schedule, state);
+      onGenerateComplete(
+        response.data.schedule,
+        state,
+        response.data.relaxations || [],
+      );
     } catch (err: any) {
       console.error('Generate error:', err.response?.data || err.message);
       if (err?.code === 'ECONNABORTED' && String(err?.message || '').includes('timeout')) {
-        setError('Timetable generation timed out after 25 seconds. Try selecting fewer classes or loosening teacher/subject constraints.');
+        setError('Timetable generation is taking too long (over 5 minutes). This usually means the constraints are very tight or too many classes are being generated at once. Try a smaller group or resolve teacher overloading first.');
       } else {
         const detail = err.response?.data?.detail;
-        let errorMessage = 'Timetable generation failed. Please go back and adjust your settings.';
-        let issues: DiagnosticIssue[] = [];
 
-        if (typeof detail === 'string') {
-          errorMessage = detail;
-        } else if (detail && Array.isArray(detail.issues)) {
-          errorMessage = typeof detail.message === 'string' ? detail.message : errorMessage;
-          issues = detail.issues;
-        } else if (Array.isArray(detail)) {
-          errorMessage = detail.map((d: any) => d.msg || d).join('; ');
-        } else if (detail && typeof detail === 'object' && typeof detail.message === 'string') {
-          errorMessage = detail.message;
-          if (Array.isArray(detail.issues)) {
+        if (
+          detail &&
+          typeof detail === 'object' &&
+          !Array.isArray(detail) &&
+          (detail.code === 'PHYSICAL_OVERFLOW' || detail.code === 'SOFT_OVERFLOW')
+        ) {
+          setOverflowWarning({
+            code: detail.code,
+            message:
+              typeof detail.message === 'string'
+                ? detail.message
+                : 'Timetable requires relaxed constraints.',
+            teachers: Array.isArray(detail.teachers) ? detail.teachers : [],
+          });
+          setError(null);
+          setDiagnosticIssues([]);
+        } else {
+          let errorMessage =
+            'Timetable generation failed. Please go back and adjust your settings.';
+          let issues: DiagnosticIssue[] = [];
+
+          if (typeof detail === 'string') {
+            errorMessage = detail;
+          } else if (detail && Array.isArray(detail.issues)) {
+            errorMessage =
+              typeof detail.message === 'string' ? detail.message : errorMessage;
             issues = detail.issues;
+          } else if (Array.isArray(detail)) {
+            errorMessage = detail.map((d: any) => d.msg || d).join('; ');
+          } else if (
+            detail &&
+            typeof detail === 'object' &&
+            typeof detail.message === 'string'
+          ) {
+            errorMessage = detail.message;
+            if (Array.isArray(detail.issues)) {
+              issues = detail.issues;
+            }
+          } else if (typeof err.message === 'string') {
+            errorMessage = err.message;
           }
-        } else if (typeof err.message === 'string') {
-          errorMessage = err.message;
-        }
 
-        setError(errorMessage);
-        setDiagnosticIssues(issues);
-        if (issues.length > 0) {
-          updateState({ diagnosticIssues: issues });
+          setError(errorMessage);
+          setDiagnosticIssues(issues);
+          if (issues.length > 0) {
+            updateState({ diagnosticIssues: issues });
+          }
         }
       }
       setIsGenerating(false);
@@ -230,10 +314,9 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
             {state.periodsPerDay} periods/day
           </span>
           <span className="text-xs font-semibold bg-slate-100 text-slate-600 px-3 py-1 rounded-full">
-            1 class selected
-          </span>
-          <span className="text-xs font-semibold bg-slate-100 text-slate-600 px-3 py-1 rounded-full">
-            {state.selectedTeacherIds.length} teachers
+            {state.generateMode === 'single' ? '1 class selected' :
+             state.generateMode === 'primary' ? `${classesForGeneration.length} classes (1–4)` :
+             `${classesForGeneration.length} classes (5–10)`}
           </span>
           {state.lunchPeriod && (
             <span className="text-xs font-semibold bg-slate-100 text-slate-600 px-3 py-1 rounded-full">
@@ -346,7 +429,7 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
         )}
 
         <button
-          onClick={handleGenerate}
+          onClick={() => handleGenerate()}
           disabled={isGenerating}
           className={`flex items-center gap-3 px-8 py-4 rounded-xl text-lg font-bold text-white shadow-lg shadow-blue-600/20 transition-all ${
             isGenerating ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:-translate-y-0.5'
@@ -358,7 +441,7 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
 
         {isGenerating && (
           <p className="text-xs text-slate-400 mt-4 animate-pulse">
-            This may take up to 30 seconds depending on the number of classes and constraints…
+            This may take up to 3 minutes for large groups. Please do not close this tab.
           </p>
         )}
       </div>
@@ -418,6 +501,90 @@ export default function Step4TeacherAssignment({ onPrev, onGenerateComplete }: S
               >
                 Confirm
                 <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {overflowWarning && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-amber-200 bg-amber-50 flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle size={20} className="text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="text-base font-bold text-amber-900">
+                    {overflowWarning.code === 'PHYSICAL_OVERFLOW'
+                      ? 'Teacher capacity exceeded'
+                      : 'Teacher daily cap exceeded'}
+                  </h3>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    {overflowWarning.code === 'PHYSICAL_OVERFLOW'
+                      ? 'These teachers are scheduled for more weekly periods than slots exist. Proceeding will leave some periods unfilled.'
+                      : 'These teachers exceed their configured daily soft cap. Proceeding will relax their caps.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setOverflowWarning(null)}
+                className="p-1 hover:bg-amber-100 rounded-lg transition-colors shrink-0"
+              >
+                <X size={18} className="text-amber-700" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  <tr className="border-b border-slate-200">
+                    <th className="text-left pb-2">Teacher</th>
+                    <th className="text-right pb-2">Demand/week</th>
+                    <th className="text-right pb-2">Capacity</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {overflowWarning.teachers.map((t) => (
+                    <tr key={t.teacher_id}>
+                      <td className="py-2 font-semibold text-slate-800">
+                        {t.teacher_name}
+                      </td>
+                      <td className="py-2 text-right font-mono text-slate-700">
+                        {t.demand}
+                      </td>
+                      <td className="py-2 text-right font-mono text-slate-500">
+                        {t.capacity ?? t.soft_cap ?? '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-xs text-amber-800 leading-relaxed">
+                  {overflowWarning.message}
+                </p>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-2">
+              <button
+                onClick={() => setOverflowWarning(null)}
+                className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setOverflowWarning(null);
+                  handleGenerate({
+                    allow_gaps: true,
+                    relax_teacher_caps: true,
+                  });
+                }}
+                className="px-5 py-2.5 text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-sm transition-colors"
+              >
+                Proceed anyway
               </button>
             </div>
           </div>
