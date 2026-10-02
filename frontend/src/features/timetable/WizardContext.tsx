@@ -27,11 +27,16 @@ export interface WizardState {
   schoolDays: string[];
   periodsPerDay: number;
   saturdayPeriods: number;
+  startTime: string;
+  endTime: string;
+  periodMinutes: number;
+  lunchMinutes: number;
   lunchPeriod: number | null;
 
   selectedTeacherIds: number[];
   ptSubjectId: number | null;
   selectedClassId: number | null;
+  generateMode: 'single' | 'primary' | 'secondary';
   weeklyRequirements: WeeklyReqEntry[];
 
   diagnosticIssues: DiagnosticIssue[];
@@ -72,10 +77,15 @@ const defaultState: WizardState = {
   schoolDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
   periodsPerDay: 8,
   saturdayPeriods: 4,
+  startTime: '07:10',
+  endTime: '12:35',
+  periodMinutes: 40,
+  lunchMinutes: 40,
   lunchPeriod: 4,
   selectedTeacherIds: [],
   ptSubjectId: null,
   selectedClassId: null,
+  generateMode: 'single',
   weeklyRequirements: [],
   diagnosticIssues: [],
   _teachersCache: [],
