@@ -5,17 +5,23 @@ from app.core.exceptions import ValidationException
 def validate_timetable_slots(
     slots: List[TimetableSlotResponse],
     teachers_list: List[Any],  # Database Teacher models
-    pt_subject_id: int
+    pt_subject_id: int,
+    class_teacher_map: Dict[int, int],
 ) -> None:
     """
     Validates manually edited timetable slots against the 4 core business constraints.
     Raises ValidationException if any constraint is violated.
+
+    class_teacher_map is {class_id: class_teacher_id} for the classes being
+    saved. Classes with no assigned class teacher are absent from the map.
     """
     # Create helper dictionary for teacher profiles to check daily limit constraints
     teachers_map = {t.id: t for t in teachers_list}
     
     class_period_check = set()
     teacher_period_map: Dict[Tuple[int, str, int], int] = {}
+    teacher_daily_count: Dict[Tuple[int, str], int] = {}
+    pt_period_count: Dict[Tuple[str, int], int] = {}
     
     for slot in slots:
         # 0 represents Free / Study periods (no teacher required, no constraints)
@@ -63,4 +69,25 @@ def validate_timetable_slots(
                     f"PT Ground Capacity Limit Exceeded: More than 2 classes are assigned PT during "
                     f"{slot.day_of_week} Period {slot.period_number}."
                 )
+
+    # --- Class-teacher period 1 rule ---
+    # Every (class, day) with period 1 present must have the class teacher.
+    # Classes absent from class_teacher_map have no assigned class teacher
+    # and are rejected explicitly rather than skipped.
+    for slot in slots:
+        if slot.period_number != 1:
+            continue
+        if slot.class_id not in class_teacher_map:
+            raise ValidationException(
+                f"Class id {slot.class_id} has no class teacher assigned. "
+                f"Assign a class teacher before saving the timetable."
+            )
+        expected = class_teacher_map[slot.class_id]
+        if slot.teacher_id != expected:
+            raise ValidationException(
+                f"Period 1 of class id {slot.class_id} on {slot.day_of_week} "
+                f"is assigned to teacher id {slot.teacher_id}, but the class "
+                f"teacher is teacher id {expected}. Period 1 must be taught "
+                f"by the class teacher."
+            )
 
