@@ -1,329 +1,387 @@
-from typing import List, Dict, Tuple, Optional
-import random
-import time
-from app.services.timetable.models_internal import SolverInput, SolverTeacher, SolverClass, SolverRequirement, SolverSlot
-from app.services.timetable.constraints import (
-    check_teacher_overlap,
-    check_teacher_daily_limit,
-    check_teacher_back_to_back,
-    check_pt_capacity,
-    check_teacher_availability,
-    check_no_consecutive_same_subject,
-    check_subject_daily_limit
-)
+import os
+from typing import List, Dict, Any, Tuple
+
+from ortools.sat.python import cp_model
+
+from app.services.timetable.models_internal import SolverInput
 from app.services.timetable.diagnostics import TimetableDiagnostics
 from app.core.exceptions import ValidationException
 
 
-class _Timeout(Exception):
-    """Internal: the solver exceeded its wall-clock budget while searching."""
-
-
 class TimetableSolver:
-    def __init__(self, solver_input: SolverInput, time_limit: float = 20.0):
+    """CP-SAT based timetable solver.
+
+    Replaces the previous hand-written backtracking solver. Public interface
+    is unchanged: solve() returns List[Dict[str, Any]] with keys class_id,
+    day_of_week, period_number, subject_id, teacher_id; on infeasibility it
+    raises ValidationException.
+    """
+
+    def __init__(self, solver_input: SolverInput, time_limit: float = 180.0):
         self.input = solver_input
         self.time_limit = time_limit
 
-        # Auto-adjust requirements so they fill all available slots per class
-        self.input.weekly_requirements = self.auto_adjust_requirements(
-            self.input.weekly_requirements,
-            self.input.school_days,
-            self.input.periods_per_day,
-            self.input.lunch_period
-        )
-
-        self.teachers_map = {t.id: t for t in solver_input.teachers}
-
-        # Build subject expertise map for faster lookup
-        self.teachers_by_subject: Dict[int, List[SolverTeacher]] = {}
-        for teacher in solver_input.teachers:
-            for sub_id in teacher.subject_expertise:
-                self.teachers_by_subject.setdefault(sub_id, []).append(teacher)
-
-    @staticmethod
-    def auto_adjust_requirements(
-        requirements: List[SolverRequirement],
-        school_days: List[str],
-        periods_per_day: int,
-        lunch_period: Optional[int]
-    ) -> List[SolverRequirement]:
-        """
-        Auto-distributes weekly requirements so they sum to the total available
-        slots per class. Admin-provided periods_per_week values are treated as
-        minimums (with a floor of 1). Remaining slots are distributed round-robin.
-        """
-        total_slots = len(school_days) * (
-            periods_per_day - (1 if lunch_period else 0)
-        )
-
-        # Group requirements by class
-        by_class: Dict[int, List[SolverRequirement]] = {}
-        for req in requirements:
-            by_class.setdefault(req.class_id, []).append(req)
-
-        adjusted: List[SolverRequirement] = []
-        for class_id, reqs in by_class.items():
-            n = len(reqs)
-            if n == 0:
-                continue
-
-            # Step 1: enforce minimum of 1 per subject
-            counts = [max(r.periods_per_week, 1) for r in reqs]
-            sum_min = sum(counts)
-
-            if sum_min > total_slots:
-                # Scale down: subtract from largest first until sum == total_slots
-                while sum(counts) > total_slots:
-                    max_idx = counts.index(max(counts))
-                    if counts[max_idx] <= 1:
-                        break  # can't reduce below 1
-                    counts[max_idx] -= 1
-            elif sum_min < total_slots:
-                # Distribute remaining slots round-robin
-                remaining = total_slots - sum_min
-                i = 0
-                while remaining > 0:
-                    counts[i % n] += 1
-                    remaining -= 1
-                    i += 1
-
-            for req, count in zip(reqs, counts):
-                adjusted.append(SolverRequirement(
-                    class_id=req.class_id,
-                    subject_id=req.subject_id,
-                    periods_per_week=count,
-                    original_periods_per_week=req.periods_per_week
-                ))
-
-        return adjusted
-
-    def solve(self) -> List[Dict[str, any]]:
-        """
-        Solves the timetable using randomized backtracking with multiple attempts.
-        Each attempt uses a different random seed to explore different orderings.
-
-        Fast-fails on provably-unsatisfiable configurations (missing teacher
-        coverage, insufficient capacity, slots overflow, etc.), and is bounded by a
-        wall-clock budget so a hard instance returns actionable diagnostics instead
-        of hanging.
-        """
-        # 1. Pre-flight: fail fast with diagnostics if the config is provably unsolvable.
-        pre_issues = TimetableDiagnostics(self.input).run()
-        if any(i.severity == "error" for i in pre_issues):
+    def solve(self) -> List[Dict[str, Any]]:
+        # Pre-flight diagnostics — same contract as the previous solver.
+        issues = TimetableDiagnostics(self.input).run()
+        hard = [i for i in issues if getattr(i, "severity", None) == "error"]
+        if hard:
             raise ValidationException(
-                "The current timetable configuration cannot be generated. "
-                "Please review the issues below and adjust your settings.",
-                details=pre_issues
+                "Cannot generate timetable: " + " ".join(i.message for i in hard)
             )
 
-        # 2. Backstop capacity check (fast, specific message) before the search.
-        self._check_teacher_capacity()
+        days = list(self.input.school_days)
+        classes = list(self.input.classes)
 
-        # 3. Bounded randomized backtracking.
-        self._deadline = time.monotonic() + self.time_limit
-        max_attempts = 1000
-        try:
-            for attempt in range(max_attempts):
-                try:
-                    return self._try_solve(attempt)
-                except ValidationException:
-                    continue
-        except _Timeout:
-            self._raise_with_diagnostics()
+        sat_periods = self.input.saturday_periods
+        if sat_periods is None:
+            sat_periods = self.input.periods_per_day
 
-        # All attempts failed — run diagnostics and return structured errors
-        self._raise_with_diagnostics()
+        def teachable_periods(day):
+            cap = min(sat_periods, self.input.periods_per_day) if day == "Saturday" \
+                  else self.input.periods_per_day
+            ps = [p for p in range(1, cap + 1) if p != self.input.lunch_period]
+            return ps
 
-    def _raise_with_diagnostics(self):
-        """Build structured diagnostics and raise a ValidationException with them."""
-        diagnostics = TimetableDiagnostics(self.input)
-        issues = diagnostics.run()
-        raise ValidationException(
-            "Could not generate a valid timetable within the time limit. "
-            "Please review the issues below and adjust your settings.",
-            details=issues
-        )
+        per_day_periods: Dict[str, List[int]] = {d: teachable_periods(d) for d in days}
 
-    def _try_solve(self, seed: int) -> List[Dict[str, any]]:
-        random.seed(seed)
-        # Build slots (no lunch)
-        all_slots: List[Tuple[int, str, int]] = []
-        for school_class in self.input.classes:
-            for period in range(1, self.input.periods_per_day + 1):
-                if period == self.input.lunch_period:
-                    continue
-                for day in self.input.school_days:
-                    all_slots.append((school_class.id, day, period))
-        random.shuffle(all_slots)
+        req_by_class: Dict[int, List[Tuple[int, int]]] = {}
+        for r in self.input.weekly_requirements:
+            req_by_class.setdefault(r.class_id, []).append(
+                (r.subject_id, r.periods_per_week)
+            )
 
-        # Build subject pool per class: flat list of subject_ids to place
-        class_subject_pool: Dict[int, List[int]] = {c.id: [] for c in self.input.classes}
-        for req in self.input.weekly_requirements:
-            if req.class_id in class_subject_pool:
-                class_subject_pool[req.class_id].extend([req.subject_id] * req.periods_per_week)
+        model = cp_model.CpModel()
 
-        total_slots_per_class = len(self.input.school_days) * (
-            self.input.periods_per_day - (1 if self.input.lunch_period else 0)
-        )
-        for c in self.input.classes:
-            if len(class_subject_pool[c.id]) != total_slots_per_class:
-                raise ValidationException(
-                    f"Class {c.class_name}-{c.division} requires "
-                    f"{len(class_subject_pool[c.id])} periods, but only "
-                    f"{total_slots_per_class} slots are available."
-                )
+        # --- Decision variables: x[(class_id, day, period, subject_id, teacher_id)] ---
+        x: Dict[Tuple[int, str, int, int, int], cp_model.IntVar] = {}
+        for c in classes:
+            for (s_id, _w) in req_by_class.get(c.id, []):
+                eligible = self.input.class_subject_teachers.get((c.id, s_id), [])
+                for t_id in eligible:
+                    for d in days:
+                        for p in per_day_periods[d]:
+                            x[(c.id, d, p, s_id, t_id)] = model.NewBoolVar(
+                                f"x_{c.id}_{d}_{p}_{s_id}_{t_id}"
+                            )
 
-        # Build weekly lookup for constraint checks
-        self.class_subject_weekly = {}
-        for req in self.input.weekly_requirements:
-            self.class_subject_weekly[(req.class_id, req.subject_id)] = req.periods_per_week
+        # --- Index by (class, day, period) for the slot-exactly-one constraint ---
+        slot_vars: Dict[Tuple[int, str, int], List[cp_model.IntVar]] = {}
+        for (c_id, d, p, _s, _t), v in x.items():
+            slot_vars.setdefault((c_id, d, p), []).append(v)
 
-        # Pre-fill existing slots (from other classes, or previously saved)
-        assignments: Dict[Tuple[int, str, int], Tuple[int, int]] = {}
+        for c in classes:
+            for d in days:
+                for p in per_day_periods[d]:
+                    vs = slot_vars.get((c.id, d, p), [])
+                    if not vs:
+                        raise ValidationException(
+                            f"No eligible teacher for class {c.class_name}-{c.division} "
+                            f"on {d} period {p}. Check teacher-class-subject assignments."
+                        )
+                    if self.input.allow_gaps:
+                        model.Add(sum(vs) <= 1)
+                    else:
+                        model.Add(sum(vs) == 1)
 
-        # --- Pre-fill period 1 with the class teacher for every generating class ---
-        # On every school day, assign one subject the class teacher actually
-        # teaches to that class. Greedy choice: most remaining periods; tie-break
-        # by lowest subject_id for determinism. The pool is decremented so the
-        # solver sees reduced counts. backtrack() skips already-assigned slots,
-        # so these are never overwritten. Factory pre-flight guarantees every
-        # class here has a class teacher with at least one eligible subject.
-        for _c in self.input.classes:
-            _ct_id = _c.class_teacher_id
-            if _ct_id is None:
-                raise ValidationException(
-                    f"Class {_c.class_name}-{_c.division} has no class teacher."
-                )
-            _pool = class_subject_pool[_c.id]
-            for _day in self.input.school_days:
-                _counts: Dict[int, int] = {}
-                for _sub_id in _pool:
-                    if _ct_id in self.input.class_subject_teachers.get((_c.id, _sub_id), []):
-                        _counts[_sub_id] = _counts.get(_sub_id, 0) + 1
-                if not _counts:
-                    raise ValidationException(
-                        f"Cannot fill period 1 for class {_c.class_name}-{_c.division}: "
-                        f"class teacher {_ct_id} has no remaining periods in any "
-                        f"subject they teach to this class. Increase a subject's "
-                        f"weekly periods."
-                    )
-                _chosen = min(_counts, key=lambda s: (-_counts[s], s))
-                _pool.remove(_chosen)
-                assignments[(_c.id, _day, 1)] = (_chosen, _ct_id)
+        # --- Weekly requirement per (class, subject) ---
+        for c in classes:
+            for (s_id, w) in req_by_class.get(c.id, []):
+                vs = [v for (cid, _d, _p, sid, _t), v in x.items()
+                      if cid == c.id and sid == s_id]
+                if self.input.allow_gaps:
+                    model.Add(sum(vs) <= w)
+                else:
+                    model.Add(sum(vs) == w)
 
+        # --- Block teachers who are already booked in other classes ---
+        blocked: Dict[Tuple[int, str, int], int] = {}
         for slot in self.input.existing_slots:
-            assignments[(slot.class_id, slot.day_of_week, slot.period_number)] = (slot.subject_id, slot.teacher_id)
-            if slot.subject_id != 0:
-                pool = class_subject_pool.get(slot.class_id, [])
-                if slot.subject_id in pool:
-                    pool.remove(slot.subject_id)
+            key = (slot.teacher_id, slot.day_of_week, slot.period_number)
+            blocked[key] = blocked.get(key, 0) + 1
 
-        def get_possible_teachers(class_id: int, sub_id: int, day: str, period: int) -> List[int]:
-            teachers = self.teachers_by_subject.get(sub_id, [])
-            allowed = self.input.class_subject_teachers.get((class_id, sub_id), None)
-            if allowed:
-                teachers = [t for t in teachers if t.id in allowed]
-            valid = []
-            for t in teachers:
-                if not check_teacher_overlap(t.id, day, period, assignments):
-                    continue
-                if not check_teacher_daily_limit(t.id, day, t.max_lectures_per_day, assignments):
-                    continue
-                if not check_teacher_back_to_back(t.id, day, period, assignments):
-                    continue
-                if sub_id == self.input.pt_subject_id:
-                    if not check_pt_capacity(self.input.pt_subject_id, day, period, assignments):
+        for (c_id, d, p, _s, t_id), v in x.items():
+            if blocked.get((t_id, d, p), 0) > 0:
+                model.Add(v == 0)
+
+        # --- Teacher overlap across generating classes ---
+        teacher_ids = {key[4] for key in x.keys()}
+        for t_id in teacher_ids:
+            for d in days:
+                for p in per_day_periods[d]:
+                    vs = [v for (cid, dd, pp, _s, tid), v in x.items()
+                          if tid == t_id and dd == d and pp == p]
+                    if vs:
+                        model.Add(sum(vs) <= 1)
+
+        # --- Subject daily cap and no-consecutive-same-subject ---
+        num_days = len(days)
+
+        # Adjacent teachable-period pairs; do not pair across lunch.
+        adjacent_pairs_by_day: Dict[str, List[Tuple[int, int]]] = {
+            d: [(per_day_periods[d][i], per_day_periods[d][i+1])
+                for i in range(len(per_day_periods[d]) - 1)
+                if per_day_periods[d][i+1] == per_day_periods[d][i] + 1]
+            for d in days
+        }
+
+        used: Dict[Tuple[int, str, int, int], cp_model.IntVar] = {}
+        for c in classes:
+            for (s_id, w) in req_by_class.get(c.id, []):
+                cap = (w + num_days - 1) // num_days
+                eligible = self.input.class_subject_teachers.get((c.id, s_id), [])
+                for d in days:
+                    day_vars: List[cp_model.IntVar] = []
+                    for p in per_day_periods[d]:
+                        pv = [
+                            x[(c.id, d, p, s_id, t_id)]
+                            for t_id in eligible
+                            if (c.id, d, p, s_id, t_id) in x
+                        ]
+                        if pv:
+                            key = (c.id, d, p, s_id)
+                            used[key] = model.NewBoolVar(f"used_{c.id}_{d}_{p}_{s_id}")
+                            model.Add(sum(pv) == used[key])
+                            day_vars.append(used[key])
+                    if day_vars:
+                        model.Add(sum(day_vars) <= cap)
+
+        for d in days:
+            for (p_a, p_b) in adjacent_pairs_by_day[d]:
+                for c in classes:
+                    for (s_id, _w) in req_by_class.get(c.id, []):
+                        a = used.get((c.id, d, p_a, s_id))
+                        b = used.get((c.id, d, p_b, s_id))
+                        if a is not None and b is not None:
+                            model.Add(a + b <= 1)
+
+        # --- Teacher daily cap and 4-consecutive-then-rest ---
+        teacher_lookup = {t.id: t for t in self.input.teachers}
+        existing_teacher_daily: Dict[Tuple[int, str], int] = {}
+        for s in self.input.existing_slots:
+            k = (s.teacher_id, s.day_of_week)
+            existing_teacher_daily[k] = existing_teacher_daily.get(k, 0) + 1
+
+        # Split each day's teachable periods into contiguous runs (breaks at lunch).
+        for t_id in teacher_ids:
+            t = teacher_lookup.get(t_id)
+            if t is None:
+                continue
+            if t_id in self.input.soft_violation_teachers:
+                continue
+            max_per_day = t.max_lectures_per_day
+
+            for d in days:
+                runs: List[List[int]] = []
+                _cur: List[int] = []
+                for _p in per_day_periods[d]:
+                    if _p == self.input.lunch_period:
+                        if _cur:
+                            runs.append(_cur)
+                            _cur = []
                         continue
-                if not check_teacher_availability(t, day, period):
+                    _cur.append(_p)
+                if _cur:
+                    runs.append(_cur)
+
+                by_period: Dict[int, List[cp_model.IntVar]] = {}
+                for (cid, dd, pp, _s, tid), v in x.items():
+                    if tid == t_id and dd == d:
+                        by_period.setdefault(pp, []).append(v)
+
+                all_day = [v for vs in by_period.values() for v in vs]
+                if all_day:
+                    base = existing_teacher_daily.get((t_id, d), 0)
+                    model.Add(sum(all_day) + base <= max_per_day)
+
+                for run in runs:
+                    for i in range(max(0, len(run) - 4)):
+                        wv: List[cp_model.IntVar] = []
+                        for p in run[i:i + 5]:
+                            wv.extend(by_period.get(p, []))
+                        if wv:
+                            model.Add(sum(wv) <= 4)
+
+        # --- PT capacity: at most 2 classes on PT ground at the same time ---
+        for d in days:
+            for p in per_day_periods[d]:
+                pt_vars = [
+                    v for (cid, dd, pp, s_id, _t), v in x.items()
+                    if dd == d and pp == p and s_id == self.input.pt_subject_id
+                ]
+                if pt_vars:
+                    existing_pt = sum(
+                        1 for s in self.input.existing_slots
+                        if s.day_of_week == d
+                        and s.period_number == p
+                        and s.subject_id == self.input.pt_subject_id
+                    )
+                    model.Add(sum(pt_vars) + existing_pt <= 2)
+
+        # --- Period 1 pre-fill: class teacher of every generating class ---
+        PERIOD_1 = 1
+        for c in classes:
+            ct = c.class_teacher_id
+            if ct is None:
+                raise ValidationException(
+                    f"Class {c.class_name}-{c.division} has no class teacher assigned."
+                )
+            remaining: Dict[int, int] = {}
+            for (s_id, w) in req_by_class.get(c.id, []):
+                if ct in self.input.class_subject_teachers.get((c.id, s_id), []):
+                    remaining[s_id] = w
+            if not remaining:
+                raise ValidationException(
+                    f"Class teacher of {c.class_name}-{c.division} does not teach "
+                    f"any subject of that class."
+                )
+            for d in days:
+                if PERIOD_1 not in per_day_periods[d]:
                     continue
-                if not check_no_consecutive_same_subject(class_id, sub_id, day, period, assignments):
-                    continue
-                pw = self.class_subject_weekly.get((class_id, sub_id), 1)
-                if not check_subject_daily_limit(
-                    class_id, sub_id, day, pw,
-                    len(self.input.school_days), assignments
-                ):
-                    continue
-                valid.append(t.id)
-            random.shuffle(valid)
-            return valid
+                if not remaining:
+                    raise ValidationException(
+                        f"Class teacher of {c.class_name}-{c.division} has no "
+                        f"remaining weekly periods to cover period 1 on every school day."
+                    )
+                s_id = min(remaining, key=lambda s: (-remaining[s], s))
+                key = (c.id, d, PERIOD_1, s_id, ct)
+                if key not in x:
+                    raise ValidationException(
+                        f"Cannot place class teacher of {c.class_name}-{c.division} at "
+                        f"period 1 on {d}: teacher {ct} is not in the eligibility map "
+                        f"for subject {s_id}. Verify teacher-class-subject assignments."
+                    )
+                model.Add(x[key] == 1)
+                remaining[s_id] -= 1
+                if remaining[s_id] == 0:
+                    del remaining[s_id]
 
-        def backtrack(slot_idx: int) -> bool:
-            if time.monotonic() > self._deadline:
-                raise _Timeout()
-            if slot_idx == len(all_slots):
-                return True
+        if self.input.allow_gaps or self.input.relax_teacher_caps:
+            filled_terms = list(x.values())
+            # Prefer filled slots, then unrelaxed teachers, then fewer slack
+            # teachers. Weights chosen so 1 filled slot > 100 relaxed teachers.
+            model.Maximize(sum(filled_terms))
 
-            class_id, day, period = all_slots[slot_idx]
+        # --- Solve ---
+        cp_solver = cp_model.CpSolver()
+        cp_solver.parameters.max_time_in_seconds = self.time_limit
+        cp_solver.parameters.num_search_workers = 8
+        status = cp_solver.Solve(model)
 
-            if (class_id, day, period) in assignments:
-                # Pre-filled (period 1 class teacher) or pre-seeded from
-                # existing_slots — skip; nothing to place here.
-                return backtrack(slot_idx + 1)
+        if os.environ.get("CP_SAT_DEBUG") == "1":
+            self._dump_debug(model, cp_solver, status, x, req_by_class,
+                             per_day_periods, classes, teacher_ids, days)
 
-            pool = class_subject_pool[class_id]
-            if not pool:
-                return False
+        if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            if status == cp_model.INFEASIBLE:
+                raise ValidationException(
+                    "Timetable is infeasible with the current constraints. "
+                    "Review teacher availability, weekly requirements, and class teacher assignments."
+                )
+            if status == cp_model.MODEL_INVALID:
+                raise ValidationException(
+                    "Timetable model is invalid — please report this to the developer."
+                )
+            raise ValidationException(
+                f"Timetable generation timed out after {self.time_limit}s. "
+                "Try generating fewer classes at once or relaxing constraints."
+            )
 
-            remaining_subjects = list(set(pool))
-            random.shuffle(remaining_subjects)
-
-            for sub_id in remaining_subjects:
-                possible_teachers = get_possible_teachers(class_id, sub_id, day, period)
-                for teach_id in possible_teachers:
-                    pool.remove(sub_id)
-                    assignments[(class_id, day, period)] = (sub_id, teach_id)
-                    if backtrack(slot_idx + 1):
-                        return True
-                    assignments.pop((class_id, day, period))
-                    pool.append(sub_id)
-
-            return False
-
-        if not backtrack(0):
-            raise ValidationException("No solution for this attempt.")
-
-        result = []
-        for (class_id, day, period), (sub_id, teach_id) in assignments.items():
-            result.append({
-                "class_id": class_id,
-                "day_of_week": day,
-                "period_number": period,
-                "subject_id": sub_id,
-                "teacher_id": teach_id
-            })
+        # --- Extract solution ---
+        result: List[Dict[str, Any]] = []
+        for (c_id, d, p, s_id, t_id), v in x.items():
+            if cp_solver.Value(v) == 1:
+                result.append({
+                    "class_id": c_id,
+                    "day_of_week": d,
+                    "period_number": p,
+                    "subject_id": s_id,
+                    "teacher_id": t_id,
+                })
         return result
 
-    def _check_teacher_capacity(self):
-        """Fail early only if no teacher globally can teach a required subject."""
-        days = len(self.input.school_days)
-        for req in self.input.weekly_requirements:
-            class_id, sub_id, needed = req.class_id, req.subject_id, req.periods_per_week
-            all_qualified = self.teachers_by_subject.get(sub_id, [])
-            if not all_qualified:
-                diagnostics = TimetableDiagnostics(self.input)
-                issues = diagnostics.run()
-                sub_label = self.input.subject_names.get(sub_id, f"subject {sub_id}")
-                raise ValidationException(
-                    f"No teacher has {sub_label} in their expertise. "
-                    "Assign the subject to at least one teacher first.",
-                    details=issues
-                )
+    def _dump_debug(self, model, cp_solver, status, x, req_by_class,
+                    per_day_periods, classes, teacher_ids, days):
+        print("=" * 70, flush=True)
+        print("CP_SAT_DEBUG dump", flush=True)
+        print(f"status: {cp_solver.StatusName(status)}", flush=True)
+        print(f"model: {len(x)} boolean vars", flush=True)
 
-            allowed_ids = self.input.class_subject_teachers.get((class_id, sub_id))
-            if allowed_ids is not None and len(allowed_ids) > 0:
-                qualified_allowed = [t for t in all_qualified if t.id in allowed_ids]
-                teachers_to_check = qualified_allowed if qualified_allowed else all_qualified
-            else:
-                teachers_to_check = all_qualified
+        print("-" * 70, flush=True)
+        print("PER-CLASS REQUIREMENT TOTALS", flush=True)
+        for c in classes:
+            reqs = req_by_class.get(c.id, [])
+            total = sum(w for (_s, w) in reqs)
+            slots = sum(len(per_day_periods[d]) for d in days)
+            flag = "  <-- MISMATCH" if total != slots else ""
+            print(f"  {c.class_name}-{c.division} (id={c.id}, "
+                  f"teacher={c.class_teacher_id}): "
+                  f"{total} periods required vs {slots} slots{flag}", flush=True)
 
-            total_cap = sum(t.max_lectures_per_day for t in teachers_to_check) * days
-            if total_cap < needed:
-                diagnostics = TimetableDiagnostics(self.input)
-                issues = diagnostics.run()
-                sub_label = self.input.subject_names.get(sub_id, f"subject {sub_id}")
-                raise ValidationException(
-                    f"{sub_label} in class {class_id} needs {needed} periods/week "
-                    f"but total teacher capacity is only {total_cap}.",
-                    details=issues
+        print("-" * 70, flush=True)
+        print("PER-TEACHER LOAD (generating classes only)", flush=True)
+        tlookup = {t.id: t for t in self.input.teachers}
+        for t_id in sorted(teacher_ids):
+            t = tlookup.get(t_id)
+            if t is None:
+                print(f"  teacher id={t_id}: NOT IN SolverInput.teachers", flush=True)
+                continue
+            total = sum(
+                w for c in classes for (s_id, w) in req_by_class.get(c.id, [])
+                if t_id in self.input.class_subject_teachers.get((c.id, s_id), [])
+            )
+            slots_per_week = sum(len(per_day_periods[d]) for d in days)
+            soft_cap = t.max_lectures_per_day * len(days)
+            physical_flag = "  <-- OVER PHYSICAL" if total > slots_per_week else ""
+            soft_flag = ("  <-- OVER SOFT" if
+                         total > soft_cap and total <= slots_per_week else "")
+            print(
+                f"  teacher {t_id} ({t.name}): {total} periods/week "
+                f"vs physical {slots_per_week} / soft {soft_cap}"
+                f"{physical_flag}{soft_flag}",
+                flush=True,
+            )
+
+        print("-" * 70, flush=True)
+        print("PER-TEACHER PER-DAY MINIMUM (period-1 pre-fill only)", flush=True)
+        for c in classes:
+            if c.class_teacher_id is not None:
+                print(f"  class {c.class_name}-{c.division}: "
+                      f"teacher {c.class_teacher_id} forced to period 1 on "
+                      f"all {len(days)} days", flush=True)
+
+        print("-" * 70, flush=True)
+        print("PT STATUS", flush=True)
+        print(f"  pt_subject_id: {self.input.pt_subject_id}", flush=True)
+        pt_reqs = [
+            (c.class_name, c.division, w)
+            for c in classes for (s_id, w) in req_by_class.get(c.id, [])
+            if s_id == self.input.pt_subject_id
+        ]
+        if not pt_reqs:
+            print("  no PT requirements in generating classes", flush=True)
+        else:
+            for (cn, dv, w) in pt_reqs:
+                print(f"  {cn}-{dv}: {w} PT periods/week", flush=True)
+            print(f"  PT cap is 2 classes per (day, period)", flush=True)
+            total_pt = sum(w for (_c, _d, w) in pt_reqs)
+            total_pt_slots = sum(
+                1 for d in days for p in per_day_periods[d]
+            ) * 2
+            flag = "  <-- PT OVER CAP" if total_pt > total_pt_slots else ""
+            print(f"  total PT demand: {total_pt} vs capacity {total_pt_slots}"
+                  f"{flag}", flush=True)
+
+        print("-" * 70, flush=True)
+        print("SUBJECT DAILY CAP (potential binding)", flush=True)
+        for c in classes:
+            for (s_id, w) in req_by_class.get(c.id, []):
+                non_adj = sum(
+                    (len(per_day_periods[d]) + 1) // 2 for d in days
                 )
+                if w > non_adj:
+                    print(f"  {c.class_name}-{c.division} subject {s_id}: "
+                          f"{w}/week but max non-adjacent slots = {non_adj}"
+                          f"  <-- NO-ADJACENT IMPOSSIBLE", flush=True)
+
+        print("=" * 70, flush=True)
