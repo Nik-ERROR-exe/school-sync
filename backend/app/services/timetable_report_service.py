@@ -60,6 +60,23 @@ def build_timetable_grids(
     """
     days = _resolve_days(slots, settings)
 
+    # Resolve config with fallback to module constants.
+    periods_per_day = (
+        settings.periods_per_day
+        if settings and settings.periods_per_day is not None
+        else PERIODS_PER_DAY
+    )
+    lunch_period = (
+        settings.lunch_period
+        if settings and settings.lunch_period is not None
+        else LUNCH_PERIOD
+    )
+    saturday_periods = (
+        settings.saturday_periods
+        if settings and settings.saturday_periods is not None
+        else periods_per_day
+    )
+
     by_class: dict = {}
     for s in slots:
         by_class.setdefault(s.class_id, []).append(s)
@@ -69,24 +86,37 @@ def build_timetable_grids(
         cls = class_slots[0].school_class
         class_name = cls.class_name if cls else str(class_id)
         division = cls.division if cls else ""
-        max_period = max(s.period_number for s in class_slots)
+
+        # Show at least periods_per_day rows so config changes are visible.
+        max_period = max(
+            max(s.period_number for s in class_slots),
+            periods_per_day,
+        )
 
         rows = {p: {day: "" for day in days} for p in range(1, max_period + 1)}
+
         for s in class_slots:
             day = int_to_day(s.day_of_week)
             if day not in days:
                 continue
             if s.subject_id == 0:
+                # Any saved lunch marker — position it where it was saved.
                 rows[s.period_number][day] = "Lunch Break"
                 continue
             subject = s.subject.subject_name if s.subject else f"Subject #{s.subject_id}"
             teacher = s.teacher.name if (s.teacher and s.teacher_id) else ""
             rows[s.period_number][day] = subject + (f"\n{teacher}" if teacher else "")
 
-        # Reserve the fixed lunch period across all school days.
-        if LUNCH_PERIOD in rows:
+        # Force lunch row at the configured position, overriding any blank
+        # cells so the report always shows where lunch falls.
+        if lunch_period and lunch_period in rows:
             for day in days:
-                rows[LUNCH_PERIOD][day] = "Lunch Break"
+                rows[lunch_period][day] = "Lunch Break"
+
+        # Saturday columns: mark periods beyond saturday_periods as "—".
+        for period in rows.keys():
+            if "Saturday" in days and period > saturday_periods:
+                rows[period]["Saturday"] = "—"
 
         grids.append({
             "class_id": class_id,
@@ -94,6 +124,8 @@ def build_timetable_grids(
             "division": division,
             "days": days,
             "rows": rows,
+            "periods_per_day": periods_per_day,
+            "saturday_periods": saturday_periods,
         })
 
     return grids
@@ -101,9 +133,24 @@ def build_timetable_grids(
 
 def _settings_line(settings: Optional[TimetableSettings], grids: List[dict]) -> str:
     """Short settings summary shown under the PDF title."""
+    periods = (
+        settings.periods_per_day
+        if settings and settings.periods_per_day is not None
+        else PERIODS_PER_DAY
+    )
+    lunch = (
+        settings.lunch_period
+        if settings and settings.lunch_period is not None
+        else LUNCH_PERIOD
+    )
+    start = (
+        settings.start_time
+        if settings and settings.start_time
+        else START_TIME
+    )
     parts: List[str] = [
-        f"Start {START_TIME}",
-        f"{PERIODS_PER_DAY} periods/day · lunch P{LUNCH_PERIOD}",
+        f"Start {start}",
+        f"{periods} periods/day · lunch P{lunch}",
     ]
     if grids:
         parts.append(f"{len(grids[0]['days'])} school days")
