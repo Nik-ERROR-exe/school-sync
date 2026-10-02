@@ -30,7 +30,8 @@ class ForbiddenException(HTTPException):
         )
 
 class ValidationException(HTTPException):
-    def __init__(self, detail: str = "Validation error", details: list = None):
+    def __init__(self, detail: str = "Validation error", details: list = None,
+                 code: str = None, teachers: list = None):
         payload = {"message": detail}
         if details:
             payload["issues"] = [
@@ -48,6 +49,10 @@ class ValidationException(HTTPException):
                 }
                 for i in details
             ]
+        if code:
+            payload["code"] = code
+        if teachers:
+            payload["teachers"] = teachers
         super().__init__(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=payload
