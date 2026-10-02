@@ -8,7 +8,11 @@ import Step4TeacherAssignment from './Step4TeacherAssignment';
 import { ApiSlot } from '../../types';
 
 interface WizardLayoutProps {
-  onGenerateComplete: (schedule: ApiSlot[], settings: WizardState) => void;
+  onGenerateComplete: (
+    schedule: ApiSlot[],
+    settings: WizardState,
+    relaxations?: any[],
+  ) => void;
 }
 
 const steps = [
@@ -81,7 +85,9 @@ const WizardStepsContent: React.FC<WizardLayoutProps> = ({ onGenerateComplete })
           {currentStep === 5 && (
             <Step4TeacherAssignment 
               onPrev={prevStep} 
-              onGenerateComplete={(schedule, wizardState) => onGenerateComplete(schedule, wizardState)} 
+              onGenerateComplete={(schedule, wizardState, relaxations) =>
+                onGenerateComplete(schedule, wizardState, relaxations)
+              } 
             />
           )}
         </div>
