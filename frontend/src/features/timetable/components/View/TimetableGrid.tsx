@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ApiSlot, ApiClass, ApiSubject, ApiTeacher } from '../../types';
-import { getPeriodTimeStr } from '../../periodSchedule';
+import { getPeriodTimeStr, computeSlotLabels } from '../../periodSchedule';
 import EditCellModal from './EditCellModal';
 import { getScheduleConflicts } from '../../utils/conflictChecker';
 import { AlertTriangle } from 'lucide-react';
@@ -17,6 +17,9 @@ interface TimetableGridProps {
   saturdayPeriods: number;
   lunchPeriod: number | null;
   ptSubjectId?: number | null;
+  startTime?: string | null;
+  periodMinutes?: number | null;
+  lunchMinutes?: number | null;
   onSave: (updatedSchedule: ApiSlot[]) => void;
   onClassChange?: (id: number | null) => void;
 }
@@ -31,6 +34,9 @@ export default function TimetableGrid({
   saturdayPeriods,
   lunchPeriod,
   ptSubjectId = null,
+  startTime = null,
+  periodMinutes = null,
+  lunchMinutes = null,
   onSave,
   onClassChange,
 }: TimetableGridProps) {
@@ -117,6 +123,19 @@ export default function TimetableGrid({
     onSave(newSlots);
   };
 
+  const computedLabels = useMemo(
+    () => computeSlotLabels(startTime, periodMinutes, lunchMinutes, lunchPeriod, periodsPerDay),
+    [startTime, periodMinutes, lunchMinutes, lunchPeriod, periodsPerDay],
+  );
+
+  const getSlotTimeStr = (periodNum: number): string => {
+    if (computedLabels) {
+      const s = computedLabels.find(x => x.period === periodNum);
+      if (s) return s.label;
+    }
+    return getPeriodTimeStr(periodNum);
+  };
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col flex-1 h-full overflow-hidden">
       {/* Top Header: Class Selector */}
@@ -164,7 +183,7 @@ export default function TimetableGrid({
               {Array.from({ length: periodsPerDay }).map((_, idx) => {
                 const periodNum = idx + 1;
                 const isLunch = periodNum === lunchPeriod;
-                const timeStr = getPeriodTimeStr(periodNum);
+                const timeStr = getSlotTimeStr(periodNum);
 
                 if (isLunch) {
                   return (
