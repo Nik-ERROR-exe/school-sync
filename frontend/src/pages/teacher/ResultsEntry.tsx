@@ -6,7 +6,6 @@ import {
   Loader2,
   ChevronDown,
   AlertCircle,
-  CheckCircle2,
   SlidersHorizontal,
   GraduationCap,
   Sparkles,
@@ -333,61 +332,6 @@ function CustomDropdown<T extends number | string>({
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
-   GRADE HELPERS — unified scale
-   ───────────────────────────────────────────────────────────────────────── */
-const calculateGrade = (percentage: number): string => {
-  if (percentage >= 91) return 'A1';
-  if (percentage >= 81) return 'A2';
-  if (percentage >= 71) return 'B1';
-  if (percentage >= 61) return 'B2';
-  if (percentage >= 51) return 'C1';
-  if (percentage >= 41) return 'C2';
-  return 'D';
-};
-
-const getGradeBadgeStyle = (grade: string): string => {
-  switch (grade) {
-    case 'A1':
-    case 'A2':
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60';
-    case 'B1':
-    case 'B2':
-      return 'bg-blue-50 text-blue-700 border-blue-200/80 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800/60';
-    case 'C1':
-    case 'C2':
-      return 'bg-amber-50 text-amber-700 border-amber-200/80 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800/60';
-    case 'D':
-      return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-950/70 dark:text-red-300 dark:border-red-900/60';
-    default:
-      return 'bg-slate-100 text-[#475569] border-slate-200 dark:bg-[#161D29] dark:text-[#94A3B8] dark:border-[#253044]';
-  }
-};
-
-const computeResultStatus = (
-  studentId: number,
-  subjects: { id: number; components: { component_code: string; max_marks: number }[] }[],
-  marks: Record<string, string>
-): 'P' | 'F' => {
-  let anyConfigured = false;
-  for (const subj of subjects) {
-    if (subj.components.length === 0) continue;
-    anyConfigured = true;
-    let maxTotal = 0;
-    let subtotal = 0;
-    for (const c of subj.components) {
-      maxTotal += c.max_marks;
-      const key = `${studentId}_${subj.id}_${c.component_code}`;
-      const raw = marks[key];
-      if (raw === undefined || raw === '') continue;
-      const n = parseFloat(raw);
-      if (!isNaN(n)) subtotal += n;
-    }
-    if (maxTotal > 0 && subtotal < 0.35 * maxTotal) return 'F';
-  }
-  return anyConfigured ? 'P' : 'F';
-};
-
-/* ─────────────────────────────────────────────────────────────────────────
    MAIN RESULTS COMPONENT
    ───────────────────────────────────────────────────────────────────────── */
 const ResultsEntry: React.FC = () => {
@@ -501,27 +445,6 @@ const ResultsEntry: React.FC = () => {
       if (!isNaN(n)) sum += n;
     }
     return sum;
-  };
-
-  const getStudentOverall = (studentId: number) => {
-    let obt = 0;
-    let max = 0;
-    for (const subj of subjects) {
-      for (const c of subj.components) {
-        const key = `${studentId}_${subj.id}_${c.component_code}`;
-        const raw = marks[key];
-        if (raw === undefined || raw === '') continue;
-        const n = parseFloat(raw);
-        if (isNaN(n)) continue;
-        obt += n;
-        max += c.max_marks;
-      }
-    }
-    if (max === 0) {
-      return { obt: 0, max: 0, pct: 0, grade: '-' };
-    }
-    const pct = (obt / max) * 100;
-    return { obt, max, pct, grade: calculateGrade(pct) };
   };
 
   const handleComponentCommit = async (
@@ -753,31 +676,6 @@ const ResultsEntry: React.FC = () => {
                       </th>
                     );
                   })}
-
-                  <th
-                    rowSpan={2}
-                    className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] text-center min-w-24 border-r border-[#E2E8F0] dark:border-[#253044]"
-                  >
-                    Total
-                  </th>
-                  <th
-                    rowSpan={2}
-                    className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] text-center min-w-20 border-r border-[#E2E8F0] dark:border-[#253044]"
-                  >
-                    %
-                  </th>
-                  <th
-                    rowSpan={2}
-                    className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] text-center min-w-20"
-                  >
-                    Grade
-                  </th>
-                  <th
-                    rowSpan={2}
-                    className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] text-center min-w-16"
-                  >
-                    Result
-                  </th>
                 </tr>
                 <tr className="border-b border-[#E2E8F0] dark:border-[#253044] bg-[#F8FAFC] dark:bg-[#161D29]">
                   {subjects.map((subj) => {
@@ -817,119 +715,70 @@ const ResultsEntry: React.FC = () => {
               </thead>
 
               <tbody className="divide-y divide-[#E2E8F0] dark:divide-[#253044]">
-                {students.map((student, index) => {
-                  const overall = getStudentOverall(student.student_id);
-                  const status = computeResultStatus(student.student_id, subjects, marks);
-                  const hasAny = overall.max > 0;
-                  return (
-                    <tr
-                      key={student.student_id}
-                      className="group hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-colors duration-150 animate-card-enter"
-                      style={{ animationDelay: `${Math.min(index * 25, 400)}ms` }}
-                    >
-                      <td className="px-4 py-2 text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] sticky left-0 z-10 bg-white dark:bg-[#10151F] group-hover:bg-blue-50/40 dark:group-hover:bg-[#161D29] border-r border-[#E2E8F0] dark:border-[#253044] transition-colors">
-                        {student.roll_no}
-                      </td>
-                      <td className="px-4 py-2 text-xs md:text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC] sticky left-20 z-10 bg-white dark:bg-[#10151F] group-hover:bg-blue-50/40 dark:group-hover:bg-[#161D29] border-r border-[#E2E8F0] dark:border-[#253044] transition-colors shadow-xs">
-                        {student.name}
-                      </td>
+                {students.map((student, index) => (
+                  <tr
+                    key={student.student_id}
+                    className="group hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-colors duration-150 animate-card-enter"
+                    style={{ animationDelay: `${Math.min(index * 25, 400)}ms` }}
+                  >
+                    <td className="px-4 py-2 text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] sticky left-0 z-10 bg-white dark:bg-[#10151F] group-hover:bg-blue-50/40 dark:group-hover:bg-[#161D29] border-r border-[#E2E8F0] dark:border-[#253044] transition-colors">
+                      {student.roll_no}
+                    </td>
+                    <td className="px-4 py-2 text-xs md:text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC] sticky left-20 z-10 bg-white dark:bg-[#10151F] group-hover:bg-blue-50/40 dark:group-hover:bg-[#161D29] border-r border-[#E2E8F0] dark:border-[#253044] transition-colors shadow-xs">
+                      {student.name}
+                    </td>
 
-                      {subjects.map((subj) => {
-                        if (subj.components.length === 0) {
-                          return (
-                            <td
-                              key={`${subj.id}-na`}
-                              className="px-2 py-2 text-center text-slate-300 dark:text-slate-600 border-r border-[#E2E8F0] dark:border-[#253044]"
-                            >
-                              —
-                            </td>
-                          );
-                        }
-                        const subtotal = getSubjectSubtotal(
-                          student.student_id,
-                          subj.id,
-                          subj.components
-                        );
+                    {subjects.map((subj) => {
+                      if (subj.components.length === 0) {
                         return (
-                          <React.Fragment key={subj.id}>
-                            {subj.components.map((c) => {
-                              const key = `${student.student_id}_${subj.id}_${c.component_code}`;
-                              return (
-                                <td
-                                  key={`${subj.id}-${c.component_code}`}
-                                  className="px-1.5 py-1.5 text-center border-r border-[#E2E8F0] dark:border-[#253044]"
-                                >
-                                  <ComponentCell
-                                    value={marks[key] ?? ''}
-                                    maxMarks={c.max_marks}
-                                    onCommit={(val) =>
-                                      handleComponentCommit(
-                                        student.student_id,
-                                        subj,
-                                        c.component_code,
-                                        val
-                                      )
-                                    }
-                                  />
-                                </td>
-                              );
-                            })}
-                            <td
-                              key={`${subj.id}-sub`}
-                              className="px-2 py-2 text-center text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] border-r border-[#E2E8F0] dark:border-[#253044] bg-blue-50/30 dark:bg-blue-950/10"
-                            >
-                              {subtotal > 0 ? subtotal : '—'}
-                            </td>
-                          </React.Fragment>
-                        );
-                      })}
-
-                      <td className="px-3 py-2 text-center text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] border-r border-[#E2E8F0] dark:border-[#253044] font-heading">
-                        {hasAny ? (
-                          <span>
-                            {overall.obt}{' '}
-                            <span className="text-[#475569] dark:text-[#94A3B8] font-normal">
-                              / {overall.max}
-                            </span>
-                          </span>
-                        ) : (
-                          <span className="text-[#475569] dark:text-[#94A3B8]">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-center text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] border-r border-[#E2E8F0] dark:border-[#253044] font-heading">
-                        {hasAny ? (
-                          `${overall.pct.toFixed(1)}%`
-                        ) : (
-                          <span className="text-[#475569] dark:text-[#94A3B8]">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        {hasAny ? (
-                          <span
-                            className={`inline-flex items-center justify-center px-2 py-0.5 rounded-md text-xs font-bold border ${getGradeBadgeStyle(
-                              overall.grade
-                            )}`}
+                          <td
+                            key={`${subj.id}-na`}
+                            className="px-2 py-2 text-center text-slate-300 dark:text-slate-600 border-r border-[#E2E8F0] dark:border-[#253044]"
                           >
-                            {overall.grade}
-                          </span>
-                        ) : (
-                          <span className="text-[#475569] dark:text-[#94A3B8] text-xs">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <span
-                          className={`inline-flex items-center justify-center px-2 py-0.5 rounded-md text-xs font-bold border ${
-                            status === 'P'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60'
-                              : 'bg-red-100 text-red-800 border-red-200 dark:bg-red-950/70 dark:text-red-300 dark:border-red-900/60'
-                          }`}
-                        >
-                          {status}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
+                            —
+                          </td>
+                        );
+                      }
+                      const subtotal = getSubjectSubtotal(
+                        student.student_id,
+                        subj.id,
+                        subj.components
+                      );
+                      return (
+                        <React.Fragment key={subj.id}>
+                          {subj.components.map((c) => {
+                            const key = `${student.student_id}_${subj.id}_${c.component_code}`;
+                            return (
+                              <td
+                                key={`${subj.id}-${c.component_code}`}
+                                className="px-1.5 py-1.5 text-center border-r border-[#E2E8F0] dark:border-[#253044]"
+                              >
+                                <ComponentCell
+                                  value={marks[key] ?? ''}
+                                  maxMarks={c.max_marks}
+                                  onCommit={(val) =>
+                                    handleComponentCommit(
+                                      student.student_id,
+                                      subj,
+                                      c.component_code,
+                                      val
+                                    )
+                                  }
+                                />
+                              </td>
+                            );
+                          })}
+                          <td
+                            key={`${subj.id}-sub`}
+                            className="px-2 py-2 text-center text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] border-r border-[#E2E8F0] dark:border-[#253044] bg-blue-50/30 dark:bg-blue-950/10"
+                          >
+                            {subtotal > 0 ? subtotal : '—'}
+                          </td>
+                        </React.Fragment>
+                      );
+                    })}
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
