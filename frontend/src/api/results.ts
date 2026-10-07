@@ -186,4 +186,4 @@ export const subjectExamComponentsApi = {
     );
     return response.data;
   },
-};
+};

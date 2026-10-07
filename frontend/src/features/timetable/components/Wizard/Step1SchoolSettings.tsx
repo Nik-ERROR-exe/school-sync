@@ -175,16 +175,16 @@ export default function Step1SchoolSettings({ onNext }: { onNext: () => void }) 
 
       <form onSubmit={handleSubmit(onSubmit)} className="p-8 space-y-8">
         <div className="space-y-2">
-          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Working Days</label>
+          <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Working Days</label>
           <div className="flex flex-wrap gap-2">
             {days.map(day => (
-              <label key={day} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 cursor-pointer hover:bg-slate-100 transition-colors">
-                <input type="checkbox" value={day} {...register('workingDays')} className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500" />
-                <span className="text-sm font-medium text-slate-700">{day.substring(0, 3)}</span>
+              <label key={day} className="flex items-center gap-2 bg-slate-50 dark:bg-[#161D29] border border-slate-200 dark:border-[#253044] rounded-lg px-3 py-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                <input type="checkbox" value={day} {...register('workingDays')} className="w-4 h-4 text-blue-600 rounded border-slate-300 dark:border-slate-700 focus:ring-blue-500" />
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{day.substring(0, 3)}</span>
               </label>
             ))}
           </div>
-          {errors.workingDays && <p className="text-xs text-red-500 mt-1">{errors.workingDays.message}</p>}
+          {errors.workingDays && <p className="text-xs text-red-500 dark:text-red-400 mt-1">{errors.workingDays.message}</p>}
         </div>
 
         <div className="bg-slate-50/60 border border-slate-200 rounded-xl p-5 space-y-4">
@@ -277,7 +277,7 @@ export default function Step1SchoolSettings({ onNext }: { onNext: () => void }) 
         <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-5 space-y-4">
           <label className="flex items-center gap-3 cursor-pointer">
             <input type="checkbox" {...register('saturdayHalfDay')} className="w-5 h-5 text-blue-600 rounded border-blue-300 focus:ring-blue-500" />
-            <span className="text-sm font-bold text-blue-900">Enable Saturday Half Day</span>
+            <span className="text-sm font-bold text-blue-900 dark:text-blue-200">Enable Saturday Half Day</span>
           </label>
 
           {watchSatHalfDay && (

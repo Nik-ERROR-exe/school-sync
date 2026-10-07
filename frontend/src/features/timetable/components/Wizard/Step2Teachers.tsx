@@ -69,7 +69,7 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
           const classesRes = await api.get('/admin/classes/');
           setClasses(classesRes.data);
           setLoading(false);
-        } catch (err: any) {
+        } catch {
           setError('Failed to load classes.');
           setLoading(false);
         }
@@ -78,7 +78,6 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
       }
     };
     initData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selectClass = (id: number | null) => {
@@ -116,20 +115,20 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
 
   if (error) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-        <div className="px-8 py-6 border-b border-slate-100 bg-slate-50/50">
-          <h2 className="text-lg font-bold text-slate-900">Step 2: Select Teachers</h2>
+      <div className="bg-white dark:bg-[#10151F] rounded-2xl shadow-sm border border-slate-200 dark:border-[#253044] overflow-hidden text-slate-900 dark:text-slate-100">
+        <div className="px-8 py-6 border-b border-slate-100 dark:border-[#253044] bg-slate-50/50 dark:bg-[#161D29]/50">
+          <h2 className="text-lg font-bold">Step 2: Select Teachers & Classes</h2>
         </div>
         <div className="flex flex-col items-center justify-center p-16 text-center">
-          <AlertCircle className="text-red-500 mb-4" size={40} />
-          <p className="text-red-600 font-semibold mb-2">Failed to load data</p>
-          <p className="text-slate-500 text-sm max-w-md mb-6">{error}</p>
-          <button onClick={fetchData} className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2 rounded-lg text-sm transition-colors shadow">
+          <AlertCircle className="text-rose-500 mb-4" size={40} />
+          <p className="text-rose-600 dark:text-rose-400 font-semibold mb-2">Failed to load data</p>
+          <p className="text-slate-500 dark:text-slate-400 text-sm max-w-md mb-6">{error}</p>
+          <button onClick={fetchData} className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2 rounded-lg text-sm transition-colors">
             Retry
           </button>
         </div>
-        <div className="flex justify-between px-8 py-4 border-t border-slate-100 bg-slate-50">
-          <button onClick={onPrev} className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 px-6 py-2.5 rounded-lg text-sm font-bold transition-all">
+        <div className="flex justify-between px-8 py-4 border-t border-slate-100 dark:border-[#253044] bg-slate-50 dark:bg-[#161D29]">
+          <button onClick={onPrev} className="bg-white dark:bg-[#10151F] border border-slate-200 dark:border-[#253044] text-slate-700 dark:text-slate-300 px-6 py-2.5 rounded-lg text-sm font-bold">
             Back
           </button>
         </div>
@@ -138,13 +137,12 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="px-8 py-6 border-b border-slate-100 bg-slate-50/50">
-        <h2 className="text-lg font-bold text-slate-900">Step 2: Select Teachers</h2>
-        <p className="text-sm text-slate-500 mt-1">Choose which teachers and class will participate in this timetable generation.</p>
+    <div className="bg-white dark:bg-[#10151F] rounded-2xl shadow-sm border border-slate-200 dark:border-[#253044] overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 text-slate-900 dark:text-slate-100">
+      <div className="px-8 py-6 border-b border-slate-100 dark:border-[#253044] bg-slate-50/50 dark:bg-[#161D29]/50">
+        <h2 className="text-lg font-bold">Step 2: Select Teachers & Classes</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Choose which teachers and class will participate in this timetable generation.</p>
       </div>
 
-      {/* Diagnostic Banner for Step 2 issues */}
       <div className="px-8 pt-4">
         <DiagnosticBanner issues={state.diagnosticIssues} stepNumber={2} />
       </div>
@@ -193,10 +191,10 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
                   type="button"
                   disabled={generateMode !== 'single'}
                   onClick={() => selectClass(cls.id)}
-                  className={`px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200 border ${
+                  className={`px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200 border cursor-pointer ${
                     isSelected
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-600/20'
-                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-100'
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                      : 'bg-slate-50 dark:bg-[#161D29] text-slate-600 dark:text-slate-300 border-slate-200 dark:border-[#253044] hover:border-slate-300 dark:hover:border-slate-700'
                   }`}
                 >
                   {cls.class_name} - {cls.division}
@@ -212,26 +210,26 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
           )}
         </div>
 
-        <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-5 space-y-2">
-          <label className="text-xs font-bold text-amber-900 uppercase tracking-wider block">PT (Physical Training) Subject *</label>
+        <div className="bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-xl p-5 space-y-2">
+          <label className="text-xs font-bold text-amber-900 dark:text-amber-300 uppercase tracking-wider block">PT (Physical Training) Subject *</label>
           <select
             value={ptSubjectId ?? ''}
             onChange={(e) => {
               setPtSubjectId(e.target.value ? Number(e.target.value) : null);
               setValidationErrors([]);
             }}
-            className="w-full md:w-80 bg-white border border-amber-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none"
+            className="w-full md:w-80 bg-white dark:bg-[#10151F] border border-amber-200 dark:border-amber-800 text-slate-900 dark:text-slate-100 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-amber-400 outline-none"
           >
             <option value="">— Select PT Subject —</option>
             {subjects.map(s => (
               <option key={s.id} value={s.id}>{s.subject_name} ({s.code})</option>
             ))}
           </select>
-          <p className="text-xs text-amber-700">The solver treats PT differently — multiple classes can share the ground period.</p>
+          <p className="text-xs text-amber-700 dark:text-amber-400">The solver treats PT differently — multiple classes can share the ground period.</p>
         </div>
 
         {validationErrors.length > 0 && (
-          <div className="space-y-1.5 bg-red-50 border border-red-200 text-red-700 text-sm font-medium px-4 py-3 rounded-lg">
+          <div className="space-y-1.5 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-300 text-sm font-medium px-4 py-3 rounded-lg">
             {validationErrors.map((err, idx) => (
               <div key={idx} className="flex items-center gap-2">
                 <AlertCircle size={14} className="shrink-0" />
@@ -242,11 +240,11 @@ export default function Step2Teachers({ onNext, onPrev }: { onNext: () => void; 
         )}
       </div>
 
-      <div className="flex justify-between px-8 py-4 border-t border-slate-100 bg-slate-50">
-        <button onClick={onPrev} className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 px-6 py-2.5 rounded-lg text-sm font-bold transition-all">
+      <div className="flex justify-between px-8 py-4 border-t border-slate-100 dark:border-[#253044] bg-slate-50 dark:bg-[#161D29]">
+        <button onClick={onPrev} className="bg-white dark:bg-[#10151F] border border-slate-200 dark:border-[#253044] hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 px-6 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer">
           Back
         </button>
-        <button onClick={handleContinue} className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-2.5 rounded-lg text-sm font-bold shadow-sm transition-all hover:shadow">
+        <button onClick={handleContinue} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg text-sm font-bold shadow-sm transition-all cursor-pointer">
           Save & Continue
         </button>
       </div>
